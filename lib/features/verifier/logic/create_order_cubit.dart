@@ -16,6 +16,7 @@ class DraftOrderItem extends Equatable {
   final int quantity;
   final bool isCustom;
   final String? customDescription;
+  final String? sourceInventoryId;
 
   const DraftOrderItem({
     this.inventoryId,
@@ -23,6 +24,7 @@ class DraftOrderItem extends Equatable {
     required this.quantity,
     required this.isCustom,
     this.customDescription,
+    this.sourceInventoryId,
   });
 
   String get displayName =>
@@ -33,11 +35,12 @@ class DraftOrderItem extends Equatable {
         'quantity': quantity,
         'is_custom': isCustom,
         if (customDescription != null) 'custom_description': customDescription,
+        if (sourceInventoryId != null) 'source_inventory_id': sourceInventoryId,
       };
 
   @override
   List<Object?> get props =>
-      [inventoryId, quantity, isCustom, customDescription];
+      [inventoryId, quantity, isCustom, customDescription, sourceInventoryId];
 }
 
 abstract class CreateOrderState extends Equatable {
@@ -182,7 +185,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
     emit(s.copyWith(items: updated));
   }
 
-  void addCustomItem(String description, int quantity) {
+  void addCustomItem(String description, int quantity, {String? sourceInventoryId}) {
     final s = state;
     if (s is! CreateOrderReady) return;
     final updated = List<DraftOrderItem>.from(s.items)
@@ -190,7 +193,23 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
         quantity: quantity,
         isCustom: true,
         customDescription: description,
+        sourceInventoryId: sourceInventoryId,
       ));
+    emit(s.copyWith(items: updated));
+  }
+
+  void addMultipleItems(List<({InventoryItem item, int quantity})> itemsWithQuantities) {
+    final s = state;
+    if (s is! CreateOrderReady) return;
+    final updated = List<DraftOrderItem>.from(s.items);
+    for (final entry in itemsWithQuantities) {
+      updated.add(DraftOrderItem(
+        inventoryId: entry.item.id,
+        inventoryName: entry.item.itemName,
+        quantity: entry.quantity,
+        isCustom: false,
+      ));
+    }
     emit(s.copyWith(items: updated));
   }
 
@@ -229,6 +248,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
         notes: s.notes,
         items: s.items.map((i) => i.toInsertMap()).toList(),
       );
+
       emit(CreateOrderSuccess(orderId));
     } catch (e, st) {
       logger.e('CreateOrderCubit → submit failed', error: e, stackTrace: st);

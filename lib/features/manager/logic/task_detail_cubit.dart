@@ -20,9 +20,14 @@ class TaskDetailLoading extends TaskDetailState {}
 class TaskDetailLoaded extends TaskDetailState {
   final Order order;
   final List<AuditLogEntry> auditLog;
-  const TaskDetailLoaded({required this.order, required this.auditLog});
+  final Map<String, String> receipts;
+  const TaskDetailLoaded({
+    required this.order,
+    required this.auditLog,
+    required this.receipts,
+  });
   @override
-  List<Object?> get props => [order, auditLog];
+  List<Object?> get props => [order, auditLog, receipts];
 }
 
 class TaskDetailError extends TaskDetailState {
@@ -32,6 +37,8 @@ class TaskDetailError extends TaskDetailState {
   List<Object?> get props => [message];
 }
 
+class TaskDetailDeleted extends TaskDetailState {}
+
 // ── Cubit ─────────────────────────────────────────────────────────────────────
 
 class TaskDetailCubit extends Cubit<TaskDetailState> {
@@ -40,13 +47,35 @@ class TaskDetailCubit extends Cubit<TaskDetailState> {
 
   TaskDetailCubit(this._repo, this.orderId) : super(TaskDetailInitial());
 
+  Future<void> deleteOrder() async {
+    logger.d('TaskDetailCubit → deleteOrder: $orderId');
+    emit(TaskDetailLoading());
+    try {
+      await _repo.deleteOrder(orderId);
+      emit(TaskDetailDeleted());
+    } catch (e, st) {
+      logger.e('TaskDetailCubit → deleteOrder failed', error: e, stackTrace: st);
+      emit(TaskDetailError(e.toString()));
+    }
+  }
+
   Future<void> load() async {
     logger.d('TaskDetailCubit → load: $orderId');
     emit(TaskDetailLoading());
     try {
-      final order = await _repo.fetchOrderDetail(orderId);
-      final auditLog = await _repo.fetchAuditLog(orderId);
-      emit(TaskDetailLoaded(order: order, auditLog: auditLog));
+      final results = await Future.wait([
+        _repo.fetchOrderDetail(orderId),
+        _repo.fetchAuditLog(orderId),
+        _repo.fetchReceipts(orderId),
+      ]);
+      final order = results[0] as Order;
+      final auditLog = results[1] as List<AuditLogEntry>;
+      final receipts = results[2] as Map<String, String>;
+      emit(TaskDetailLoaded(
+        order: order,
+        auditLog: auditLog,
+        receipts: receipts,
+      ));
     } catch (e, st) {
       logger.e('TaskDetailCubit → load failed', error: e, stackTrace: st);
       emit(TaskDetailError(e.toString()));

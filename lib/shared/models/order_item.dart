@@ -9,8 +9,10 @@ class OrderItem extends Equatable {
   final String? inventoryId;
   final String? inventoryName;
   final int quantity;
+  final int? finalQuantity;
   final bool isCustom;
   final String? customDescription;
+  final String? sourceInventoryId;
   final ItemCheckStatus checkStatus;
   final String? checkedBy;
   final DateTime? checkedAt;
@@ -22,13 +24,19 @@ class OrderItem extends Equatable {
     this.inventoryId,
     this.inventoryName,
     required this.quantity,
+    this.finalQuantity,
     required this.isCustom,
     this.customDescription,
+    this.sourceInventoryId,
     required this.checkStatus,
     this.checkedBy,
     this.checkedAt,
     this.checker,
   });
+
+  /// The quantity that should be used for inventory changes.
+  /// Storage actor may override this before confirming.
+  int get effectiveQuantity => finalQuantity ?? quantity;
 
   factory OrderItem.fromMap(Map<String, dynamic> map) {
     ItemCheckStatus status;
@@ -50,8 +58,10 @@ class OrderItem extends Equatable {
       inventoryId: map['inventory_id'] as String?,
       inventoryName: inventoryMap?['item_name'] as String?,
       quantity: map['quantity'] as int,
+      finalQuantity: map['final_quantity'] as int?,
       isCustom: map['is_custom'] as bool,
       customDescription: map['custom_description'] as String?,
+      sourceInventoryId: map['source_inventory_id'] as String?,
       checkStatus: status,
       checkedBy: map['checked_by'] as String?,
       checkedAt: map['checked_at'] != null
@@ -65,5 +75,5 @@ class OrderItem extends Equatable {
       isCustom ? (customDescription ?? 'صنف مخصص') : (inventoryName ?? inventoryId ?? '');
 
   @override
-  List<Object?> get props => [id, orderId, inventoryId, quantity, isCustom, checkStatus];
+  List<Object?> get props => [id, orderId, inventoryId, quantity, finalQuantity, isCustom, sourceInventoryId, checkStatus];
 }

@@ -1,11 +1,18 @@
 import 'package:equatable/equatable.dart';
 
+enum AvailabilityStatus { available, low, outOfStock }
+
+enum StockCheckResult { sufficient, partial, outOfStock }
+
 class InventoryItem extends Equatable {
   final String id;
   final String itemName;
   final String? sku;
   final int quantity;
   final String unit;
+  final String? category;
+  final int minQuantity;
+  final String? description;
 
   const InventoryItem({
     required this.id,
@@ -13,7 +20,22 @@ class InventoryItem extends Equatable {
     this.sku,
     required this.quantity,
     required this.unit,
+    this.category,
+    this.minQuantity = 0,
+    this.description,
   });
+
+  AvailabilityStatus get availabilityStatus {
+    if (quantity == 0) return AvailabilityStatus.outOfStock;
+    if (quantity <= minQuantity) return AvailabilityStatus.low;
+    return AvailabilityStatus.available;
+  }
+
+  StockCheckResult checkStock(int requestedQuantity) {
+    if (quantity == 0) return StockCheckResult.outOfStock;
+    if (quantity < requestedQuantity) return StockCheckResult.partial;
+    return StockCheckResult.sufficient;
+  }
 
   factory InventoryItem.fromMap(Map<String, dynamic> map) {
     return InventoryItem(
@@ -22,9 +44,12 @@ class InventoryItem extends Equatable {
       sku: map['sku'] as String?,
       quantity: map['quantity'] as int,
       unit: map['unit'] as String? ?? 'قطعة',
+      category: map['category'] as String?,
+      minQuantity: map['min_quantity'] as int? ?? 0,
+      description: map['description'] as String?,
     );
   }
 
   @override
-  List<Object?> get props => [id, itemName, sku, quantity, unit];
+  List<Object?> get props => [id, itemName, sku, quantity, unit, category, minQuantity, description];
 }

@@ -1,0 +1,511 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../shared/models/inventory_item.dart';
+import '../../../shared/models/order.dart';
+import '../../../shared/models/order_item.dart';
+import '../../../shared/widgets/receipt_viewer_screen.dart';
+import '../logic/edit_order_cubit.dart';
+import 'widgets/add_item_sheet.dart';
+
+class EditOrderScreen extends StatelessWidget {
+  const EditOrderScreen({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocConsumer<EditOrderCubit, EditOrderState>(
+      listenWhen: (prev, curr) {
+        if (curr is EditOrderSuccess || curr is EditOrderError) return true;
+        if (curr is EditOrderReady && curr.stockError != null) {
+          final prevErr = prev is EditOrderReady ? prev.stockError : null;
+          return curr.stockError != prevErr;
+        }
+        return false;
+      },
+      listener: (context, state) {
+        if (state is EditOrderSuccess) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم تعديل الطلب بنجاح')),
+          );
+          Navigator.pop(context, true);
+        }
+        if (state is EditOrderError) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.message),
+              backgroundColor: Theme.of(context).colorScheme.error,
+            ),
+          );
+        }
+        if (state is EditOrderReady && state.stockError != null) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(state.stockError!),
+              backgroundColor: Colors.orange,
+            ),
+          );
+        }
+      },
+      builder: (context, state) {
+        if (state is EditOrderInitial || state is EditOrderLoading) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (state is EditOrderError && state is! EditOrderReady) {
+          return Scaffold(
+            appBar: AppBar(title: const Text('تعديل الطلب')),
+            body: Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(state.message),
+                  const SizedBox(height: 12),
+                  FilledButton(
+                    onPressed: () =>
+                        context.read<EditOrderCubit>().loadOrder(),
+                    child: const Text('إعادة المحاولة'),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        final ready = state is EditOrderReady ? state : null;
+        final isSubmitting = state is EditOrderSubmitting;
+
+        return Scaffold(
+          appBar: AppBar(title: const Text('تعديل الطلب')),
+          body: ready == null
+              ? const Center(child: CircularProgressIndicator())
+              : SingleChildScrollView(
+                  padding: const EdgeInsets.all(16),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // Order info header
+                      _OrderInfoHeader(order: ready.originalOrder),
+                      const SizedBox(height: 20),
+
+                      // Current items
+                      Row(
+                        children: [
+                          const _SectionTitle('الأصناف الحالية'),
+                          const Spacer(),
+                          TextButton.icon(
+                            onPressed: () => _showAddItemSheet(context, ready),
+                            icon: const Icon(Icons.add),
+                            label: const Text('إضافة'),
+                          ),
+                        ],
+                      ),
+                      ...ready.effectiveItems.map(
+                        (item) => _EditableItemTile(
+                          item: item,
+                          isRemoved: ready.pendingActions.any(
+                              (a) => a is RemoveItemAction && a.itemId == item.id),
+                          inventory: ready.inventory,
+                          receipts: ready.receipts,
+                          onQuantityChanged: (qty) => context
+                              .read<EditOrderCubit>()
+                              .updateItemQuantity(item.id, qty),
+                          onRemove: () =>
+                              context.read<EditOrderCubit>().removeItem(item.id),
+                        ),
+                      ),
+
+                      // Added items (from AddItemAction)
+                      if (ready.addedItems.isNotEmpty) ...[
+                        const SizedBox(height: 12),
+                        const _SectionTitle('أصناف مضافة'),
+                        ...ready.addedItems.map((draft) => ListTile(
+                              dense: true,
+                              leading: Icon(
+                                draft.isCustom
+                                    ? Icons.shopping_bag_outlined
+                                    : Icons.inventory_2_outlined,
+                                color: draft.isCustom ? Colors.orange : Colors.teal,
+                                size: 20,
+                              ),
+                              title: Text(draft.displayName),
+                              subtitle: Text('الكمية: ${draft.quantity}'),
+                              trailing: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: Colors.green.withValues(alpha: 0.15),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text('جديد',
+                                    style: TextStyle(
+                                        fontSize: 11,
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.bold)),
+                              ),
+                            )),
+                      ],
+
+                      const SizedBox(height: 20),
+
+                      // Pending changes summary
+                      if (ready.pendingActions.isNotEmpty) ...[
+                        const _SectionTitle('ملخص التغييرات'),
+                        _ChangesSummaryCard(
+                          actions: ready.pendingActions,
+                          onUndo: (index) =>
+                              context.read<EditOrderCubit>().undoAction(index),
+                        ),
+                        const SizedBox(height: 20),
+                      ],
+
+                      // Reason field (required)
+                      const _SectionTitle('سبب التعديل *'),
+                      TextField(
+                        maxLines: 2,
+                        decoration: const InputDecoration(
+                          border: OutlineInputBorder(),
+                          hintText: 'مثال: تفاوض مع العميل، تعديل الكمية...',
+                        ),
+                        onChanged: (v) =>
+                            context.read<EditOrderCubit>().setReason(v),
+                      ),
+                      const SizedBox(height: 32),
+
+                      FilledButton(
+                        onPressed: isSubmitting || !(ready.canSubmit)
+                            ? null
+                            : () => context.read<EditOrderCubit>().submit(),
+                        child: isSubmitting
+                            ? const SizedBox(
+                                height: 20,
+                                width: 20,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text('حفظ التعديلات'),
+                      ),
+                    ],
+                  ),
+                ),
+        );
+      },
+    );
+  }
+
+  void _showAddItemSheet(BuildContext context, EditOrderReady state) {
+    final cubit = context.read<EditOrderCubit>();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddItemSheet(
+          inventory: state.inventory,
+          orderDirection: state.originalOrder.direction,
+          onAddInventoryItems: (items) {
+            for (final entry in items) {
+              cubit.addInventoryItem(entry.item, entry.quantity);
+            }
+          },
+          onAddCustomItem: (desc, qty, {sourceInventoryId}) =>
+              cubit.addCustomItem(desc, qty, sourceInventoryId: sourceInventoryId),
+        ),
+      ),
+    );
+  }
+}
+
+// ── Private Widgets ───────────────────────────────────────────────────
+
+class _SectionTitle extends StatelessWidget {
+  final String text;
+  const _SectionTitle(this.text);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(text,
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+    );
+  }
+}
+
+class _OrderInfoHeader extends StatelessWidget {
+  final Order order;
+  const _OrderInfoHeader({required this.order});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.info_outline, size: 18, color: Colors.grey),
+                const SizedBox(width: 8),
+                Text('طلب ${order.directionLabel}',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            if (order.entity != null)
+              Text('الجهة: ${order.entity!.name}',
+                  style: const TextStyle(fontSize: 13)),
+            if (order.rep != null)
+              Text('المندوب: ${order.rep!.fullName}',
+                  style: const TextStyle(fontSize: 13)),
+            Text('الحالة: ${order.statusLabel}',
+                style: const TextStyle(fontSize: 13)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _EditableItemTile extends StatelessWidget {
+  final OrderItem item;
+  final bool isRemoved;
+  final List<InventoryItem> inventory;
+  final Map<String, String> receipts;
+  final ValueChanged<int> onQuantityChanged;
+  final VoidCallback onRemove;
+
+  const _EditableItemTile({
+    required this.item,
+    required this.isRemoved,
+    required this.inventory,
+    required this.receipts,
+    required this.onQuantityChanged,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (isRemoved) {
+      return ListTile(
+        dense: true,
+        leading: const Icon(Icons.remove_circle, color: Colors.red, size: 20),
+        title: Text(
+          item.displayName,
+          style: const TextStyle(
+            decoration: TextDecoration.lineThrough,
+            color: Colors.grey,
+          ),
+        ),
+        subtitle: Text('الكمية: ${item.quantity}',
+            style: const TextStyle(color: Colors.grey)),
+        trailing: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          decoration: BoxDecoration(
+            color: Colors.red.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: const Text('محذوف',
+              style: TextStyle(
+                  fontSize: 11,
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold)),
+        ),
+      );
+    }
+
+    // Find stock info for inventory items
+    InventoryItem? invItem;
+    if (item.inventoryId != null) {
+      final matches = inventory.where((i) => i.id == item.inventoryId);
+      if (matches.isNotEmpty) invItem = matches.first;
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Icon(
+            item.isCustom ? Icons.shopping_bag_outlined : Icons.inventory_2_outlined,
+            color: item.isCustom ? Colors.orange : Colors.teal,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(item.displayName,
+                    style: const TextStyle(fontWeight: FontWeight.w500)),
+                if (invItem != null)
+                  Text(
+                    'المتوفر: ${invItem.quantity}',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: invItem.availabilityStatus == AvailabilityStatus.outOfStock
+                          ? Colors.red
+                          : invItem.availabilityStatus == AvailabilityStatus.low
+                              ? Colors.orange
+                              : Colors.green,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          SizedBox(
+            width: 70,
+            child: _QuantityField(
+              initialValue: item.quantity,
+              onChanged: onQuantityChanged,
+            ),
+          ),
+          if (item.isCustom)
+            _ReceiptIcon(receiptUrl: receipts[item.id]),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+            onPressed: onRemove,
+            visualDensity: VisualDensity.compact,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ReceiptIcon extends StatelessWidget {
+  final String? receiptUrl;
+  const _ReceiptIcon({this.receiptUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    if (receiptUrl != null) {
+      return IconButton(
+        icon: const Icon(Icons.receipt_long, color: Colors.green, size: 20),
+        tooltip: 'عرض الإيصال',
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ReceiptViewerScreen(url: receiptUrl!)),
+        ),
+        visualDensity: VisualDensity.compact,
+      );
+    }
+    return const Icon(
+      Icons.receipt_long_outlined,
+      color: Colors.grey,
+      size: 20,
+    );
+  }
+}
+
+class _QuantityField extends StatefulWidget {
+  final int initialValue;
+  final ValueChanged<int> onChanged;
+
+  const _QuantityField({
+    required this.initialValue,
+    required this.onChanged,
+  });
+
+  @override
+  State<_QuantityField> createState() => _QuantityFieldState();
+}
+
+class _QuantityFieldState extends State<_QuantityField> {
+  late final TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue.toString());
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      keyboardType: TextInputType.number,
+      textAlign: TextAlign.center,
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+      decoration: const InputDecoration(
+        border: OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        isDense: true,
+      ),
+      onChanged: (v) {
+        final qty = int.tryParse(v);
+        if (qty != null && qty > 0) {
+          widget.onChanged(qty);
+        }
+      },
+    );
+  }
+}
+
+class _ChangesSummaryCard extends StatelessWidget {
+  final List<EditAction> actions;
+  final ValueChanged<int> onUndo;
+
+  const _ChangesSummaryCard({
+    required this.actions,
+    required this.onUndo,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      color: Colors.amber.withValues(alpha: 0.08),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                const Icon(Icons.history, size: 18, color: Colors.amber),
+                const SizedBox(width: 8),
+                Text('${actions.length} تغيير',
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 8),
+            ...actions.asMap().entries.map((entry) {
+              final i = entry.key;
+              final action = entry.value;
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(
+                  children: [
+                    Expanded(child: Text(_actionLabel(action),
+                        style: const TextStyle(fontSize: 13))),
+                    IconButton(
+                      icon: const Icon(Icons.undo, size: 16),
+                      onPressed: () => onUndo(i),
+                      visualDensity: VisualDensity.compact,
+                      tooltip: 'تراجع',
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
+  String _actionLabel(EditAction action) {
+    switch (action) {
+      case UpdateQuantityAction(:final itemName, :final oldQuantity, :final newQuantity):
+        return '📝 $itemName: $oldQuantity → $newQuantity';
+      case RemoveItemAction(:final itemName, :final quantity):
+        return '🗑️ حذف $itemName (كمية: $quantity)';
+      case AddItemAction(:final item):
+        return '➕ إضافة ${item.displayName} (كمية: ${item.quantity})';
+    }
+  }
+}

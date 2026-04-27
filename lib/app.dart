@@ -9,6 +9,11 @@ import 'core/logging/app_logger.dart';
 import 'features/auth/logic/auth_cubit.dart';
 import 'router/app_router.dart';
 
+bool _isAuthCallback(Uri uri) =>
+    uri.queryParameters.containsKey('code') ||
+    uri.fragment.contains('access_token=') ||
+    uri.fragment.contains('refresh_token=');
+
 class UraApp extends StatefulWidget {
   const UraApp({super.key});
 
@@ -21,9 +26,10 @@ class _UraAppState extends State<UraApp> {
 
   @override
   void initState() {
-    super.initState();
+    super.initState();  
     _linkSubscription = AppLinks().uriLinkStream.listen((uri) async {
       logger.d('UraApp → deep link received: $uri');
+      if (!_isAuthCallback(uri)) return;
       try {
         await Supabase.instance.client.auth.getSessionFromUrl(uri);
       } catch (e) {

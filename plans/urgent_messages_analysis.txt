@@ -1,0 +1,1364 @@
+================================================================================
+URGENT MESSAGES FEATURE - COMPREHENSIVE ANALYSIS
+URA CORE - Flutter/Supabase Application
+================================================================================
+
+TABLE OF CONTENTS
+-----------------
+1. DATABASE SCHEMA ANALYSIS
+2. FLUTTER BACKEND LAYER ANALYSIS
+3. FLUTTER UI LAYER ANALYSIS
+4. COMPLETE DATA FLOW
+5. BLOCKING MECHANISMS
+6. HOW THE FLOW WORKS BETWEEN VERIFIER AND REPRESENTATIVE
+
+
+================================================================================
+1. DATABASE SCHEMA ANALYSIS
+================================================================================
+
+TABLE: urgent_notes
+-------------------
+Purpose: Stores urgent notes that require Verifier review and reply before Rep can proceed
+
+Columns:
+  - id (UUID, PRIMARY KEY, DEFAULT gen_random_uuid())
+    * Unique identifier for each urgent note
+  
+  - order_id (UUID, NOT NULL, REFERENCES orders(id) ON DELETE CASCADE)
+    * Links the note to a specific order
+    * Cascade delete: if order is deleted, all its urgent notes are deleted
+  
+  - stage (order_status, NOT NULL)
+    * The order stage where the note was created
+    * Valid values: 'assigned', 'picked_up', 'on_the_move'
+    * Enforced by CHECK constraint: valid_stage CHECK (stage IN ('assigned', 'picked_up', 'on_the_move'))
+  
+  - message (TEXT, NOT NULL)
+    * The urgent message from the Rep
+  
+  - created_by (UUID, NOT NULL, REFERENCES profiles(id))
+    * ID of the Rep who created the note
+  
+  - created_at (TIMESTAMPTZ, DEFAULT NOW())
+    * Timestamp when the note was created
+  
+  - is_resolved (BOOLEAN, DEFAULT FALSE)
+    * Whether the note has been resolved by Verifier
+    * FALSE = pending, TRUE = resolved
+  
+  - resolved_by (UUID, REFERENCES profiles(id))
+    * ID of the Verifier who resolved the note
+    * NULL until note is resolved
+  
+  - resolved_at (TIMESTAMPTZ)
+    * Timestamp when the note was resolved
+    * NULL until note is resolved
+  
+  - reply (TEXT)
+    * The Verifier's reply to the note
+    * NULL until note is resolved
+
+
+INDEXES (for performance optimization):
+------------------------------------
+1. idx_urgent_notes_pending
+   - Columns: (order_id, stage)
+   - Filter: WHERE is_resolved = FALSE
+   - Purpose: Quick lookup of pending urgent notes by order and stage
+
+2. idx_urgent_notes_all_pending
+   - Columns: (created_at DESC)
+   - Filter: WHERE is_resolved = FALSE
+   - Purpose: Fetching all pending urgent notes for Verifier dashboard
+
+3. idx_urgent_notes_order
+   - Columns: (order_id, created_at DESC)
+   - Purpose: Fetching urgent notes for order detail views
+
+
+ROW LEVEL SECURITY (RLS) POLICIES:
+---------------------------------
+1. reps_can_create_urgent_notes (INSERT)
+   - Allows Reps to create urgent notes for their assigned orders
+   - Conditions:
+     * User must be a Rep (role = 'rep')
+     * User must be approved (is_approved = TRUE)
+     * Order must be assigned to the user (order.rep_id = auth.uid())
+
+2. reps_can_view_own_urgent_notes (SELECT)
+   - Allows Reps to view urgent notes for their assigned orders
+   - Condition: Order must be assigned to the user (order.rep_id = auth.uid())
+
+3. verifiers_can_view_all_urgent_notes (SELECT)
+   - Allows Verifiers to view all urgent notes
+   - Conditions:
+     * User must be a Verifier (role = 'verifier')
+     * User must be approved (is_approved = TRUE)
+
+4. verifiers_can_resolve_urgent_notes (UPDATE)
+   - Allows Verifiers to resolve urgent notes
+   - Conditions:
+     * User must be a Verifier (role = 'verifier')
+     * User must be approved (is_approved = TRUE)
+   - WITH CHECK constraints:
+     * is_resolved must be TRUE
+     * resolved_by must be the current user (auth.uid())
+     * resolved_at must be NOW()
+
+
+RPC FUNCTIONS:
+--------------
+
+1. create_urgent_note(p_order_id UUID, p_stage order_status, p_message TEXT)
+   - Purpose: Rep creates an urgent note for their assigned order
+   - Validations:
+     * Order must exist and belong to the Rep
+     * Stage must match current order status
+   - Returns: JSONB with success flag and note_id or error message
+   - Security: SECURITY DEFINER (runs with elevated privileges)
+
+2. resolve_urgent_note(p_note_id UUID, p_reply TEXT)
+   - Purpose: Verifier resolves an urgent note with a reply
+   - Validations:
+     * Note must exist and not already be resolved
+   - Actions:
+     * Sets is_resolved = TRUE
+     * Sets resolved_by = auth.uid()
+     * Sets resolved_at = NOW()
+     * Stores the reply
+   - Returns: JSONB with success flag or error message
+   - Security: SECURITY DEFINER
+
+3. get_pending_urgent_notes(p_order_id UUID)
+   - Purpose: Get all pending urgent notes for a specific order
+   - Returns: TABLE with columns (id, stage, message, created_at, created_by_name, created_by_id)
+   - Joins with profiles table to get creator's name
+   - Filters: is_resolved = FALSE
+   - Ordered by: created_at DESC
+   - Security: SECURITY DEFINER
+
+4. get_all_pending_urgent_notes()
+   - Purpose: Get all pending urgent notes for Verifier dashboard
+   - Returns: TABLE with columns (id, order_id, stage, message, created_at, created_by_name, created_by_id, entity_name, order_status)
+   - Joins with profiles, orders, and entities tables
+   - Filters: is_resolved = FALSE
+   - Ordered by: created_at DESC
+   - Security: SECURITY DEFINER
+
+5. check_urgent_notes_block(p_order_id UUID, p_current_stage order_status)
+   - Purpose: Check if an order is blocked by pending urgent notes at a specific stage
+   - Returns: JSONB with:
+     * is_blocked (BOOLEAN): TRUE if there are pending notes
+     * pending_count (INTEGER): Number of pending notes at current stage
+   - Logic: Counts unresolved notes where order_id and stage match parameters
+   - Security: SECURITY DEFINER
+
+6. get_pending_urgent_notes_count()
+   - Purpose: Get total count of pending urgent notes (for notification badge)
+   - Returns: INTEGER count of unresolved notes
+   - Security: SECURITY DEFINER
+
+
+MODIFIED RPC FUNCTIONS (Blocking Enforcement):
+-------------------------------------------
+
+1. start_move(target_order_id UUID, p_notes TEXT DEFAULT NULL)
+   - Original: Changes order status from 'picked_up' to 'on_the_move'
+   - NEW: Checks for blocking urgent notes at 'picked_up' stage
+   - Blocking Logic:
+     * Calls check_urgent_notes_block(target_order_id, 'picked_up')
+     * If blocked, returns error: "Cannot proceed: There are pending urgent notes awaiting Verifier response"
+     * Includes pending count in error response
+   - Only proceeds if no blocking notes exist
+
+2. mark_picked_up(target_order_id UUID, p_notes TEXT DEFAULT NULL)
+   - Original: Changes order status from 'assigned' to 'picked_up'
+   - NEW: Checks for blocking urgent notes at 'assigned' stage
+   - Blocking Logic:
+     * Calls check_urgent_notes_block(target_order_id, 'assigned')
+     * If blocked, returns error: "Cannot proceed: There are pending urgent notes awaiting Verifier response"
+     * Includes pending count in error response
+   - Only proceeds if no blocking notes exist
+
+3. mark_delivered(target_order_id UUID, p_notes TEXT DEFAULT NULL)
+   - Original: Changes order status from 'on_the_move' to 'delivered'
+   - NEW: Checks for blocking urgent notes at 'on_the_move' stage
+   - Blocking Logic:
+     * Calls check_urgent_notes_block(target_order_id, 'on_the_move')
+     * If blocked, returns error: "Cannot proceed: There are pending urgent notes awaiting Verifier response"
+     * Includes pending count in error response
+   - Only proceeds if no blocking notes exist
+
+
+REAL-TIME PUBLICATION:
+---------------------
+- Table: urgent_notes
+- Publication: supabase_realtime
+- Purpose: Enables real-time updates for urgent notes
+- Use Cases:
+  * Verifier dashboard auto-refreshes when new notes arrive
+  * Rep order detail screen auto-updates when notes are resolved
+
+
+GRANTS:
+-------
+EXECUTE permissions granted on all RPC functions to 'authenticated' role
+
+
+================================================================================
+2. FLUTTER BACKEND LAYER ANALYSIS
+================================================================================
+
+FILE: lib/shared/models/urgent_note.dart
+----------------------------------------
+Purpose: Data models for urgent notes functionality
+
+Classes:
+1. UrgentNote
+   Properties:
+     - id (String): Unique identifier
+     - orderId (String): Associated order ID
+     - stage (OrderStatus): Stage where note was created (assigned, pickedUp, onTheMove, delivered, deliveredToStorage)
+     - message (String): The urgent message
+     - createdBy (String): ID of the Rep who created the note
+     - creator (Profile?): Profile object of the creator
+     - createdAt (DateTime): Timestamp of creation
+     - isResolved (Boolean): Resolution status
+     - resolvedBy (String?): ID of the Verifier who resolved
+     - resolver (Profile?): Profile object of the resolver
+     - resolvedAt (DateTime?): Timestamp of resolution
+     - reply (String?): Verifier's reply
+
+   Factory Constructors:
+     - fromMap(Map<String, dynamic>): Creates from raw database map
+     - fromPendingNoteMap(Map<String, dynamic>): Creates from get_pending_urgent_notes() result
+     - fromAllPendingNoteMap(Map<String, dynamic>): Creates from get_all_pending_urgent_notes() result
+
+   Methods:
+     - _statusFromString(String): Converts string to OrderStatus enum
+     - stageLabel (getter): Returns Arabic label for stage
+     - props: Equatable props for state comparison
+
+2. UrgentNotesBlockStatus
+   Purpose: Response model for check_urgent_notes_block RPC function
+   
+   Properties:
+     - isBlocked (Boolean): Whether order is blocked
+     - pendingCount (Integer): Number of pending notes
+
+   Factory Constructor:
+     - fromMap(Map<String, dynamic>): Creates from RPC response
+
+   Methods:
+     - props: Equatable props for state comparison
+
+
+FILE: lib/features/verifier/data/urgent_notes_repository.dart
+------------------------------------------------------------
+Purpose: Repository for managing urgent notes operations
+Used by: Both Rep (to create) and Verifier (to resolve)
+
+Dependencies:
+  - SupabaseClient: For database and RPC calls
+  - AppLogger: For logging
+
+Methods:
+1. createUrgentNote({required String orderId, required OrderStatus stage, required String message})
+   - Purpose: Rep creates a new urgent note
+   - Calls: RPC function 'create_urgent_note'
+   - Parameters: p_order_id, p_stage (converted to string), p_message
+   - Returns: String (note ID)
+   - Throws: Exception if creation fails
+
+2. resolveUrgentNote({required String noteId, required String reply})
+   - Purpose: Verifier resolves an urgent note with a reply
+   - Calls: RPC function 'resolve_urgent_note'
+   - Parameters: p_note_id, p_reply
+   - Returns: void
+   - Throws: Exception if resolution fails
+
+3. getPendingUrgentNotesForOrder(String orderId)
+   - Purpose: Get all pending urgent notes for a specific order
+   - Calls: RPC function 'get_pending_urgent_notes'
+   - Parameters: p_order_id
+   - Returns: List<UrgentNote>
+   - Uses: UrgentNote.fromPendingNoteMap() factory
+
+4. getAllPendingUrgentNotes()
+   - Purpose: Get all pending urgent notes (for Verifier dashboard)
+   - Calls: RPC function 'get_all_pending_urgent_notes'
+   - Parameters: None
+   - Returns: List<UrgentNote>
+   - Uses: UrgentNote.fromAllPendingNoteMap() factory
+
+5. checkBlockingStatus({required String orderId, required OrderStatus currentStage})
+   - Purpose: Check if order is blocked by pending urgent notes
+   - Calls: RPC function 'check_urgent_notes_block'
+   - Parameters: p_order_id, p_current_stage (converted to string)
+   - Returns: UrgentNotesBlockStatus
+
+6. getPendingUrgentNotesCount()
+   - Purpose: Get total count of pending urgent notes (for notification badge)
+   - Calls: RPC function 'get_pending_urgent_notes_count'
+   - Parameters: None
+   - Returns: Integer count
+
+7. subscribeToPendingUrgentNotes()
+   - Purpose: Subscribe to real-time updates for urgent notes
+   - Uses: Supabase real-time subscription
+   - Filters: is_resolved = FALSE
+   - Orders: created_at DESC
+   - Returns: Stream<List<UrgentNote>>
+
+8. subscribeToOrderUrgentNotes(String orderId)
+   - Purpose: Subscribe to urgent notes for a specific order
+   - Uses: Supabase real-time subscription
+   - Filters: order_id = orderId
+   - Orders: created_at DESC
+   - Returns: Stream<List<UrgentNote>>
+
+Helper Method:
+- _stageToString(OrderStatus): Converts OrderStatus enum to database string
+
+
+FILE: lib/features/verifier/logic/urgent_notes_cubit.dart
+----------------------------------------------------------
+Purpose: State management for urgent notes (BLoC pattern)
+Used by: Verifier dashboard and urgent notes screen
+
+State Classes:
+1. UrgentNotesInitial
+   - Initial state before any action
+
+2. UrgentNotesLoading
+   - Loading state while fetching notes
+
+3. UrgentNotesLoaded
+   - Success state with data
+   Properties:
+     * notes (List<UrgentNote>): List of pending urgent notes
+     * totalCount (Integer): Total count of pending notes
+
+4. UrgentNotesError
+   - Error state
+   Properties:
+     * message (String): Error message
+
+5. UrgentNoteResolving
+   - State while resolving a note
+
+6. UrgentNoteResolved
+   - Success state after resolving
+   Properties:
+     * message (String): Success message
+
+Cubit Methods:
+1. loadPendingNotes()
+   - Purpose: Load all pending urgent notes for Verifier dashboard
+   - Actions:
+     * Emits UrgentNotesLoading
+     * Calls repository.getAllPendingUrgentNotes()
+     * Calls repository.getPendingUrgentNotesCount()
+     * Emits UrgentNotesLoaded with notes and count
+   - Error handling: Emits UrgentNotesError
+
+2. resolveNote({required String noteId, required String reply})
+   - Purpose: Resolve an urgent note with a reply
+   - Actions:
+     * Emits UrgentNoteResolving
+     * Calls repository.resolveUrgentNote()
+     * Emits UrgentNoteResolved with success message
+     * Reloads the list (calls loadPendingNotes())
+   - Error handling: Emits UrgentNotesError
+
+3. getPendingCount()
+   - Purpose: Get count of pending urgent notes (for notification badge)
+   - Returns: Integer count
+   - Error handling: Returns 0 on error
+
+4. subscribeToPendingNotes()
+   - Purpose: Subscribe to real-time updates
+   - Returns: Stream<List<UrgentNote>>
+   - Delegates to repository method
+
+
+FILE: lib/features/verifier/data/order_repository.dart
+------------------------------------------------------
+Purpose: Repository for order management (Verifier side)
+Note: This file does NOT directly handle urgent notes, but is included for context
+
+Key Methods:
+- fetchAllOrders(): Fetch all orders with entity, rep, and items
+- fetchReps(): Fetch all approved Reps
+- fetchPendingUsers(): Fetch pending approval users
+- approveUser(): Approve a user and assign role
+- createOrder(): Create a new order with items
+
+
+FILE: lib/features/rep/data/rep_orders_repository.dart
+------------------------------------------------------
+Purpose: Repository for order management (Rep side)
+Note: This file handles order status transitions that are BLOCKED by urgent notes
+
+Key Methods:
+1. fetchMyOrders()
+   - Fetches orders assigned to current Rep
+   - Filters out terminal states (delivered, delivered_to_storage)
+
+2. fetchOrderDetail(String orderId)
+   - Fetches detailed order information
+
+3. startMove(String orderId, {String? notes})
+   - Purpose: Change order status from 'picked_up' to 'on_the_move'
+   - Calls: RPC function 'start_move'
+   - IMPORTANT: This function will FAIL if there are pending urgent notes at 'picked_up' stage
+   - Error message: "Cannot proceed: There are pending urgent notes awaiting Verifier response"
+
+4. markPickedUp(String orderId, {String? notes})
+   - Purpose: Change order status from 'assigned' to 'picked_up'
+   - Calls: RPC function 'mark_picked_up'
+   - IMPORTANT: This function will FAIL if there are pending urgent notes at 'assigned' stage
+   - Error message: "Cannot proceed: There are pending urgent notes awaiting Verifier response"
+
+5. markDelivered(String orderId, {String? notes})
+   - Purpose: Change order status from 'on_the_move' to 'delivered'
+   - Calls: RPC function 'mark_delivered'
+   - IMPORTANT: This function will FAIL if there are pending urgent notes at 'on_the_move' stage
+   - Error message: "Cannot proceed: There are pending urgent notes awaiting Verifier response"
+
+6. uploadReceipt(): Upload receipt images for custom items
+7. fetchReceipts(): Fetch receipt URLs for an order
+
+
+FILE: lib/features/rep/logic/rep_order_detail_cubit.dart
+---------------------------------------------------------
+Purpose: State management for Rep order detail screen
+CRITICAL: This is where urgent notes blocking logic is implemented
+
+State Classes:
+1. RepOrderDetailInitial
+   - Initial state
+
+2. RepOrderDetailLoading
+   - Loading state
+
+3. RepOrderDetailLoaded
+   - Success state with order data
+   Properties:
+     * order (Order): The order object
+     * receipts (Map<String, String>): orderItemId → imageUrl mapping
+     * isActing (Boolean): true while an RPC call is in-flight
+     * urgentNotes (List<UrgentNote>): Pending urgent notes for this order
+     * blockingStatus (UrgentNotesBlockStatus?): Blocking status at current stage
+
+   Computed Properties:
+     * allCustomItemsHaveReceipts (Boolean): True if all custom items have receipts
+     * isBlockedByUrgentNotes (Boolean): True if blocked by pending urgent notes
+     * pendingUrgentNotesCount (Integer): Count of pending urgent notes at current stage
+     * canProceedToNextStage (Boolean): True if Rep can proceed (must pass both gates: receipts AND urgent notes resolved)
+
+   Methods:
+     * copyWith(): Creates a copy with updated properties
+
+4. RepOrderDetailError
+   - Error state with message
+
+Cubit Methods:
+1. load()
+   - Purpose: Load order detail, receipts, and urgent notes
+   - Actions:
+     * Emits RepOrderDetailLoading
+     * Fetches order detail (parallel)
+     * Fetches receipts (parallel)
+     * Fetches pending urgent notes for order (parallel)
+     * Checks blocking status at current stage
+     * Emits RepOrderDetailLoaded with all data
+
+2. startMove({String? notes})
+   - Purpose: Start moving the order
+   - Actions:
+     * Emits isActing = true
+     * Calls repository.startMove()
+     * Reloads order data
+   - IMPORTANT: Will fail if blocked by urgent notes
+
+3. markPickedUp({String? notes})
+   - Purpose: Mark order as picked up
+   - Actions:
+     * Emits isActing = true
+     * Calls repository.markPickedUp()
+     * Reloads order data
+   - IMPORTANT: Will fail if blocked by urgent notes
+
+4. markDelivered({String? notes})
+   - Purpose: Mark order as delivered
+   - Actions:
+     * Emits isActing = true
+     * Calls repository.markDelivered()
+     * Reloads order data
+   - IMPORTANT: Will fail if blocked by urgent notes
+
+5. uploadReceipt({required String orderItemId, required File imageFile})
+   - Purpose: Upload receipt for a custom item
+   - Actions:
+     * Emits isActing = true
+     * Uploads image to storage
+     * Updates receipts map
+     * Reloads order data
+
+6. createUrgentNote(String message)
+   - Purpose: Create an urgent note for current order at current stage
+   - Actions:
+     * Emits isActing = true
+     * Calls urgentNotesRepo.createUrgentNote()
+       * orderId: current order ID
+       * stage: current order status
+       * message: provided message
+     * Reloads order data (which will fetch updated urgent notes and blocking status)
+   - IMPORTANT: This creates a note that will BLOCK the Rep from proceeding until resolved
+
+
+================================================================================
+3. FLUTTER UI LAYER ANALYSIS
+================================================================================
+
+FILE: lib/features/verifier/ui/urgent_notes_screen.dart
+--------------------------------------------------------
+Purpose: Verifier dashboard for viewing and resolving urgent notes
+
+Structure:
+- UrgentNotesScreen: StatelessWidget
+  * Provides UrgentNotesCubit via BlocProvider
+  * Loads pending notes on initialization
+  * Renders _UrgentNotesView
+
+- _UrgentNotesView: StatelessWidget
+  * Scaffold with AppBar (title: "الملاحظات العاجلة")
+  * Actions:
+    - Refresh button: Reloads pending notes
+  * Body: BlocConsumer for state management
+    - Loading: Shows CircularProgressIndicator
+    - Error: Shows error message with retry button
+    - Loaded:
+      * Empty state: Shows "لا توجد ملاحظات عاجلة" (No urgent notes)
+      * With notes: ListView of _UrgentNoteCard widgets
+      * RefreshIndicator for pull-to-refresh
+
+- _UrgentNoteCard: StatelessWidget
+  * Card widget displaying a single urgent note
+  * Content:
+    - Header with stage badge (orange) and timestamp
+    - Creator name and order ID
+    - Message in orange container
+    - "رد وحل الملاحظة" (Reply and Resolve) button
+  * Actions:
+    - Opens reply dialog when button tapped
+
+- _showReplyDialog(): Method
+  * Shows AlertDialog with:
+    - Original message (read-only, gray background)
+    - TextField for reply (4 lines)
+    - Cancel and Send buttons
+  * Calls cubit.resolveNote() with note ID and reply
+
+
+FILE: lib/features/verifier/ui/create_order_screen.dart
+--------------------------------------------------------
+Purpose: Verifier creates new orders
+Note: This file does NOT handle urgent notes directly
+Included for completeness as it's part of the verifier workflow
+
+Key Features:
+- Direction selector (outbound, inbound_rep, inbound_external)
+- Entity picker (customer or supplier based on direction)
+- Rep picker (not for inbound_external)
+- Items management (add/remove items)
+- Notes field (optional)
+- Submit button to create order
+
+
+FILE: lib/features/rep/ui/rep_order_detail_screen.dart
+-------------------------------------------------------
+Purpose: Rep views order details and manages order progression
+CRITICAL: This is where urgent notes blocking is visible to Reps
+
+Structure:
+- RepOrderDetailScreen: StatelessWidget
+  * Provides RepOrderDetailCubit via BlocProvider
+  * Renders order detail UI
+
+- _StatusStepper: StatelessWidget
+  * Visual stepper showing order progress
+  * Steps vary by order direction and storage involvement
+
+- _InfoCard: StatelessWidget
+  * Displays order information (entity, direction, notes)
+
+- _ItemsSection: StatelessWidget
+  * Lists order items
+  * Shows receipt upload buttons for custom items
+  * Receipt gate: Custom items must have receipts before proceeding
+
+- _UrgentNotesSection: StatelessWidget
+  * CRITICAL: Displays urgent notes and blocking status
+  * Content:
+    - Blocking warning card (red background) if isBlockedByUrgentNotes
+      * Shows: "ملاحظات عاجلة بانتظار الرد" (Urgent notes awaiting reply)
+      * Shows: "X ملاحظة عاجلة - لا يمكنك المتابعة حتى يرد المُحقق" (X urgent notes - you cannot proceed until Verifier replies)
+    - Header card with:
+      * Icon (priority_high) - red if blocked, orange if not
+      * Title: "الملاحظات العاجلة" (Urgent Notes)
+      * Badge showing count of urgent notes
+      * "إضافة" (Add) button to create new urgent note
+    - List of _UrgentNoteCard widgets for each note
+  * Actions:
+    - _showUrgentNoteDialog(): Opens dialog to create new urgent note
+      * TextField for message (4 lines)
+      * Hint: "سيتم إشعار المُحقق ولن تتمكن من المتابعة حتى يرد" (Verifier will be notified and you cannot proceed until they reply)
+      * Cancel and Send buttons
+      * Calls cubit.createUrgentNote()
+
+- _UrgentNoteCard: StatelessWidget
+  * Card displaying a single urgent note
+  * Color-coded:
+    * Orange background if pending (isResolved = false)
+    * Green background if resolved (isResolved = true)
+  * Content:
+    - Icon: pending icon (orange) or check circle (green)
+    - Stage label
+    - Timestamp
+    - Message
+    - Reply section (if resolved):
+      * Green background
+      * "رد المُحقق" (Verifier's reply) label
+      * Reply text
+
+- _ActionSection: StatefulWidget
+  * CRITICAL: Controls order progression actions
+  * Displays action buttons based on order status and direction
+  * Blocking Logic:
+    - _getWarningMessage(): Returns warning if:
+      * isBlockedByUrgentNotes: "لا يمكن المتابعة: X ملاحظة عاجلة بانتظار الرد"
+      * !allCustomItemsHaveReceipts: "يجب رفع إيصال لجميع الأصناف المخصصة"
+    - _ActionButton widget:
+      * Shows warning card if !canAct && warningMessage != null
+      * Action button is disabled if !canAct
+      * canAct = !isActing && canProceedToNextStage
+      * canProceedToNextStage = !isBlockedByUrgentNotes && allCustomItemsHaveReceipts
+
+  Action Buttons (by status):
+  1. "تأكيد الاستلام" (Confirm Pickup)
+     - Shown when: status == assigned AND (direction == inbound_rep OR (direction == outbound AND !involvesStorage))
+     - Calls: cubit.markPickedUp()
+     - Blocked if: isBlockedByUrgentNotes OR !allCustomItemsHaveReceipts
+
+  2. "ابدأ التنقل" (Start Moving)
+     - Shown when: status == picked_up AND direction == outbound
+     - Calls: cubit.startMove()
+     - Blocked if: isBlockedByUrgentNotes OR !allCustomItemsHaveReceipts
+
+  3. "ابدأ التنقل نحو المخزن" (Start Moving to Storage)
+     - Shown when: status == picked_up AND direction == inbound_rep
+     - Calls: cubit.startMove()
+     - Blocked if: isBlockedByUrgentNotes OR !allCustomItemsHaveReceipts
+
+  4. "تم التسليم للعميل" (Delivered to Customer)
+     - Shown when: status == on_the_move AND direction == outbound
+     - Calls: cubit.markDelivered()
+     - Blocked if: isBlockedByUrgentNotes OR !allCustomItemsHaveReceipts
+
+Other Widgets:
+- _CompletedCard: Shows completion message
+- _WaitingCard: Shows waiting message (for storage involvement)
+- _ReceiptViewerScreen: Displays receipt image
+
+
+FILE: lib/features/rep/ui/rep_home_screen.dart
+------------------------------------------------
+Purpose: Rep's home screen showing assigned orders
+Note: This file does NOT handle urgent notes directly
+Included for completeness as it's the entry point for Rep workflow
+
+Key Features:
+- Lists all orders assigned to current Rep
+- Shows order status, entity name, item count, direction
+- Tapping an order opens RepOrderDetailScreen
+- Refresh button to reload orders
+- Inventory availability button
+- Logout button
+
+
+FILE: lib/features/verifier/ui/verifier_home_screen.dart
+--------------------------------------------------------
+Purpose: Verifier's home screen
+CRITICAL: Displays notification badge for urgent notes
+
+Structure:
+- VerifierHomeScreen: StatelessWidget
+  * Provides OrdersCubit and UrgentNotesCubit via BlocProvider
+  * Renders _VerifierHomeView
+
+- _VerifierHomeView: StatefulWidget
+  * Scaffold with AppBar
+  * Actions:
+    - Inventory availability button
+    - _UrgentNotesNotification widget (CRITICAL)
+    - Refresh button (on Orders tab)
+    - Logout button
+  * Body: IndexedStack with two tabs
+    - Orders tab (_OrdersTab)
+    - Reps tab (RepListScreen)
+  * BottomNavigationBar for tab switching
+
+- _UrgentNotesNotification: StatelessWidget
+  * CRITICAL: Notification badge for urgent notes
+  * Structure:
+    - Stack with:
+      * IconButton (notifications_outlined icon)
+      * Red badge (positioned top-right) showing count
+  * Logic:
+    - Listens to UrgentNotesCubit state
+    - If UrgentNotesLoaded: shows totalCount
+    - Badge shows "99+" if count > 99
+    - Tapping opens UrgentNotesScreen
+  * This is how Verifiers get notified of new urgent notes
+
+- _OrdersTab: StatelessWidget
+  * TabController with two tabs: "نشطة" (Active) and "مكتملة" (Completed)
+  * Displays _OrderList for each tab
+  * Filters orders by status
+
+- _OrderList: StatelessWidget
+  * ListView of OrderCard widgets
+  * Tapping an order opens TaskDetailScreen
+
+
+================================================================================
+4. COMPLETE DATA FLOW
+================================================================================
+
+FLOW 1: REP CREATES URGENT NOTE
+---------------------------------
+1. User Action:
+   - Rep opens order detail screen (RepOrderDetailScreen)
+   - Taps "إضافة" (Add) button in Urgent Notes section
+   - Dialog opens with message input
+   - Rep types urgent message and taps "إرسال" (Send)
+
+2. UI Layer (RepOrderDetailScreen):
+   - _UrgentNotesSection._showUrgentNoteDialog() is called
+   - User input is validated (message not empty)
+   - cubit.createUrgentNote(message) is called
+
+3. State Management (RepOrderDetailCubit):
+   - createUrgentNote() method executes
+   - Emits isActing = true (shows loading indicator)
+   - Calls urgentNotesRepo.createUrgentNote()
+
+4. Repository Layer (UrgentNotesRepository):
+   - createUrgentNote() method executes
+   - Converts OrderStatus to string
+   - Calls Supabase RPC: create_urgent_note(p_order_id, p_stage, p_message)
+
+5. Database (Supabase):
+   - RPC function create_urgent_note() executes
+   - Validates:
+     * Order exists and belongs to Rep
+     * Stage matches current order status
+   - Inserts new row into urgent_notes table:
+     * id = generated UUID
+     * order_id = provided order ID
+     * stage = provided stage
+     * message = provided message
+     * created_by = auth.uid() (Rep's ID)
+     * created_at = NOW()
+     * is_resolved = FALSE
+     * resolved_by = NULL
+     * resolved_at = NULL
+     * reply = NULL
+   - Returns: {success: true, note_id: <uuid>}
+
+6. Repository Response:
+   - Receives success response
+   - Returns note ID to cubit
+
+7. Cubit Response:
+   - Calls load() to refresh order data
+   - load() executes in parallel:
+     * Fetches order detail
+     * Fetches receipts
+     * Fetches pending urgent notes for order
+     * Checks blocking status at current stage
+
+8. Database (check_blocking_status):
+   - RPC function check_urgent_notes_block() executes
+   - Counts unresolved notes where order_id and stage match
+   - Returns: {is_blocked: true, pending_count: 1}
+
+9. Cubit State Update:
+   - Emits RepOrderDetailLoaded with:
+     * order (updated)
+     * receipts
+     * urgentNotes (includes the new note)
+     * blockingStatus = {isBlocked: true, pendingCount: 1}
+
+10. UI Update (RepOrderDetailScreen):
+    - _UrgentNotesSection rebuilds
+    - Shows red blocking warning card
+    - Shows 1 urgent note in list
+    - Action buttons become disabled (canProceedToNextStage = false)
+
+11. Real-time Notification (Verifier):
+    - Supabase realtime publishes urgent_notes table change
+    - Verifier's UrgentNotesCubit receives update via stream
+    - Notification badge count increments
+    - Verifier sees red badge on notification icon
+
+
+FLOW 2: VERIFIER RESOLVES URGENT NOTE
+----------------------------------------
+1. User Action:
+   - Verifier sees red notification badge on home screen
+   - Taps notification icon
+   - UrgentNotesScreen opens with list of pending notes
+
+2. UI Layer (UrgentNotesScreen):
+   - UrgentNotesCubit loads pending notes on initialization
+   - Displays list of _UrgentNoteCard widgets
+
+3. User Action:
+   - Verifier taps "رد وحل الملاحظة" (Reply and Resolve) button
+   - Reply dialog opens
+   - Verifier types reply and taps "إرسال الرد" (Send Reply)
+
+4. UI Layer (UrgentNotesScreen):
+   - _UrgentNoteCard._showReplyDialog() is called
+   - User input is validated (reply not empty)
+   - cubit.resolveNote(noteId, reply) is called
+
+5. State Management (UrgentNotesCubit):
+   - resolveNote() method executes
+   - Emits UrgentNoteResolving
+   - Calls urgentNotesRepo.resolveUrgentNote()
+
+6. Repository Layer (UrgentNotesRepository):
+   - resolveUrgentNote() method executes
+   - Calls Supabase RPC: resolve_urgent_note(p_note_id, p_reply)
+
+7. Database (Supabase):
+   - RPC function resolve_urgent_note() executes
+   - Validates:
+     * Note exists and is not already resolved
+   - Updates urgent_notes table:
+     * is_resolved = TRUE
+     * resolved_by = auth.uid() (Verifier's ID)
+     * resolved_at = NOW()
+     * reply = provided reply
+   - Returns: {success: true}
+
+8. Repository Response:
+   - Receives success response
+   - Returns to cubit
+
+9. Cubit Response:
+   - Emits UrgentNoteResolved with success message
+   - Calls loadPendingNotes() to refresh list
+
+10. Database (get_all_pending_urgent_notes):
+    - RPC function executes
+    - Joins urgent_notes, profiles, orders, entities tables
+    - Filters: is_resolved = FALSE
+    - Returns: List of pending notes (excluding the resolved one)
+
+11. Cubit State Update:
+    - Emits UrgentNotesLoaded with:
+      * notes (updated list, excluding resolved note)
+      * totalCount (decremented)
+
+12. UI Update (UrgentNotesScreen):
+    - List rebuilds without the resolved note
+    - Shows success snackbar: "تم حل الملاحظة العاجلة بنجاح"
+
+13. Real-time Notification (Rep):
+    - Supabase realtime publishes urgent_notes table change
+    - Rep's RepOrderDetailCubit receives update via stream
+    - load() is called automatically
+    - Blocking status is rechecked
+
+14. Database (check_blocking_status):
+    - RPC function check_urgent_notes_block() executes
+    - Counts unresolved notes at current stage
+    - Returns: {is_blocked: false, pending_count: 0}
+
+15. Cubit State Update (Rep):
+    - Emits RepOrderDetailLoaded with:
+      * order (updated)
+      * receipts
+      * urgentNotes (empty or with other notes)
+      * blockingStatus = {isBlocked: false, pendingCount: 0}
+
+16. UI Update (RepOrderDetailScreen):
+    - _UrgentNotesSection rebuilds
+    - Red blocking warning card disappears
+    - Note card turns green (shows reply)
+    - Action buttons become enabled (canProceedToNextStage = true, if receipts gate also passed)
+
+
+FLOW 3: REP TRIES TO PROCEED (BLOCKED)
+-----------------------------------------
+1. User Action:
+   - Rep has created an urgent note
+   - Rep taps action button (e.g., "تأكيد الاستلام")
+   - Button is disabled due to blocking
+
+2. UI Layer (RepOrderDetailScreen):
+   - _ActionSection displays warning card:
+     * "لا يمكن المتابعة: X ملاحظة عاجلة بانتظار الرد"
+   - Action button is disabled (canAct = false)
+
+3. State Management (RepOrderDetailCubit):
+   - canProceedToNextStage = false
+   - isBlockedByUrgentNotes = true
+   - pendingUrgentNotesCount = X
+
+4. User Action (if they try to enable button somehow):
+   - Button onPressed is null when !canAct
+   - No action is triggered
+
+5. Result:
+   - Rep cannot proceed to next stage
+   - Rep must wait for Verifier to resolve urgent note
+
+
+FLOW 4: REP TRIES TO PROCEED (AFTER RESOLVED)
+------------------------------------------------
+1. User Action:
+   - Verifier has resolved the urgent note
+   - Rep sees note is resolved (green card with reply)
+   - Rep taps action button (e.g., "تأكيد الاستلام")
+
+2. UI Layer (RepOrderDetailScreen):
+   - _ActionSection displays action button
+   - Button is enabled (canAct = true)
+   - No warning card shown
+
+3. State Management (RepOrderDetailCubit):
+   - canProceedToNextStage = true
+   - isBlockedByUrgentNotes = false
+   - pendingUrgentNotesCount = 0
+
+4. User Action:
+   - Rep taps action button
+
+5. UI Layer:
+   - _ActionButton.onPressed is called
+   - Calls appropriate cubit method (e.g., markPickedUp())
+
+6. State Management (RepOrderDetailCubit):
+   - markPickedUp() method executes
+   - Emits isActing = true
+   - Calls repository.markPickedUp()
+
+7. Repository Layer (RepOrdersRepository):
+   - markPickedUp() method executes
+   - Calls Supabase RPC: mark_picked_up(target_order_id, p_notes)
+
+8. Database (Supabase):
+   - RPC function mark_picked_up() executes
+   - Checks for blocking urgent notes at 'assigned' stage
+   - No blocking notes found (all resolved)
+   - Updates orders table:
+     * status = 'picked_up'
+     * picked_up_at = NOW()
+     * notes = COALESCE(p_notes, notes)
+   - Inserts into audit_log
+   - Returns: {success: true}
+
+9. Repository Response:
+   - Receives success response
+   - Returns to cubit
+
+10. Cubit Response:
+    - Calls load() to refresh order data
+
+11. Cubit State Update:
+    - Emits RepOrderDetailLoaded with updated order
+    - Order status is now 'picked_up'
+
+12. UI Update (RepOrderDetailScreen):
+    - Status stepper updates
+    - New action button appears for next stage
+    - Rep can proceed to next stage
+
+
+================================================================================
+5. BLOCKING MECHANISMS
+================================================================================
+
+OVERVIEW:
+----------
+Urgent notes block Rep from proceeding to the next stage of an order workflow until
+the Verifier reviews and replies to the note. This ensures that critical issues
+are addressed before the order progresses.
+
+BLOCKING STAGES:
+-----------------
+Urgent notes can be created at three stages, and each blocks a specific action:
+
+1. Stage: 'assigned'
+   - Blocks: markPickedUp() action
+   - Rep cannot confirm pickup
+   - Order status cannot change from 'assigned' to 'picked_up'
+
+2. Stage: 'picked_up'
+   - Blocks: startMove() action
+   - Rep cannot start moving the order
+   - Order status cannot change from 'picked_up' to 'on_the_move'
+
+3. Stage: 'on_the_move'
+   - Blocks: markDelivered() action
+   - Rep cannot mark order as delivered
+   - Order status cannot change from 'on_the_move' to 'delivered'
+
+BLOCKING LOGIC IN DATABASE:
+---------------------------
+1. RPC Function: check_urgent_notes_block(p_order_id, p_current_stage)
+   - Counts unresolved urgent notes where:
+     * order_id = p_order_id
+     * is_resolved = FALSE
+     * stage = p_current_stage
+   - Returns: {is_blocked: BOOLEAN, pending_count: INTEGER}
+
+2. Modified RPC Functions (with blocking checks):
+   - start_move()
+     * Calls check_urgent_notes_block(order_id, 'picked_up')
+     * If is_blocked = TRUE, returns error
+     * Error message: "Cannot proceed: There are pending urgent notes awaiting Verifier response"
+   
+   - mark_picked_up()
+     * Calls check_urgent_notes_block(order_id, 'assigned')
+     * If is_blocked = TRUE, returns error
+     * Error message: "Cannot proceed: There are pending urgent notes awaiting Verifier response"
+   
+   - mark_delivered()
+     * Calls check_urgent_notes_block(order_id, 'on_the_move')
+     * If is_blocked = TRUE, returns error
+     * Error message: "Cannot proceed: There are pending urgent notes awaiting Verifier response"
+
+
+BLOCKING LOGIC IN FLUTTER:
+----------------------------
+1. RepOrderDetailCubit State:
+   - blockingStatus: UrgentNotesBlockStatus object
+     * isBlocked: Boolean
+     * pendingCount: Integer
+   
+   - Computed Properties:
+     * isBlockedByUrgentNotes: Returns blockingStatus?.isBlocked ?? false
+     * pendingUrgentNotesCount: Returns blockingStatus?.pendingCount ?? 0
+     * canProceedToNextStage: Returns !isBlockedByUrgentNotes && allCustomItemsHaveReceipts
+
+2. UI Blocking Indicators:
+   - Red warning card when isBlockedByUrgentNotes = true
+     * Message: "لا يمكن المتابعة: X ملاحظة عاجلة بانتظار الرد"
+   - Action buttons disabled when !canProceedToNextStage
+   - Warning message displayed below warning card
+
+3. Dual Gate System:
+   - Rep must pass BOTH gates to proceed:
+     a) Receipt gate: allCustomItemsHaveReceipts must be true
+     b) Urgent notes gate: isBlockedByUrgentNotes must be false
+   - If either gate fails, action button is disabled
+
+
+BLOCKING FLOW CHART:
+--------------------
+Rep creates urgent note
+        ↓
+Note saved with is_resolved = FALSE
+        ↓
+Rep tries to proceed (e.g., markPickedUp)
+        ↓
+UI checks canProceedToNextStage
+        ↓
+canProceedToNextStage = false (blocked)
+        ↓
+Action button disabled
+        ↓
+Rep sees red warning card
+        ↓
+Rep cannot proceed
+        ↓
+Verifier resolves note (sets is_resolved = TRUE)
+        ↓
+Real-time update received
+        ↓
+Blocking status rechecked
+        ↓
+canProceedToNextStage = true (unblocked)
+        ↓
+Action button enabled
+        ↓
+Rep can proceed
+
+
+IMPORTANT NOTES:
+----------------
+1. Blocking is STAGE-SPECIFIC:
+   - A note at 'assigned' stage only blocks markPickedUp()
+   - Once Rep passes to 'picked_up', that note no longer blocks
+   - Rep can create new notes at each stage
+
+2. Multiple Notes:
+   - Multiple notes can be created at the same stage
+   - ALL must be resolved before Rep can proceed
+   - pendingCount shows how many notes are pending
+
+3. Resolved Notes:
+   - Once resolved, notes remain visible in the list
+   - They turn green and show the Verifier's reply
+   - They no longer block progression
+
+4. Error Handling:
+   - If Rep somehow bypasses UI blocking (e.g., direct API call), database RPC will still reject
+   - Error message clearly explains why action failed
+   - Rep must wait for Verifier to resolve notes
+
+
+================================================================================
+6. HOW THE FLOW WORKS BETWEEN VERIFIER AND REPRESENTATIVE
+================================================================================
+
+COMPLETE WORKFLOW:
+-----------------
+
+PHASE 1: REP IDENTIFIES ISSUE
+------------------------------
+1. Rep is working on an order (e.g., at 'assigned' stage)
+2. Rep encounters an issue that requires Verifier attention
+3. Rep opens order detail screen (RepOrderDetailScreen)
+4. Rep sees "الملاحظات العاجلة" (Urgent Notes) section
+5. Rep taps "إضافة" (Add) button
+6. Dialog opens: "اكتب ملاحظتك العاجلة هنا..."
+7. Rep types urgent message
+8. Rep taps "إرسال" (Send)
+
+PHASE 2: SYSTEM CREATES AND BLOCKS
+-----------------------------------
+9. Urgent note is created in database:
+   - Linked to current order
+   - Stage recorded (e.g., 'assigned')
+   - is_resolved = FALSE
+10. Order is now BLOCKED:
+    - Rep cannot proceed to next stage
+    - Action button becomes disabled
+    - Red warning card appears: "لا يمكن المتابعة: 1 ملاحظة عاجلة بانتظار الرد"
+11. Real-time notification sent to Verifier:
+    - Supabase realtime publishes change
+    - Verifier's notification badge increments
+    - Verifier sees red badge on home screen
+
+PHASE 3: VERIFIER RECEIVES NOTIFICATION
+----------------------------------------
+12. Verifier is on home screen (VerifierHomeScreen)
+13. Verifier sees red notification badge with count
+14. Verifier taps notification icon
+15. UrgentNotesScreen opens
+16. Verifier sees list of pending urgent notes:
+    - Each note shows:
+      * Stage (e.g., "معين")
+      * Rep name
+      * Order ID
+      * Message
+      * Timestamp
+
+PHASE 4: VERIFIER REVIEWS AND RESPONDS
+----------------------------------------
+17. Verifier reviews the urgent note
+18. Verifier taps "رد وحل الملاحظة" (Reply and Resolve) button
+19. Reply dialog opens with original message
+20. Verifier types reply
+21. Verifier taps "إرسال الرد" (Send Reply)
+
+PHASE 5: SYSTEM RESOLVES AND UNBLOCKS
+--------------------------------------
+22. Urgent note is updated in database:
+    - is_resolved = TRUE
+    - resolved_by = Verifier's ID
+    - resolved_at = NOW()
+    - reply = Verifier's reply
+23. Order is now UNBLOCKED:
+    - Real-time update sent to Rep
+    - Rep's order detail screen updates
+    - Note card turns green (shows reply)
+    - Red warning card disappears
+    - Action button becomes enabled
+
+PHASE 6: REP PROCEEDS
+------------------------
+24. Rep sees that note is resolved (green card with reply)
+25. Rep reads Verifier's reply
+26. Rep taps action button (e.g., "تأكيد الاستلام")
+27. Order status changes to next stage
+28. Rep continues with order workflow
+
+PHASE 7: CYCLE CAN REPEAT
+-----------------------------
+29. If Rep encounters another issue at new stage:
+    - Rep can create new urgent note
+    - Process repeats from Phase 2
+    - Each stage can have its own urgent notes
+
+
+KEY INTERACTION POINTS:
+-----------------------
+
+1. Rep → Verifier (Notification):
+   - Rep creates urgent note
+   - Verifier receives real-time notification
+   - Verifier sees red badge on home screen
+
+2. Verifier → Rep (Resolution):
+   - Verifier resolves note with reply
+   - Rep receives real-time update
+   - Rep sees note turn green with reply
+   - Rep can now proceed
+
+3. Rep → System (Blocking):
+   - Rep is blocked from proceeding
+   - Action buttons disabled
+   - Clear warning message displayed
+
+4. Verifier → System (Unblocking):
+   - Verifier resolves note
+   - System unblocks order
+   - Rep can proceed
+
+
+COMMUNICATION CHANNELS:
+-----------------------
+
+1. Database (Supabase):
+   - urgent_notes table stores all notes
+   - RPC functions enforce business logic
+   - RLS policies control access
+
+2. Real-time (Supabase):
+   - urgent_notes table published to supabase_realtime
+   - Instant notifications for both roles
+   - No polling required
+
+3. UI (Flutter):
+   - RepOrderDetailScreen: Rep creates and views notes
+   - UrgentNotesScreen: Verifier reviews and resolves notes
+   - VerifierHomeScreen: Verifier receives notifications
+
+
+USER EXPERIENCE:
+----------------
+
+For Rep:
+- Clear indication when blocked (red warning card)
+- Easy to create urgent notes (dialog with message input)
+- Easy to see Verifier's reply (green card with reply)
+- Action buttons clearly disabled when blocked
+- Can proceed immediately after resolution
+
+For Verifier:
+- Clear notification badge with count
+- Easy to access all pending notes (single tap)
+- Can review all notes in one place
+- Easy to reply and resolve (dialog with reply input)
+- Can see order context (stage, Rep name, order ID)
+
+
+BENEFITS OF THIS SYSTEM:
+-------------------------
+
+1. Accountability:
+   - Rep cannot proceed without Verifier approval
+   - Verifier must review and respond
+   - Audit trail in database
+
+2. Communication:
+   - Direct communication channel between Rep and Verifier
+   - Real-time notifications
+   - Clear context (stage, order, message)
+
+3. Control:
+   - Verifier has control over order progression
+   - Can block at any stage
+   - Can provide guidance through replies
+
+4. Transparency:
+   - Both parties can see all notes
+   - Notes remain visible after resolution
+   - Clear history of issues and resolutions
+
+5. Efficiency:
+   - No need for external communication (phone, email)
+   - All communication in-app
+   - Real-time updates
+
+
+EDGE CASES HANDLED:
+---------------------
+
+1. Multiple Notes:
+   - Multiple notes can exist at same stage
+   - All must be resolved before proceeding
+   - Count shown in UI
+
+2. Different Stages:
+   - Notes at different stages block different actions
+   - Once stage passed, old notes no longer block
+   - New notes can be created at each stage
+
+3. Concurrent Actions:
+   - isActing flag prevents duplicate actions
+   - Loading indicators show progress
+   - Error handling for failed actions
+
+4. Network Issues:
+   - Real-time may fail gracefully
+   - Manual refresh available
+   - Error messages displayed
+
+5. Validation:
+   - Message cannot be empty
+   - Reply cannot be empty
+   - Stage must match current order status
+
+
+================================================================================
+SUMMARY
+================================================================================
+
+The urgent messages feature is a comprehensive system that allows Representatives to
+communicate urgent issues to Verifiers and requires Verifier approval before the
+Representative can proceed to the next stage of an order workflow.
+
+KEY COMPONENTS:
+- Database: urgent_notes table with RLS policies and RPC functions
+- Backend: UrgentNotesRepository and UrgentNotesCubit for data management
+- UI: UrgentNotesScreen (Verifier) and _UrgentNotesSection (Rep)
+- Blocking: Stage-specific blocking enforced at database and UI levels
+
+DATA FLOW:
+1. Rep creates urgent note → Database stores note → Real-time notification to Verifier
+2. Verifier reviews → Verifier replies with resolution → Database updates note
+3. Real-time update to Rep → Rep sees resolution → Rep can proceed
+
+BLOCKING MECHANISM:
+- Notes block specific actions based on stage
+- Rep cannot proceed until all notes at current stage are resolved
+- Clear UI indicators show blocking status
+
+This system ensures critical issues are addressed before order progression,
+provides a direct communication channel, and maintains a complete audit trail
+of all urgent communications between Representatives and Verifiers.
+
+================================================================================
+END OF ANALYSIS
+================================================================================

@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../auth/logic/auth_cubit.dart';
+import '../../chat/logic/order_chat_badge_cubit.dart';
+import '../../inventory/ui/inventory_availability_screen.dart';
+import '../../manager/ui/rep_list_screen.dart';
+import '../../manager/ui/task_detail_screen.dart';
 import '../logic/create_order_cubit.dart';
 import '../logic/orders_cubit.dart';
 import '../logic/orders_state.dart';
@@ -21,8 +26,35 @@ class VerifierHomeScreen extends StatelessWidget {
   }
 }
 
-class _VerifierHomeView extends StatelessWidget {
+class _VerifierHomeView extends StatefulWidget {
   const _VerifierHomeView();
+
+  @override
+  State<_VerifierHomeView> createState() => _VerifierHomeViewState();
+}
+
+class _VerifierHomeViewState extends State<_VerifierHomeView> {
+  int _navIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    sl<OrderChatBadgeCubit>().subscribe();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocProvider.value(
+      value: sl<OrderChatBadgeCubit>(),
+      child: _ScaffoldBody(navIndex: _navIndex, onNavChanged: (i) => setState(() => _navIndex = i)),
+    );
+  }
+}
+
+class _ScaffoldBody extends StatelessWidget {
+  final int navIndex;
+  final ValueChanged<int> onNavChanged;
+  const _ScaffoldBody({required this.navIndex, required this.onNavChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -30,13 +62,29 @@ class _VerifierHomeView extends StatelessWidget {
       appBar: AppBar(
         title: const Text('لوحة تحكم المشرف'),
         actions: [
-          BlocBuilder<OrdersCubit, OrdersState>(
-            builder: (context, state) => IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () => context.read<OrdersCubit>().loadOrders(),
-              tooltip: 'تحديث',
+          IconButton(
+            icon: const Icon(Icons.inventory_2_outlined),
+            tooltip: 'توافر المخزون',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const InventoryAvailabilityScreen(),
+              ),
             ),
           ),
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            tooltip: 'المحادثات',
+            onPressed: () => context.push('/chat'),
+          ),
+          if (navIndex == 0)
+            BlocBuilder<OrdersCubit, OrdersState>(
+              builder: (context, state) => IconButton(
+                icon: const Icon(Icons.refresh),
+                onPressed: () => context.read<OrdersCubit>().loadOrders(),
+                tooltip: 'تحديث',
+              ),
+            ),
           IconButton(
             icon: const Icon(Icons.logout),
             onPressed: () => context.read<AuthCubit>().signOut(),
@@ -44,11 +92,35 @@ class _VerifierHomeView extends StatelessWidget {
           ),
         ],
       ),
-      body: const _OrdersTab(),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _openCreateOrder(context),
-        icon: const Icon(Icons.add),
-        label: const Text('طلب جديد'),
+      body: IndexedStack(
+        index: navIndex,
+        children: const [
+          _OrdersTab(),
+          RepListScreen(),
+        ],
+      ),
+      floatingActionButton: navIndex == 0
+          ? FloatingActionButton.extended(
+              onPressed: () => _openCreateOrder(context),
+              icon: const Icon(Icons.add),
+              label: const Text('طلب جديد'),
+            )
+          : null,
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: navIndex,
+        onDestinationSelected: (i) => onNavChanged(i),
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.list_alt_outlined),
+            selectedIcon: Icon(Icons.list_alt),
+            label: 'الطلبات',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.delivery_dining_outlined),
+            selectedIcon: Icon(Icons.delivery_dining),
+            label: 'المندوبون',
+          ),
+        ],
       ),
     );
   }
@@ -108,11 +180,15 @@ class _OrdersTab extends StatelessWidget {
                   );
                 }
                 if (state is OrdersLoaded) {
+                  const doneStatuses = {
+                    OrderStatus.delivered,
+                    OrderStatus.deliveredToStorage,
+                  };
                   final active = state.orders
-                      .where((o) => o.status != OrderStatus.delivered)
+                      .where((o) => !doneStatuses.contains(o.status))
                       .toList();
                   final completed = state.orders
-                      .where((o) => o.status == OrderStatus.delivered)
+                      .where((o) => doneStatuses.contains(o.status))
                       .toList();
                   return TabBarView(
                     children: [
@@ -141,9 +217,77 @@ class _OrderList extends StatelessWidget {
     if (orders.isEmpty) {
       return Center(child: Text(emptyMessage));
     }
-    return ListView.builder(
-      itemCount: orders.length,
-      itemBuilder: (_, i) => OrderCard(order: orders[i]),
+
+    return BlocBuilder<OrderChatBadgeCubit, OrderChatBadgeState>(
+      builder: (context, badgeState) {
+        final sortedOrders = List<Order>.from(orders);
+        sortedOrders.sort((a, b) {
+          final aHasUrgent = badgeState.urgentCountByOrderId.containsKey(a.id);
+          final bHasUrgent = badgeState.urgentCountByOrderId.containsKey(b.id);
+          if (aHasUrgent && !bHasUrgent) return -1;
+          if (!aHasUrgent && bHasUrgent) return 1;
+          return 0;
+        });
+
+        return ListView.builder(
+          itemCount: sortedOrders.length,
+          itemBuilder: (context, i) {
+            final order = sortedOrders[i];
+            final hasUrgent = order.status != OrderStatus.delivered &&
+                badgeState.urgentCountByOrderId.containsKey(order.id);
+            return Stack(
+              children: [
+                OrderCard(
+                  order: order,
+                  onTap: () async {
+                    final deleted = await Navigator.push<bool>(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailScreen(
+                          orderId: order.id,
+                          showDeleteButton: true,
+                        ),
+                      ),
+                    );
+                    if ((deleted ?? false) && context.mounted) {
+                      context.read<OrdersCubit>().loadOrders();
+                    }
+                  },
+                ),
+                if (hasUrgent)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: _UrgentBadge(),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _UrgentBadge extends StatelessWidget {
+  const _UrgentBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: Colors.red,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: const Text(
+        'عاجل',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 11,
+          fontWeight: FontWeight.bold,
+        ),
+      ),
     );
   }
 }

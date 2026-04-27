@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/order.dart';
 import '../data/storage_repository.dart';
@@ -15,10 +16,19 @@ class StorageOrdersInitial extends StorageOrdersState {}
 class StorageOrdersLoading extends StorageOrdersState {}
 
 class StorageOrdersLoaded extends StorageOrdersState {
-  final List<Order> orders;
-  const StorageOrdersLoaded(this.orders);
+  /// Orders where the storage actor still needs to act (shared queue).
+  final List<Order> activeOrders;
+
+  /// Orders this specific storage actor has already completed.
+  final List<Order> doneOrders;
+
+  const StorageOrdersLoaded({
+    this.activeOrders = const [],
+    this.doneOrders = const [],
+  });
+
   @override
-  List<Object?> get props => [orders];
+  List<Object?> get props => [activeOrders, doneOrders];
 }
 
 class StorageOrdersError extends StorageOrdersState {
@@ -37,8 +47,15 @@ class StorageOrdersCubit extends Cubit<StorageOrdersState> {
     logger.d('StorageOrdersCubit → loadOrders');
     emit(StorageOrdersLoading());
     try {
-      final orders = await _repo.fetchAssignedOrders();
-      emit(StorageOrdersLoaded(orders));
+      final userId = Supabase.instance.client.auth.currentUser!.id;
+      final results = await Future.wait([
+        _repo.fetchActiveForStorage(),
+        _repo.fetchDoneByStorageActor(userId),
+      ]);
+      emit(StorageOrdersLoaded(
+        activeOrders: results[0],
+        doneOrders: results[1],
+      ));
     } catch (e, st) {
       logger.e('StorageOrdersCubit → load failed', error: e, stackTrace: st);
       emit(StorageOrdersError(e.toString()));

@@ -18,10 +18,19 @@ class UserOrdersInitial extends UserOrdersState {}
 class UserOrdersLoading extends UserOrdersState {}
 
 class UserOrdersLoaded extends UserOrdersState {
+  /// Active / in-progress orders (or all orders for non-storage roles).
   final List<Order> orders;
-  const UserOrdersLoaded(this.orders);
+
+  /// Completed orders — only populated for the storageActor role.
+  final List<Order> doneOrders;
+
+  const UserOrdersLoaded({
+    required this.orders,
+    this.doneOrders = const [],
+  });
+
   @override
-  List<Object?> get props => [orders];
+  List<Object?> get props => [orders, doneOrders];
 }
 
 class UserOrdersError extends UserOrdersState {
@@ -42,17 +51,35 @@ class UserOrdersCubit extends Cubit<UserOrdersState> {
     logger.d('UserOrdersCubit → loadForUser: ${user.id} (${user.role})');
     emit(UserOrdersLoading());
     try {
-      List<Order> orders;
+      const doneStatuses = {
+        OrderStatus.delivered,
+        OrderStatus.deliveredToStorage,
+      };
+
       switch (user.role) {
         case UserRole.rep:
-          orders = await _repo.fetchOrdersByRep(user.id);
+          final all = await _repo.fetchOrdersByRep(user.id);
+          emit(UserOrdersLoaded(
+            orders:
+                all.where((o) => !doneStatuses.contains(o.status)).toList(),
+            doneOrders:
+                all.where((o) => doneStatuses.contains(o.status)).toList(),
+          ));
+
         case UserRole.storageActor:
-          orders = await _repo.fetchOrdersByStorageActor(user.id);
+          final all = await _repo.fetchOrdersByStorageActor(user.id);
+          emit(UserOrdersLoaded(
+            orders:
+                all.where((o) => !doneStatuses.contains(o.status)).toList(),
+            doneOrders:
+                all.where((o) => doneStatuses.contains(o.status)).toList(),
+          ));
+
         default:
           // verifier and manager: show orders they created
-          orders = await _repo.fetchOrdersByCreator(user.id);
+          final orders = await _repo.fetchOrdersByCreator(user.id);
+          emit(UserOrdersLoaded(orders: orders));
       }
-      emit(UserOrdersLoaded(orders));
     } catch (e, st) {
       logger.e('UserOrdersCubit → load failed', error: e, stackTrace: st);
       emit(UserOrdersError(e.toString()));

@@ -2,8 +2,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
+import '../../../shared/order_status_theme.dart';
+import '../../../shared/widgets/receipt_viewer_screen.dart';
+import '../../chat/ui/chat_thread_picker_sheet.dart';
+import '../../chat/ui/chat_thread_screen.dart';
 import '../logic/rep_order_detail_cubit.dart';
 
 class RepOrderDetailScreen extends StatelessWidget {
@@ -20,7 +25,6 @@ class RepOrderDetailScreen extends StatelessWidget {
               backgroundColor: Theme.of(context).colorScheme.error,
             ),
           );
-          // Reload after showing error so screen recovers
           context.read<RepOrderDetailCubit>().load();
         }
       },
@@ -54,20 +58,23 @@ class RepOrderDetailScreen extends StatelessWidget {
               ),
             ],
           ),
+          floatingActionButton: _ChatBridgeButton(order: order),
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _StatusStepper(order.status),
+              _StatusStepper(order.status, order.direction, order.involvesStorage),
               const SizedBox(height: 20),
               _InfoCard(order: order),
               const SizedBox(height: 16),
-              _ItemsSection(
-                order: order,
-                receipts: state.receipts,
-                isActing: state.isActing,
-              ),
+              _ItemsSection(order: order, receipts: state.receipts, isActing: state.isActing),
               const SizedBox(height: 24),
-              _ActionButtons(state: state),
+              _ActionSection(state: state),
+              const SizedBox(height: 24),
+              _CommunicationHistorySection(
+                history: state.communicationHistory,
+                orderId: order.id,
+              ),
+              const SizedBox(height: 80), // FAB clearance
             ],
           ),
         );
@@ -76,50 +83,207 @@ class RepOrderDetailScreen extends StatelessWidget {
   }
 }
 
+// ─── Chat Bridge FAB ──────────────────────────────────────────────────────────
+
+class _ChatBridgeButton extends StatefulWidget {
+  final Order order;
+  const _ChatBridgeButton({required this.order});
+
+  @override
+  State<_ChatBridgeButton> createState() => _ChatBridgeButtonState();
+}
+
+class _ChatBridgeButtonState extends State<_ChatBridgeButton> {
+  @override
+  Widget build(BuildContext context) {
+    return FloatingActionButton.extended(
+      onPressed: _openThreadPicker,
+      icon: const Icon(Icons.add_comment_outlined),
+      label: const Text('إرسال ملاحظة'),
+      backgroundColor: Colors.orange,
+      foregroundColor: Colors.white,
+    );
+  }
+
+  void _openThreadPicker() {
+    final creator = widget.order.creator;
+    if (creator == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('تعذّر تحديد المسؤول عن الطلب')),
+      );
+      return;
+    }
+
+    final entityName = widget.order.entity?.name ?? 'طلب';
+
+    showModalBottomSheet<({String threadId, String threadTitle})>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ChatThreadPickerSheet(
+        verifierId: creator.id,
+        verifierName: creator.fullName,
+      ),
+    ).then((result) {
+      if (result == null || !mounted) return;
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => ChatThreadScreen(
+            threadId: result.threadId,
+            threadTitle: result.threadTitle,
+            initialText: '@$entityName ',
+            isUrgentEntry: true,
+            mentionedOrderId: widget.order.id,
+            mentionedOrderTitle: entityName,
+          ),
+        ),
+      ).then((_) {
+        if (mounted) context.read<RepOrderDetailCubit>().load();
+      });
+    });
+  }
+}
+
+// ─── Communication History Section ───────────────────────────────────────────
+
+class _CommunicationHistorySection extends StatelessWidget {
+  final List<ChatMessage> history;
+  final String orderId;
+  const _CommunicationHistorySection({required this.history, required this.orderId});
+
+  @override
+  Widget build(BuildContext context) {
+    if (history.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            const Icon(Icons.chat_bubble_outline, size: 18, color: Colors.blueGrey),
+            const SizedBox(width: 8),
+            Text(
+              'سجل التواصل (${history.length})',
+              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        ...history.map((msg) => _HistoryTile(msg: msg)),
+      ],
+    );
+  }
+}
+
+class _HistoryTile extends StatelessWidget {
+  final ChatMessage msg;
+  const _HistoryTile({required this.msg});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: ListTile(
+        leading: msg.isUrgent
+            ? Icon(Icons.priority_high, color: Colors.orange.shade700)
+            : const Icon(Icons.chat_bubble_outline, color: Colors.blueGrey),
+        title: Text(
+          msg.content,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 13),
+        ),
+        subtitle: Text(
+          '${msg.senderName} · ${msg.threadTitle ?? ''} · ${_fmt(msg.createdAt)}',
+          style: const TextStyle(fontSize: 11),
+        ),
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatThreadScreen(
+              threadId: msg.threadId,
+              threadTitle: msg.threadTitle ?? '',
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _fmt(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'الآن';
+    if (diff.inMinutes < 60) return 'منذ ${diff.inMinutes} د';
+    if (diff.inHours < 24) return 'منذ ${diff.inHours} س';
+    return '${dt.day}/${dt.month}/${dt.year}';
+  }
+}
+
 // ─── Status Stepper ───────────────────────────────────────────────────────────
 
 class _StatusStepper extends StatelessWidget {
   final OrderStatus status;
-  const _StatusStepper(this.status);
+  final OrderDirection direction;
+  final bool involvesStorage;
+  const _StatusStepper(this.status, this.direction, this.involvesStorage);
 
-  static const _steps = [
-    (OrderStatus.assigned, 'معين'),
-    (OrderStatus.pickedUp, 'تم الاستلام'),
-    (OrderStatus.onTheMove, 'في الطريق'),
-    (OrderStatus.delivered, 'مُسلَّم'),
-  ];
+  List<(OrderStatus, String)> get _steps {
+    switch (direction) {
+      case OrderDirection.inboundRep:
+        return [
+          (OrderStatus.assigned, 'معين'),
+          (OrderStatus.pickedUp, 'تم الاستلام'),
+          (OrderStatus.onTheMove, 'في الطريق'),
+          (OrderStatus.delivered, 'مُسلَّم للمخزن'),
+        ];
+      case OrderDirection.outbound when involvesStorage:
+        return [
+          (OrderStatus.assigned, 'معين'),
+          (OrderStatus.pickedUp, 'أُرسل من المخزن'),
+          (OrderStatus.onTheMove, 'في الطريق'),
+          (OrderStatus.delivered, 'تم التسليم'),
+        ];
+      default:
+        return [
+          (OrderStatus.assigned, 'معين'),
+          (OrderStatus.pickedUp, 'تم الاستلام'),
+          (OrderStatus.onTheMove, 'في الطريق'),
+          (OrderStatus.delivered, 'تم التسليم'),
+        ];
+    }
+  }
 
   int get _currentIndex =>
       _steps.indexWhere((s) => s.$1 == status).clamp(0, _steps.length - 1);
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
         child: Row(
           children: List.generate(_steps.length * 2 - 1, (i) {
             if (i.isOdd) {
-              // connector line
               final stepIndex = i ~/ 2;
               final done = stepIndex < _currentIndex;
               return Expanded(
                 child: Container(
                   height: 2,
-                  color: done ? colorScheme.primary : Colors.grey.shade300,
+                  color: done ? _steps[stepIndex].$1.color : Colors.grey.shade300,
                 ),
               );
             }
             final stepIndex = i ~/ 2;
             final done = stepIndex <= _currentIndex;
             final current = stepIndex == _currentIndex;
+            final stepColor = _steps[stepIndex].$1.color;
             return Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 CircleAvatar(
                   radius: 14,
-                  backgroundColor: done ? colorScheme.primary : Colors.grey.shade300,
+                  backgroundColor: done ? stepColor : Colors.grey.shade300,
                   child: Icon(
                     done ? Icons.check : Icons.circle,
                     size: 14,
@@ -132,7 +296,7 @@ class _StatusStepper extends StatelessWidget {
                   style: TextStyle(
                     fontSize: 10,
                     fontWeight: current ? FontWeight.bold : FontWeight.normal,
-                    color: done ? colorScheme.primary : Colors.grey,
+                    color: done ? stepColor : Colors.grey,
                   ),
                 ),
               ],
@@ -210,6 +374,11 @@ class _ItemsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (order.items.isEmpty) return const SizedBox.shrink();
+
+    final canUpload = order.status == OrderStatus.assigned ||
+        order.status == OrderStatus.pickedUp ||
+        order.status == OrderStatus.onTheMove;
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -220,8 +389,7 @@ class _ItemsSection extends StatelessWidget {
               item: item,
               receiptUrl: receipts[item.id],
               isActing: isActing,
-              canUpload: order.status == OrderStatus.pickedUp ||
-                  order.status == OrderStatus.onTheMove,
+              canUpload: canUpload,
             )),
       ],
     );
@@ -252,7 +420,7 @@ class _ItemTile extends StatelessWidget {
           color: item.isCustom ? Colors.orange : Colors.teal,
         ),
         title: Text(item.displayName),
-        subtitle: Text('الكمية: ${item.quantity}'),
+        subtitle: Text('الكمية: ${item.effectiveQuantity}'),
         trailing: item.isCustom
             ? _ReceiptButton(
                 hasReceipt: hasReceipt,
@@ -270,11 +438,9 @@ class _ItemTile extends StatelessWidget {
     final picker = ImagePicker();
     final source = await _pickSource(context);
     if (source == null) return;
-
     final picked = await picker.pickImage(source: source, imageQuality: 80);
     if (picked == null) return;
     if (!context.mounted) return;
-
     context.read<RepOrderDetailCubit>().uploadReceipt(
           orderItemId: item.id,
           imageFile: File(picked.path),
@@ -324,16 +490,16 @@ class _ReceiptButton extends StatelessWidget {
   Widget build(BuildContext context) {
     if (isActing) {
       return const SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
+          width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2));
     }
     if (hasReceipt) {
       return IconButton(
         icon: const Icon(Icons.receipt_long, color: Colors.green),
         tooltip: 'عرض الإيصال',
-        onPressed: () => _viewReceipt(context),
+        onPressed: () => Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => ReceiptViewerScreen(url: receiptUrl!)),
+        ),
       );
     }
     if (!canUpload) {
@@ -343,15 +509,6 @@ class _ReceiptButton extends StatelessWidget {
       icon: const Icon(Icons.upload_file, color: Colors.orange),
       tooltip: 'رفع إيصال',
       onPressed: onUpload,
-    );
-  }
-
-  void _viewReceipt(BuildContext context) {
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (_) => _ReceiptViewerScreen(url: receiptUrl!),
-      ),
     );
   }
 }
@@ -373,112 +530,235 @@ class _CheckStatusIcon extends StatelessWidget {
   }
 }
 
-// ─── Action Buttons ───────────────────────────────────────────────────────────
+// ─── Action Section ───────────────────────────────────────────────────────────
 
-class _ActionButtons extends StatelessWidget {
+class _ActionSection extends StatefulWidget {
   final RepOrderDetailLoaded state;
-  const _ActionButtons({required this.state});
+  const _ActionSection({required this.state});
+
+  @override
+  State<_ActionSection> createState() => _ActionSectionState();
+}
+
+class _ActionSectionState extends State<_ActionSection> {
+  final _notesController = TextEditingController();
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  String? get _notes {
+    final t = _notesController.text.trim();
+    return t.isEmpty ? null : t;
+  }
+
+  String? _getWarningMessage(RepOrderDetailLoaded state) {
+    if (!state.allCustomItemsHaveReceipts) {
+      return 'يجب رفع إيصال لجميع الأصناف المخصصة';
+    }
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
-    final order = state.order;
-    final isActing = state.isActing;
+    final order = widget.state.order;
+    final isActing = widget.state.isActing;
+    final canProceed = widget.state.allCustomItemsHaveReceipts;
+    final dir = order.direction;
+    final status = order.status;
 
-    if (order.status == OrderStatus.delivered) {
-      return const Card(
-        child: Padding(
-          padding: EdgeInsets.all(16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.check_circle, color: Colors.green),
-              SizedBox(width: 8),
-              Text('تم تسليم هذا الطلب',
-                  style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
-            ],
-          ),
-        ),
+    if (status == OrderStatus.delivered &&
+        (dir == OrderDirection.outbound || dir == OrderDirection.inboundExternal)) {
+      return _CompletedCard(icon: Icons.check_circle, message: 'تم تسليم هذا الطلب');
+    }
+
+    if (status == OrderStatus.deliveredToStorage) {
+      return _CompletedCard(icon: Icons.verified, message: 'تم الاستلام في المخزن');
+    }
+
+    if (dir == OrderDirection.inboundRep && status == OrderStatus.onTheMove) {
+      return _WaitingCard(
+          icon: Icons.warehouse_outlined,
+          message: 'في انتظار تأكيد أمين المخزن للاستلام');
+    }
+
+    if (dir == OrderDirection.inboundRep && status == OrderStatus.delivered) {
+      return _CompletedCard(icon: Icons.verified, message: 'تم الاستلام في المخزن');
+    }
+
+    if (dir == OrderDirection.outbound &&
+        order.involvesStorage &&
+        status == OrderStatus.assigned) {
+      return _WaitingCard(
+          icon: Icons.warehouse_outlined,
+          message: 'في انتظار أمين المخزن لإصدار البضاعة');
+    }
+
+    Widget? actionButton;
+
+    if (status == OrderStatus.assigned &&
+        (dir == OrderDirection.inboundRep ||
+            (dir == OrderDirection.outbound && !order.involvesStorage))) {
+      actionButton = _ActionButton(
+        isActing: isActing,
+        canAct: canProceed,
+        icon: Icons.inventory_2_outlined,
+        label: 'تأكيد الاستلام',
+        warningMessage: _getWarningMessage(widget.state),
+        onPressed: () =>
+            context.read<RepOrderDetailCubit>().markPickedUp(notes: _notes),
       );
     }
 
-    if (order.status == OrderStatus.assigned) {
-      return _DisabledActionCard(
+    if (status == OrderStatus.pickedUp && dir == OrderDirection.outbound) {
+      actionButton = _ActionButton(
+        isActing: isActing,
+        canAct: canProceed,
         icon: Icons.local_shipping_outlined,
-        message: 'في انتظار موافقة أمين المخزن لبدء التنقل',
+        label: 'ابدأ التنقل',
+        warningMessage: _getWarningMessage(widget.state),
+        onPressed: () =>
+            context.read<RepOrderDetailCubit>().startMove(notes: _notes),
       );
     }
 
-    if (order.status == OrderStatus.pickedUp) {
-      return FilledButton.icon(
-        onPressed: isActing
-            ? null
-            : () => context.read<RepOrderDetailCubit>().startMove(),
-        icon: isActing
-            ? const SizedBox(
-                width: 16,
-                height: 16,
-                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
-              )
-            : const Icon(Icons.local_shipping),
-        label: const Text('ابدأ التنقل'),
-        style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+    if (status == OrderStatus.pickedUp && dir == OrderDirection.inboundRep) {
+      actionButton = _ActionButton(
+        isActing: isActing,
+        canAct: canProceed,
+        icon: Icons.local_shipping_outlined,
+        label: 'ابدأ التنقل نحو المخزن',
+        warningMessage: _getWarningMessage(widget.state),
+        onPressed: () =>
+            context.read<RepOrderDetailCubit>().startMove(notes: _notes),
       );
     }
 
-    if (order.status == OrderStatus.onTheMove) {
-      final canDeliver = state.allCustomItemsHaveReceipts;
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          if (!canDeliver)
-            Container(
-              padding: const EdgeInsets.all(12),
-              margin: const EdgeInsets.only(bottom: 12),
-              decoration: BoxDecoration(
-                color: Colors.orange.shade50,
-                border: Border.all(color: Colors.orange),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Row(
-                children: [
-                  Icon(Icons.warning_amber, color: Colors.orange, size: 18),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'يجب رفع إيصال لكل الأصناف المخصصة قبل التسليم',
-                      style: TextStyle(color: Colors.orange, fontSize: 13),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          FilledButton.icon(
-            onPressed: (isActing || !canDeliver)
-                ? null
-                : () => context.read<RepOrderDetailCubit>().markDelivered(),
-            icon: isActing
-                ? const SizedBox(
-                    width: 16,
-                    height: 16,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white),
-                  )
-                : const Icon(Icons.check_circle_outline),
-            label: const Text('تم التسليم'),
-            style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+    if (status == OrderStatus.onTheMove && dir == OrderDirection.outbound) {
+      actionButton = _ActionButton(
+        isActing: isActing,
+        canAct: canProceed,
+        icon: Icons.check_circle_outline,
+        label: 'تم التسليم للعميل',
+        warningMessage: _getWarningMessage(widget.state),
+        onPressed: () =>
+            context.read<RepOrderDetailCubit>().markDelivered(notes: _notes),
+      );
+    }
+
+    if (actionButton == null) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        TextField(
+          controller: _notesController,
+          decoration: const InputDecoration(
+            labelText: 'ملاحظات (اختياري)',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.notes),
           ),
-        ],
-      );
-    }
-
-    return const SizedBox.shrink();
+          maxLines: 2,
+        ),
+        const SizedBox(height: 12),
+        actionButton,
+      ],
+    );
   }
 }
 
-class _DisabledActionCard extends StatelessWidget {
+// ─── Shared Action Widgets ────────────────────────────────────────────────────
+
+class _ActionButton extends StatelessWidget {
+  final bool isActing;
+  final bool canAct;
+  final IconData icon;
+  final String label;
+  final String? warningMessage;
+  final VoidCallback onPressed;
+
+  const _ActionButton({
+    required this.isActing,
+    required this.canAct,
+    required this.icon,
+    required this.label,
+    this.warningMessage,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (!canAct && warningMessage != null && !isActing)
+          Container(
+            padding: const EdgeInsets.all(12),
+            margin: const EdgeInsets.only(bottom: 12),
+            decoration: BoxDecoration(
+              color: Colors.orange.shade50,
+              border: Border.all(color: Colors.orange),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.warning_amber, color: Colors.orange, size: 18),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(warningMessage!,
+                      style: const TextStyle(color: Colors.orange, fontSize: 13)),
+                ),
+              ],
+            ),
+          ),
+        FilledButton.icon(
+          onPressed: (isActing || !canAct) ? null : onPressed,
+          icon: isActing
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : Icon(icon),
+          label: Text(label),
+          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompletedCard extends StatelessWidget {
   final IconData icon;
   final String message;
-  const _DisabledActionCard({required this.icon, required this.message});
+  const _CompletedCard({required this.icon, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, color: Colors.green),
+            const SizedBox(width: 8),
+            Text(message,
+                style: const TextStyle(
+                    color: Colors.green, fontWeight: FontWeight.bold)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _WaitingCard extends StatelessWidget {
+  final IconData icon;
+  final String message;
+  const _WaitingCard({required this.icon, required this.message});
 
   @override
   Widget build(BuildContext context) {
@@ -503,33 +783,3 @@ class _DisabledActionCard extends StatelessWidget {
   }
 }
 
-// ─── Receipt Viewer ───────────────────────────────────────────────────────────
-
-class _ReceiptViewerScreen extends StatelessWidget {
-  final String url;
-  const _ReceiptViewerScreen({required this.url});
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        backgroundColor: Colors.black,
-        iconTheme: const IconThemeData(color: Colors.white),
-        title: const Text('الإيصال', style: TextStyle(color: Colors.white)),
-      ),
-      body: Center(
-        child: InteractiveViewer(
-          child: Image.network(
-            url,
-            loadingBuilder: (_, child, progress) => progress == null
-                ? child
-                : const CircularProgressIndicator(color: Colors.white),
-            errorBuilder: (_, _, _) => const Icon(Icons.broken_image,
-                color: Colors.white, size: 64),
-          ),
-        ),
-      ),
-    );
-  }
-}

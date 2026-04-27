@@ -1,0 +1,58 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Instance A (Chrome)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "chrome"
+    },
+    {
+      "name": "Instance B (Edge)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "edge"
+    },
+    {
+      "name": "Instance C (Phone - 24129PN74G)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "24129PN74G"
+    },
+    {
+      "name": "Instance D (Emulator - API 36)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "emulator-5554"
+    },
+    {
+      "name": "Instance E (Firefox - Web Server)",
+      "request": "launch",
+      "type": "dart",
+      "deviceId": "web-server",
+      "args": [
+        "--web-port",
+        "5000"
+      ]
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Run Both Instances",
+      "configurations": [
+        "Instance A (Chrome)",
+        "Instance B (Edge)"
+      ]
+    },
+    {
+      "name": "Run All Instances",
+      "configurations": [
+        "Instance A (Chrome)",
+        "Instance B (Edge)",
+        "Instance C (Phone - 24129PN74G)",
+        "Instance D (Emulator - API 36)",
+        "Instance E (Firefox - Web Server)"
+      ]
+    }
+  ]
+}

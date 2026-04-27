@@ -5,7 +5,7 @@ import 'profile.dart';
 
 enum OrderDirection { outbound, inboundRep, inboundExternal }
 
-enum OrderStatus { assigned, pickedUp, onTheMove, delivered }
+enum OrderStatus { assigned, pickedUp, onTheMove, delivered, deliveredToStorage }
 
 class Order extends Equatable {
   final String id;
@@ -18,6 +18,7 @@ class Order extends Equatable {
   final OrderStatus status;
   final String? notes;
   final String createdBy;
+  final String? storageActorId;
   final DateTime? createdAt;
   final DateTime? assignedAt;
   final DateTime? pickedUpAt;
@@ -36,6 +37,7 @@ class Order extends Equatable {
     required this.status,
     this.notes,
     required this.createdBy,
+    this.storageActorId,
     this.createdAt,
     this.assignedAt,
     this.pickedUpAt,
@@ -43,6 +45,10 @@ class Order extends Equatable {
     this.deliveredAt,
     this.items = const [],
   });
+
+  /// True when the order includes items that come from / go to physical storage.
+  /// Distinguishes outbound-storage (Flow 1) from outbound-external (Flow 2).
+  bool get involvesStorage => items.any((i) => i.inventoryId != null);
 
   factory Order.fromMap(Map<String, dynamic> map) {
     OrderDirection direction;
@@ -63,6 +69,8 @@ class Order extends Equatable {
         status = OrderStatus.onTheMove;
       case 'delivered':
         status = OrderStatus.delivered;
+      case 'delivered_to_storage':
+        status = OrderStatus.deliveredToStorage;
       default:
         status = OrderStatus.assigned;
     }
@@ -83,6 +91,7 @@ class Order extends Equatable {
       status: status,
       notes: map['notes'] as String?,
       createdBy: map['created_by'] as String,
+      storageActorId: map['storage_actor_id'] as String?,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
@@ -115,6 +124,8 @@ class Order extends Equatable {
         return 'في الطريق';
       case OrderStatus.delivered:
         return 'تم التسليم';
+      case OrderStatus.deliveredToStorage:
+        return 'تم الاستلام في المخزن';
     }
   }
 
@@ -129,6 +140,14 @@ class Order extends Equatable {
     }
   }
 
+  static OrderStatus statusFromString(String value) => switch (value) {
+        'picked_up' => OrderStatus.pickedUp,
+        'on_the_move' => OrderStatus.onTheMove,
+        'delivered' => OrderStatus.delivered,
+        'delivered_to_storage' => OrderStatus.deliveredToStorage,
+        _ => OrderStatus.assigned,
+      };
+
   @override
-  List<Object?> get props => [id, direction, entityId, repId, status, createdAt];
+  List<Object?> get props => [id, direction, entityId, repId, storageActorId, status, createdAt];
 }

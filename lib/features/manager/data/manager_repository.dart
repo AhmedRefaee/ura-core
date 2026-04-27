@@ -9,7 +9,7 @@ class ManagerRepository {
 
   // Includes creator profile and item checker profiles for full audit trail
   static const _orderSelect =
-      '*, entity:entities(*), rep:profiles!orders_rep_id_fkey(*), creator:profiles!orders_created_by_fkey(id, full_name, role), order_items(*, inventory:inventory(id, item_name), checker:profiles!order_items_checked_by_fkey(id, full_name, role))';
+      '*, entity:entities(*), rep:profiles!orders_rep_id_fkey(*), creator:profiles!orders_created_by_fkey(id, full_name, role), order_items(*, inventory:inventory!order_items_inventory_id_fkey(id, item_name), checker:profiles!order_items_checked_by_fkey(id, full_name, role))';
 
   // ── Users ──────────────────────────────────────────────────────────────────
 
@@ -53,6 +53,26 @@ class ManagerRepository {
     logger.i('ManagerRepository → approveUser success: $userId as $role');
   }
 
+  /// Returns a map of rep_id → their most recent order status.
+  Future<Map<String, OrderStatus>> fetchLatestOrderStatusByRep() async {
+    logger.d('ManagerRepository → fetchLatestOrderStatusByRep');
+    final data = await _supabase
+        .from('orders')
+        .select('rep_id, status, created_at')
+        .not('rep_id', 'is', null)
+        .order('created_at', ascending: false);
+
+    final Map<String, OrderStatus> result = {};
+    for (final row in data as List) {
+      final repId = row['rep_id'] as String?;
+      if (repId != null && !result.containsKey(repId)) {
+        result[repId] = Order.statusFromString(row['status'] as String);
+      }
+    }
+    logger.i('ManagerRepository → latest status for ${result.length} reps');
+    return result;
+  }
+
   // ── Orders by user ─────────────────────────────────────────────────────────
 
   Future<List<Order>> fetchOrdersByRep(String repId) async {
@@ -77,6 +97,17 @@ class ManagerRepository {
 
   Future<List<Order>> fetchOrdersByStorageActor(String userId) async {
     logger.d('ManagerRepository → fetchOrdersByStorageActor: $userId');
+    // Primary: query by storage_actor_id (set when storage actor confirms action)
+    final data = await _supabase
+        .from('orders')
+        .select(_orderSelect)
+        .eq('storage_actor_id', userId)
+        .order('created_at', ascending: false);
+    final orders = _mapOrders(data);
+    if (orders.isNotEmpty) return orders;
+
+    // Fallback for legacy records: look up via order_items.checked_by
+    logger.d('ManagerRepository → fetchOrdersByStorageActor: fallback to checked_by');
     final itemsData = await _supabase
         .from('order_items')
         .select('order_id')
@@ -86,12 +117,12 @@ class ManagerRepository {
         .toSet()
         .toList();
     if (orderIds.isEmpty) return [];
-    final data = await _supabase
+    final fallback = await _supabase
         .from('orders')
         .select(_orderSelect)
         .inFilter('id', orderIds)
         .order('created_at', ascending: false);
-    return _mapOrders(data);
+    return _mapOrders(fallback);
   }
 
   // ── All orders (task monitor view) ────────────────────────────────────────
@@ -138,6 +169,43 @@ class ManagerRepository {
     return (data as List)
         .map((e) => AuditLogEntry.fromMap(e as Map<String, dynamic>))
         .toList();
+  }
+
+  /// Fetches all receipt URLs for a given order, keyed by order_item_id.
+  Future<Map<String, String>> fetchReceipts(String orderId) async {
+    logger.d('ManagerRepository → fetchReceipts: $orderId');
+    final data = await _supabase
+        .from('receipts')
+        .select('order_item_id, image_url')
+        .eq('order_id', orderId);
+    final map = <String, String>{};
+    for (final row in data as List) {
+      map[row['order_item_id'] as String] = row['image_url'] as String;
+    }
+    logger.i('ManagerRepository → ${map.length} receipts for order $orderId');
+    return map;
+  }
+
+  // ── Delete order ──────────────────────────────────────────────────────────
+
+  Future<void> deleteOrder(String orderId) async {
+    logger.d('ManagerRepository → deleteOrder: $orderId');
+    await _supabase.from('audit_log').delete().eq('order_id', orderId);
+    logger.d('ManagerRepository → deleteOrder: audit_log cleared');
+    await _supabase.from('order_items').delete().eq('order_id', orderId);
+    logger.d('ManagerRepository → deleteOrder: order_items cleared');
+    await _supabase.from('orders').delete().eq('id', orderId);
+    // Verify the row is actually gone (silent RLS block returns no error)
+    final check = await _supabase
+        .from('orders')
+        .select('id')
+        .eq('id', orderId)
+        .maybeSingle();
+    if (check != null) {
+      logger.e('ManagerRepository → deleteOrder blocked (RLS or FK): $orderId');
+      throw Exception('فشل حذف الطلب — تحقق من الصلاحيات');
+    }
+    logger.i('ManagerRepository → deleteOrder success: $orderId');
   }
 
   // ── Helpers ────────────────────────────────────────────────────────────────

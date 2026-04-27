@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../logic/pending_users_cubit.dart';
+import '../lib/features/verifier/logic/pending_users_cubit.dart';
 
 class PendingUsersScreen extends StatefulWidget {
   const PendingUsersScreen({super.key});

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
 import '../../auth/logic/auth_cubit.dart';
+import '../../inventory/ui/inventory_availability_screen.dart';
 import '../logic/manager_pending_users_cubit.dart';
 import '../logic/monitor_orders_cubit.dart';
 import 'manager_pending_users_screen.dart';
@@ -39,6 +41,21 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
       appBar: AppBar(
         title: const Text('لوحة المدير'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.inventory_2_outlined),
+            tooltip: 'توافر المخزون',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => const InventoryAvailabilityScreen(),
+              ),
+            ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.chat_bubble_outline),
+            tooltip: 'المحادثات',
+            onPressed: () => context.push('/chat'),
+          ),
           if (_navIndex == 0)
             IconButton(
               icon: const Icon(Icons.refresh),

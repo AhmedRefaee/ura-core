@@ -11,6 +11,7 @@ class AuditLogEntry extends Equatable {
   final String? performedBy;
   final Profile? performer;
   final String? details;
+  final String? notes;
   final DateTime? serverTimestamp;
 
   const AuditLogEntry({
@@ -22,6 +23,7 @@ class AuditLogEntry extends Equatable {
     this.performedBy,
     this.performer,
     this.details,
+    this.notes,
     this.serverTimestamp,
   });
 
@@ -36,6 +38,7 @@ class AuditLogEntry extends Equatable {
       performedBy: map['performed_by'] as String?,
       performer: performerMap != null ? Profile.fromMap(performerMap) : null,
       details: map['details'] as String?,
+      notes: map['notes'] as String?,
       serverTimestamp: map['server_timestamp'] != null
           ? DateTime.parse(map['server_timestamp'] as String)
           : null,
@@ -58,5 +61,5 @@ class AuditLogEntry extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, orderId, action, newStatus, serverTimestamp];
+  List<Object?> get props => [id, orderId, action, newStatus, notes, serverTimestamp];
 }

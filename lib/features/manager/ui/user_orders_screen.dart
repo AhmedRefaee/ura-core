@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/profile.dart';
+import '../../../shared/widgets/order_list_tile.dart';
 import '../logic/user_orders_cubit.dart';
 import 'task_detail_screen.dart';
 
@@ -38,6 +39,105 @@ class _UserOrdersView extends StatelessWidget {
     }
   }
 
+  bool get _hasTabs =>
+      user.role == UserRole.storageActor || user.role == UserRole.rep;
+
+  @override
+  Widget build(BuildContext context) {
+    // Reps and storage actors get a two-tab view (active/done); others get a flat list.
+    if (_hasTabs) {
+      return DefaultTabController(
+        length: 2,
+        child: _TabbedScaffold(user: user, roleLabel: _roleLabel(user.role)),
+      );
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(user.fullName),
+            Text(_roleLabel(user.role),
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () =>
+                context.read<UserOrdersCubit>().loadForUser(user),
+          ),
+        ],
+      ),
+      body: BlocBuilder<UserOrdersCubit, UserOrdersState>(
+        builder: (context, state) => _buildBody(context, state, null),
+      ),
+    );
+  }
+
+  Widget _buildBody(
+      BuildContext context, UserOrdersState state, List<Order>? overrideList) {
+    if (state is UserOrdersLoading || state is UserOrdersInitial) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (state is UserOrdersError) {
+      return Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(state.message, style: const TextStyle(color: Colors.red)),
+            const SizedBox(height: 12),
+            FilledButton(
+              onPressed: () =>
+                  context.read<UserOrdersCubit>().loadForUser(user),
+              child: const Text('إعادة المحاولة'),
+            ),
+          ],
+        ),
+      );
+    }
+    if (state is UserOrdersLoaded) {
+      final orders = overrideList ?? state.orders;
+      if (orders.isEmpty) {
+        return const Center(child: Text('لا توجد مهام مرتبطة بهذا المستخدم'));
+      }
+      return ListView.builder(
+        itemCount: orders.length,
+        itemBuilder: (_, i) => OrderListTile(
+          order: orders[i],
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => TaskDetailScreen(orderId: orders[i].id),
+            ),
+          ),
+        ),
+      );
+    }
+    return const SizedBox.shrink();
+  }
+
+  // ignore: unused_element
+  Widget _buildBodyForTab(BuildContext context, List<Order> Function(UserOrdersLoaded) pick) {
+    return BlocBuilder<UserOrdersCubit, UserOrdersState>(
+      builder: (context, state) {
+        if (state is UserOrdersLoaded) {
+          return _buildBody(context, state, pick(state));
+        }
+        return _buildBody(context, state, null);
+      },
+    );
+  }
+}
+
+class _TabbedScaffold extends StatelessWidget {
+  final Profile user;
+  final String roleLabel;
+  const _TabbedScaffold(
+      {required this.user, required this.roleLabel});
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -46,16 +146,24 @@ class _UserOrdersView extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(user.fullName),
-            Text(_roleLabel(user.role),
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
+            Text(roleLabel,
+                style:
+                    const TextStyle(fontSize: 12, fontWeight: FontWeight.normal)),
           ],
         ),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
-            onPressed: () => context.read<UserOrdersCubit>().loadForUser(user),
+            onPressed: () =>
+                context.read<UserOrdersCubit>().loadForUser(user),
           ),
         ],
+        bottom: const TabBar(
+          tabs: [
+            Tab(text: 'نشطة'),
+            Tab(text: 'مكتملة'),
+          ],
+        ),
       ),
       body: BlocBuilder<UserOrdersCubit, UserOrdersState>(
         builder: (context, state) {
@@ -67,7 +175,8 @@ class _UserOrdersView extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(state.message, style: const TextStyle(color: Colors.red)),
+                  Text(state.message,
+                      style: const TextStyle(color: Colors.red)),
                   const SizedBox(height: 12),
                   FilledButton(
                     onPressed: () =>
@@ -79,20 +188,11 @@ class _UserOrdersView extends StatelessWidget {
             );
           }
           if (state is UserOrdersLoaded) {
-            if (state.orders.isEmpty) {
-              return const Center(child: Text('لا توجد مهام مرتبطة بهذا المستخدم'));
-            }
-            return ListView.builder(
-              itemCount: state.orders.length,
-              itemBuilder: (_, i) => _OrderCard(
-                order: state.orders[i],
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => TaskDetailScreen(orderId: state.orders[i].id),
-                  ),
-                ),
-              ),
+            return TabBarView(
+              children: [
+                _OrderList(orders: state.orders, emptyMessage: 'لا توجد طلبات نشطة'),
+                _OrderList(orders: state.doneOrders, emptyMessage: 'لا توجد طلبات مكتملة'),
+              ],
             );
           }
           return const SizedBox.shrink();
@@ -102,75 +202,24 @@ class _UserOrdersView extends StatelessWidget {
   }
 }
 
-class _OrderCard extends StatelessWidget {
-  final Order order;
-  final VoidCallback onTap;
-  const _OrderCard({required this.order, required this.onTap});
+class _OrderList extends StatelessWidget {
+  final List<Order> orders;
+  final String emptyMessage;
+  const _OrderList({required this.orders, required this.emptyMessage});
 
   @override
   Widget build(BuildContext context) {
-    Color statusColor;
-    IconData statusIcon;
-    switch (order.status) {
-      case OrderStatus.assigned:
-        statusColor = Colors.orange;
-        statusIcon = Icons.assignment_outlined;
-      case OrderStatus.pickedUp:
-        statusColor = Colors.blue;
-        statusIcon = Icons.inventory_2_outlined;
-      case OrderStatus.onTheMove:
-        statusColor = Colors.purple;
-        statusIcon = Icons.local_shipping_outlined;
-      case OrderStatus.delivered:
-        statusColor = Colors.green;
-        statusIcon = Icons.check_circle_outline;
+    if (orders.isEmpty) {
+      return Center(child: Text(emptyMessage));
     }
-
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
-          child: Row(
-            children: [
-              Icon(statusIcon, color: statusColor),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      order.entity?.name ?? '—',
-                      style: const TextStyle(
-                          fontWeight: FontWeight.bold, fontSize: 15),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      '${order.directionLabel}  ·  ${order.items.length} أصناف',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withAlpha(30),
-                  border: Border.all(color: statusColor),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  order.statusLabel,
-                  style: TextStyle(
-                      color: statusColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.bold),
-                ),
-              ),
-            ],
+    return ListView.builder(
+      itemCount: orders.length,
+      itemBuilder: (_, i) => OrderListTile(
+        order: orders[i],
+        onTap: () => Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => TaskDetailScreen(orderId: orders[i].id),
           ),
         ),
       ),

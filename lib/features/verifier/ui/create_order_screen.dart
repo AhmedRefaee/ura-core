@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../shared/models/entity.dart';
-import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/profile.dart';
 import '../logic/create_order_cubit.dart';
+import 'widgets/add_item_sheet.dart';
 
 class CreateOrderScreen extends StatelessWidget {
   const CreateOrderScreen({super.key});
@@ -108,6 +108,7 @@ class CreateOrderScreen extends StatelessWidget {
                           TextButton.icon(
                             onPressed: () => _showAddItemDialog(context, ready),
                             icon: const Icon(Icons.add),
+                            
                             label: const Text('إضافة'),
                           ),
                         ],
@@ -168,12 +169,17 @@ class CreateOrderScreen extends StatelessWidget {
   }
 
   void _showAddItemDialog(BuildContext context, CreateOrderReady state) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => BlocProvider.value(
-        value: context.read<CreateOrderCubit>(),
-        child: _AddItemSheet(inventory: state.inventory),
+    final cubit = context.read<CreateOrderCubit>();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddItemSheet(
+          inventory: state.inventory,
+          orderDirection: state.direction,
+          onAddInventoryItems: (items) => cubit.addMultipleItems(items),
+          onAddCustomItem: (desc, qty, {sourceInventoryId}) =>
+              cubit.addCustomItem(desc, qty, sourceInventoryId: sourceInventoryId),
+        ),
       ),
     );
   }
@@ -231,16 +237,165 @@ class _EntityPicker extends StatelessWidget {
         ? entities.where((e) => e.type == EntityType.customer).toList()
         : entities.where((e) => e.type == EntityType.supplier).toList();
 
-    return DropdownButtonFormField<Entity>(
-      value: selected,
-      decoration: const InputDecoration(border: OutlineInputBorder()),
-      hint: const Text('اختر...'),
-      items: filtered
-          .map((e) => DropdownMenuItem(value: e, child: Text(e.name)))
-          .toList(),
-      onChanged: (e) {
-        if (e != null) onChanged(e);
-      },
+    return InkWell(
+      onTap: () => _showEntitySheet(context, filtered),
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                selected?.name ?? 'اختر...',
+                style: TextStyle(
+                  color: selected != null ? null : Colors.grey[600],
+                ),
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showEntitySheet(BuildContext context, List<Entity> filteredEntities) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _EntitySheet(
+        entities: filteredEntities,
+        selected: selected,
+        onSelected: (entity) {
+          onChanged(entity);
+          Navigator.pop(sheetContext);
+        },
+      ),
+    );
+  }
+}
+
+class _EntitySheet extends StatefulWidget {
+  final List<Entity> entities;
+  final Entity? selected;
+  final ValueChanged<Entity> onSelected;
+
+  const _EntitySheet({
+    required this.entities,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  @override
+  State<_EntitySheet> createState() => _EntitySheetState();
+}
+
+class _EntitySheetState extends State<_EntitySheet> {
+  final TextEditingController _searchController = TextEditingController();
+  List<Entity> _filtered = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.entities;
+    _searchController.addListener(_onSearchChanged);
+  }
+
+  @override
+  void dispose() {
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filtered = widget.entities
+          .where((e) => e.name.toLowerCase().contains(query))
+          .toList();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                widget.selected == null ? 'اختر جهة' : 'تغيير الجهة',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              ),
+            ),
+            // Search bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'ابحث باسم الجهة...',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            // Entity list
+            Expanded(
+              child: _filtered.isEmpty
+                  ? const Center(
+                      child: Text('لا توجد نتائج'),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      itemCount: _filtered.length,
+                      itemBuilder: (context, index) {
+                        final entity = _filtered[index];
+                        final isSelected = widget.selected?.id == entity.id;
+                        return ListTile(
+                          title: Text(entity.name),
+                          trailing: isSelected
+                              ? const Icon(Icons.check, color: Colors.green)
+                              : null,
+                          selected: isSelected,
+                          selectedTileColor: Colors.green.withOpacity(0.1),
+                          onTap: () => widget.onSelected(entity),
+                        );
+                      },
+                    ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -258,135 +413,166 @@ class _RepPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<Profile>(
-      value: selected,
-      decoration: const InputDecoration(border: OutlineInputBorder()),
-      hint: const Text('اختر مندوباً...'),
-      items: reps
-          .map((r) => DropdownMenuItem(value: r, child: Text(r.fullName)))
-          .toList(),
-      onChanged: (r) {
-        if (r != null) onChanged(r);
-      },
+    return InkWell(
+      onTap: () => _showRepSheet(context, reps),
+      child: InputDecorator(
+        decoration: const InputDecoration(
+          border: OutlineInputBorder(),
+          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                selected?.fullName ?? 'اختر مندوباً...',
+                style: TextStyle(
+                  color: selected != null ? null : Colors.grey[600],
+                ),
+              ),
+            ),
+            const Icon(Icons.arrow_drop_down),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showRepSheet(BuildContext context, List<Profile> allReps) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (sheetContext) => _RepSheet(
+        reps: allReps,
+        selected: selected,
+        onSelected: (rep) {
+          onChanged(rep);
+          Navigator.pop(sheetContext);
+        },
+      ),
     );
   }
 }
 
-class _AddItemSheet extends StatefulWidget {
-  final List<InventoryItem> inventory;
-  const _AddItemSheet({required this.inventory});
+class _RepSheet extends StatefulWidget {
+  final List<Profile> reps;
+  final Profile? selected;
+  final ValueChanged<Profile> onSelected;
+
+  const _RepSheet({
+    required this.reps,
+    required this.selected,
+    required this.onSelected,
+  });
 
   @override
-  State<_AddItemSheet> createState() => _AddItemSheetState();
+  State<_RepSheet> createState() => _RepSheetState();
 }
 
-class _AddItemSheetState extends State<_AddItemSheet> {
-  bool _isCustom = false;
-  InventoryItem? _selectedItem;
-  final _quantityController = TextEditingController(text: '1');
-  final _descController = TextEditingController();
-  String _search = '';
+class _RepSheetState extends State<_RepSheet> {
+  final TextEditingController _searchController = TextEditingController();
+  List<Profile> _filtered = [];
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = widget.reps;
+    _searchController.addListener(_onSearchChanged);
+  }
 
   @override
   void dispose() {
-    _quantityController.dispose();
-    _descController.dispose();
+    _searchController.removeListener(_onSearchChanged);
+    _searchController.dispose();
     super.dispose();
   }
 
-  List<InventoryItem> get _filtered => widget.inventory
-      .where((i) => i.itemName.contains(_search))
-      .toList();
-
-  void _submit() {
-    final qty = int.tryParse(_quantityController.text) ?? 0;
-    if (qty <= 0) return;
-    if (_isCustom) {
-      final desc = _descController.text.trim();
-      if (desc.isEmpty) return;
-      context.read<CreateOrderCubit>().addCustomItem(desc, qty);
-    } else {
-      if (_selectedItem == null) return;
-      context.read<CreateOrderCubit>().addInventoryItem(_selectedItem!, qty);
-    }
-    Navigator.pop(context);
+  void _onSearchChanged() {
+    final query = _searchController.text.toLowerCase();
+    setState(() {
+      _filtered = widget.reps
+          .where((r) => r.fullName.toLowerCase().contains(query))
+          .toList();
+    });
   }
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.only(
-        bottom: MediaQuery.of(context).viewInsets.bottom,
-        left: 16,
-        right: 16,
-        top: 16,
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Text('إضافة صنف',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-              const Spacer(),
-              Switch(
-                value: _isCustom,
-                onChanged: (v) => setState(() => _isCustom = v),
-              ),
-              const Text('مخصص'),
-            ],
-          ),
-          const SizedBox(height: 12),
-          if (_isCustom) ...[
-            TextField(
-              controller: _descController,
-              decoration: const InputDecoration(
-                labelText: 'وصف الصنف',
-                border: OutlineInputBorder(),
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7,
+      minChildSize: 0.5,
+      maxChildSize: 0.95,
+      expand: false,
+      builder: (context, scrollController) => Container(
+        decoration: const BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: Column(
+          children: [
+            // Handle bar
+            Container(
+              margin: const EdgeInsets.only(top: 8),
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(2),
               ),
             ),
-          ] else ...[
-            TextField(
-              decoration: const InputDecoration(
-                labelText: 'بحث',
-                prefixIcon: Icon(Icons.search),
-                border: OutlineInputBorder(),
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                widget.selected == null ? 'اختر مندوباً' : 'تغيير المندوب',
+                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
-              onChanged: (v) => setState(() => _search = v),
             ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 200,
-              child: ListView.builder(
-                itemCount: _filtered.length,
-                itemBuilder: (_, i) {
-                  final item = _filtered[i];
-                  return RadioListTile<InventoryItem>(
-                    title: Text(item.itemName),
-                    subtitle: Text('المتوفر: ${item.quantity} ${item.unit}'),
-                    value: item,
-                    groupValue: _selectedItem,
-                    onChanged: (v) => setState(() => _selectedItem = v),
-                  );
-                },
+            // Search bar
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: InputDecoration(
+                  hintText: 'ابحث باسم المندوب...',
+                  prefixIcon: const Icon(Icons.search),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey[100],
+                ),
               ),
+            ),
+            const SizedBox(height: 12),
+            // Rep list
+            Expanded(
+              child: _filtered.isEmpty
+                  ? const Center(
+                      child: Text('لا توجد نتائج'),
+                    )
+                  : ListView.builder(
+                      controller: scrollController,
+                      itemCount: _filtered.length,
+                      itemBuilder: (context, index) {
+                        final rep = _filtered[index];
+                        final isSelected = widget.selected?.id == rep.id;
+                        return ListTile(
+                          title: Text(rep.fullName),
+                          trailing: isSelected
+                              ? const Icon(Icons.check, color: Colors.green)
+                              : null,
+                          selected: isSelected,
+                          selectedTileColor: Colors.green.withOpacity(0.1),
+                          onTap: () => widget.onSelected(rep),
+                        );
+                      },
+                    ),
             ),
           ],
-          const SizedBox(height: 12),
-          TextField(
-            controller: _quantityController,
-            keyboardType: TextInputType.number,
-            decoration: const InputDecoration(
-              labelText: 'الكمية',
-              border: OutlineInputBorder(),
-            ),
-          ),
-          const SizedBox(height: 16),
-          FilledButton(onPressed: _submit, child: const Text('إضافة')),
-          const SizedBox(height: 16),
-        ],
+        ),
       ),
     );
   }
 }
+

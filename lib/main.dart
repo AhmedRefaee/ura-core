@@ -6,6 +6,11 @@ import 'config/supabase_config.dart';
 import 'core/di/injection.dart';
 import 'core/logging/app_logger.dart';
 
+bool _isAuthCallback(Uri uri) =>
+    uri.queryParameters.containsKey('code') ||
+    uri.fragment.contains('access_token=') ||
+    uri.fragment.contains('refresh_token=');
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -21,10 +26,12 @@ Future<void> main() async {
   final initialUri = await AppLinks().getInitialLink();
   if (initialUri != null) {
     logger.d('main → cold-start deep link: $initialUri');
-    try {
-      await Supabase.instance.client.auth.getSessionFromUrl(initialUri);
-    } catch (e) {
-      logger.w('main → getSessionFromUrl failed: $e');
+    if (_isAuthCallback(initialUri)) {
+      try {
+        await Supabase.instance.client.auth.getSessionFromUrl(initialUri);
+      } catch (e) {
+        logger.w('main → getSessionFromUrl failed: $e');
+      }
     }
   }
 

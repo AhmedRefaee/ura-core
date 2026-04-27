@@ -7,7 +7,10 @@ class RepOrdersRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
 
   static const _orderSelect =
-      '*, entity:entities(*), order_items(*, inventory:inventory(id, item_name))';
+      '*, '
+      'entity:entities(*), '
+      'creator:profiles!orders_created_by_fkey(id, full_name, role, is_approved, phone, created_at), '
+      'order_items(*, inventory:inventory!order_items_inventory_id_fkey(id, item_name))';
 
   Future<List<Order>> fetchMyOrders() async {
     final userId = _supabase.auth.currentUser!.id;
@@ -16,12 +19,12 @@ class RepOrdersRepository {
         .from('orders')
         .select(_orderSelect)
         .eq('rep_id', userId)
-        .neq('status', 'delivered')
         .order('created_at', ascending: false);
+
     final orders = (data as List)
         .map((e) => Order.fromMap(e as Map<String, dynamic>))
         .toList();
-    logger.i('RepOrdersRepository → ${orders.length} active orders');
+    logger.i('RepOrdersRepository → ${orders.length} orders loaded');
     return orders;
   }
 
@@ -35,10 +38,12 @@ class RepOrdersRepository {
     return Order.fromMap(data);
   }
 
-  Future<void> startMove(String orderId) async {
+  Future<void> startMove(String orderId, {String? notes}) async {
     logger.d('RepOrdersRepository → startMove: $orderId');
-    final result = await _supabase
-        .rpc('start_move', params: {'target_order_id': orderId});
+    final result = await _supabase.rpc('start_move', params: {
+      'target_order_id': orderId,
+      'p_notes': notes,
+    });
     final success = result['success'] as bool? ?? false;
     if (!success) {
       final error = result['error'] as String? ?? 'فشل بدء التنقل';
@@ -48,10 +53,27 @@ class RepOrdersRepository {
     logger.i('RepOrdersRepository → startMove success: $orderId');
   }
 
-  Future<void> markDelivered(String orderId) async {
+  Future<void> markPickedUp(String orderId, {String? notes}) async {
+    logger.d('RepOrdersRepository → markPickedUp: $orderId');
+    final result = await _supabase.rpc('mark_picked_up', params: {
+      'target_order_id': orderId,
+      'p_notes': notes,
+    });
+    final success = result['success'] as bool? ?? false;
+    if (!success) {
+      final error = result['error'] as String? ?? 'فشل تسجيل الاستلام';
+      logger.e('RepOrdersRepository → markPickedUp failed: $error');
+      throw Exception(error);
+    }
+    logger.i('RepOrdersRepository → markPickedUp success: $orderId');
+  }
+
+  Future<void> markDelivered(String orderId, {String? notes}) async {
     logger.d('RepOrdersRepository → markDelivered: $orderId');
-    final result = await _supabase
-        .rpc('mark_delivered', params: {'target_order_id': orderId});
+    final result = await _supabase.rpc('mark_delivered', params: {
+      'target_order_id': orderId,
+      'p_notes': notes,
+    });
     final success = result['success'] as bool? ?? false;
     if (!success) {
       final error = result['error'] as String? ?? 'فشل تسجيل التسليم';
@@ -81,7 +103,6 @@ class RepOrdersRepository {
     final url = _supabase.storage.from('receipts').getPublicUrl(path);
     logger.d('RepOrdersRepository → receipt url: $url');
 
-    // Insert receipt row
     await _supabase.from('receipts').insert({
       'order_id': orderId,
       'order_item_id': orderItemId,

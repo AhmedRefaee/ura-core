@@ -12,6 +12,7 @@ import '../features/verifier/ui/verifier_home_screen.dart';
 import '../features/rep/ui/rep_home_screen.dart';
 import '../features/storage/ui/storage_home_screen.dart';
 import '../features/manager/ui/manager_home_screen.dart';
+import '../features/chat/ui/chat_hub_screen.dart';
 import '../shared/models/profile.dart';
 
 class AppRoutes {
@@ -24,6 +25,7 @@ class AppRoutes {
   static const String repHome = '/rep';
   static const String storageHome = '/storage';
   static const String managerHome = '/manager';
+  static const String chat = '/chat';
 }
 
 class GoRouterRefreshStream extends ChangeNotifier {
@@ -106,6 +108,10 @@ GoRouter createRouter(AuthCubit authCubit) {
       GoRoute(
         path: AppRoutes.managerHome,
         builder: (_, _) => const ManagerHomeScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.chat,
+        builder: (_, _) => const ChatHubScreen(),
       ),
       GoRoute(
         path: AppRoutes.forgotPassword,

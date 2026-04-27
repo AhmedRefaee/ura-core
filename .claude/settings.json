@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(find /c/MSOC/flutter_projects/ura_core -type f -name \"*.dart\" -path \"*/features/*\" -exec grep -l \"OrderStatus\\\\|OrderDirection\" {} \\\\;)"
+    ]
+  }
+}

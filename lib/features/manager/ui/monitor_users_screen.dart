@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'rep_list_screen.dart';
 import 'user_type_users_screen.dart';
 
 class MonitorUsersScreen extends StatelessWidget {
@@ -24,10 +25,12 @@ class MonitorUsersScreen extends StatelessWidget {
             onTap: () => Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (_) => UserTypeUsersScreen(
-                  roleKey: t.key,
-                  roleLabel: t.label,
-                ),
+                builder: (_) => t.key == 'rep'
+                    ? const RepListScreen()
+                    : UserTypeUsersScreen(
+                        roleKey: t.key,
+                        roleLabel: t.label,
+                      ),
               ),
             ),
             child: Padding(

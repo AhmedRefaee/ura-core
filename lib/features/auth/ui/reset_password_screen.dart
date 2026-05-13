@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../logic/auth_cubit.dart';
 import '../logic/auth_state.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 
 class ResetPasswordScreen extends StatefulWidget {
   const ResetPasswordScreen({super.key});
@@ -62,67 +64,50 @@ class _ResetPasswordScreenState extends State<ResetPasswordScreen> {
           body: SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                padding: AppSpacing.screenPaddingInsets,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 400),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Icon(Icons.lock_reset_outlined,
-                          size: 56, color: Colors.teal),
-                      const SizedBox(height: 24),
-                      const Text(
+                      Icon(Icons.lock_reset_outlined,
+                          size: 56, color: AppColors.primary),
+                      SizedBox(height: AppSpacing.verticalXXLarge),
+                      Text(
                         'أدخل كلمة المرور الجديدة',
-                        style: TextStyle(
-                            fontSize: 22, fontWeight: FontWeight.bold),
+                        style: AppTextStyles.titleLarge,
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 32),
-                      TextField(
+                      SizedBox(height: AppSpacing.verticalXXXLarge),
+                      AppTextField(
                         controller: _passwordController,
                         enabled: !isLoading,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'كلمة المرور الجديدة',
-                          border: OutlineInputBorder(),
-                        ),
-                        onSubmitted: (_) => _submit(),
+                        keyboardType: TextInputType.visiblePassword,
+                        label: 'كلمة المرور الجديدة',
                       ),
-                      const SizedBox(height: 16),
-                      TextField(
+                      SizedBox(height: AppSpacing.verticalLarge),
+                      AppTextField(
                         controller: _confirmController,
                         enabled: !isLoading,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'تأكيد كلمة المرور',
-                          border: OutlineInputBorder(),
-                        ),
-                        onSubmitted: (_) => _submit(),
+                        keyboardType: TextInputType.visiblePassword,
+                        label: 'تأكيد كلمة المرور',
                       ),
                       if (_validationError != null) ...[
-                        const SizedBox(height: 12),
+                        SizedBox(height: AppSpacing.verticalMedium),
                         Text(
                           _validationError!,
                           style: TextStyle(
-                              color: Theme.of(context).colorScheme.error),
+                              color: AppColors.error),
                           textAlign: TextAlign.center,
                         ),
                       ],
-                      const SizedBox(height: 24),
-                      FilledButton(
+                      SizedBox(height: AppSpacing.verticalXXLarge),
+                      AppButton(
+                        text: 'تعيين كلمة المرور',
                         onPressed: isLoading ? null : _submit,
-                        style: FilledButton.styleFrom(
-                            minimumSize: const Size.fromHeight(50)),
-                        child: isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('تعيين كلمة المرور'),
+                        isLoading: isLoading,
+                        variant: AppButtonVariant.elevated,
+                        height: 50,
                       ),
                     ],
                   ),

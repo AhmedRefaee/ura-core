@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../logic/auth_cubit.dart';
 import '../logic/auth_state.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 
 class PendingApprovalScreen extends StatelessWidget {
   const PendingApprovalScreen({super.key});
@@ -22,47 +24,38 @@ class PendingApprovalScreen extends StatelessWidget {
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(
+                    Icon(
                       Icons.hourglass_top_rounded,
                       size: 72,
-                      color: Colors.orange,
+                      color: AppColors.warning,
                     ),
-                    const SizedBox(height: 24),
+                    SizedBox(height: AppSpacing.verticalXXLarge),
                     Text(
                       'مرحباً ${profile?.fullName ?? ''}',
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
+                      style: AppTextStyles.titleLarge,
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 16),
-                    const Text(
+                    SizedBox(height: AppSpacing.verticalLarge),
+                    Text(
                       'حسابك قيد المراجعة.\nيرجى الانتظار حتى يوافق المشرف على حسابك.',
-                      style: TextStyle(fontSize: 16, height: 1.6),
+                      style: AppTextStyles.bodyLarge.copyWith(height: 1.6),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 40),
-                    FilledButton.icon(
+                    SizedBox(height: 40),
+                    AppButton(
+                      text: 'تحديث الحالة',
                       onPressed: isLoading
                           ? null
                           : () => context.read<AuthCubit>().refreshProfile(),
-                      icon: isLoading
-                          ? const SizedBox(
-                              height: 16,
-                              width: 16,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: Colors.white,
-                              ),
-                            )
-                          : const Icon(Icons.refresh),
-                      label: const Text('تحديث الحالة'),
+                      isLoading: isLoading,
+                      icon: Icons.refresh,
+                      variant: AppButtonVariant.elevated,
                     ),
-                    const SizedBox(height: 12),
-                    TextButton(
+                    SizedBox(height: AppSpacing.verticalMedium),
+                    AppButton(
+                      text: 'تسجيل الخروج',
                       onPressed: () => context.read<AuthCubit>().signOut(),
-                      child: const Text('تسجيل الخروج'),
+                      variant: AppButtonVariant.text,
                     ),
                   ],
                 ),

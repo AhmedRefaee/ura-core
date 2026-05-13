@@ -1,26 +1,50 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../logic/inventory_form_cubit.dart';
 
+class CustomItemPrefill {
+  final String name;
+  final int quantity;
+  final String unit;
+  final String? sku;
+  final String? category;
+  final int minQuantity;
+  final String? description;
+
+  const CustomItemPrefill({
+    required this.name,
+    required this.quantity,
+    required this.unit,
+    this.sku,
+    this.category,
+    this.minQuantity = 0,
+    this.description,
+  });
+}
+
 class InventoryFormScreen extends StatelessWidget {
   final InventoryItem? initialItem;
+  final CustomItemPrefill? prefill;
 
-  const InventoryFormScreen({super.key, this.initialItem});
+  const InventoryFormScreen({super.key, this.initialItem, this.prefill});
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) => sl.get<InventoryFormCubit>(param1: initialItem),
-      child: _InventoryFormView(initialItem: initialItem),
+      child: _InventoryFormView(initialItem: initialItem, prefill: prefill),
     );
   }
 }
 
 class _InventoryFormView extends StatefulWidget {
   final InventoryItem? initialItem;
-  const _InventoryFormView({this.initialItem});
+  final CustomItemPrefill? prefill;
+  const _InventoryFormView({this.initialItem, this.prefill});
 
   @override
   State<_InventoryFormView> createState() => _InventoryFormViewState();
@@ -41,15 +65,16 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
   void initState() {
     super.initState();
     final item = widget.initialItem;
-    _nameCtrl = TextEditingController(text: item?.itemName ?? '');
-    _skuCtrl = TextEditingController(text: item?.sku ?? '');
-    _unitCtrl = TextEditingController(text: item?.unit ?? 'قطعة');
-    _quantityCtrl =
-        TextEditingController(text: item != null ? '${item.quantity}' : '');
-    _categoryCtrl = TextEditingController(text: item?.category ?? '');
-    _minQuantityCtrl =
-        TextEditingController(text: '${item?.minQuantity ?? 0}');
-    _descriptionCtrl = TextEditingController(text: item?.description ?? '');
+    final pre = widget.prefill;
+    _nameCtrl = TextEditingController(text: item?.itemName ?? pre?.name ?? '');
+    _skuCtrl = TextEditingController(text: item?.sku ?? pre?.sku ?? '');
+    _unitCtrl = TextEditingController(text: item?.unit ?? pre?.unit ?? 'قطعة');
+    _quantityCtrl = TextEditingController(
+        text: item != null ? '${item.quantity}' : pre != null ? '${pre.quantity}' : '');
+    _categoryCtrl = TextEditingController(text: item?.category ?? pre?.category ?? '');
+    _minQuantityCtrl = TextEditingController(
+        text: '${item?.minQuantity ?? pre?.minQuantity ?? 0}');
+    _descriptionCtrl = TextEditingController(text: item?.description ?? pre?.description ?? '');
     _notesCtrl = TextEditingController();
   }
 
@@ -76,11 +101,10 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
           Navigator.pop(context, true);
         }
         if (state is InventoryFormError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.red,
-            ),
+          AppSnackbar.show(
+            context,
+            message: state.message,
+            variant: AppSnackbarVariant.error,
           );
         }
       },
@@ -94,17 +118,17 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
           body: Form(
             key: _formKey,
             child: ListView(
-              padding: const EdgeInsets.all(16),
+              padding: AppSpacing.allMedium,
               children: [
                 _SectionLabel('معلومات أساسية'),
-                const SizedBox(height: 8),
+                SizedBox(height: AppSpacing.verticalSmall),
                 _Field(
                   controller: _nameCtrl,
                   label: 'اسم الصنف',
                   required: true,
                   enabled: !isSaving,
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: AppSpacing.verticalSmall),
                 Row(
                   children: [
                     Expanded(
@@ -124,7 +148,7 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
                         },
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    SizedBox(width: AppSpacing.horizontalSmall),
                     Expanded(
                       child: _Field(
                         controller: _unitCtrl,
@@ -135,23 +159,23 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: AppSpacing.verticalSmall),
                 _Field(
                   controller: _skuCtrl,
                   label: 'رمز SKU',
                   required: false,
                   enabled: !isSaving,
                 ),
-                const SizedBox(height: 20),
+                SizedBox(height: AppSpacing.verticalLarge),
                 _SectionLabel('تصنيف وتنبيهات'),
-                const SizedBox(height: 8),
+                SizedBox(height: AppSpacing.verticalSmall),
                 _Field(
                   controller: _categoryCtrl,
                   label: 'الفئة',
                   required: false,
                   enabled: !isSaving,
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: AppSpacing.verticalSmall),
                 _Field(
                   controller: _minQuantityCtrl,
                   label: 'حد التنبيه (كمية منخفضة)',
@@ -167,9 +191,9 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
                     return null;
                   },
                 ),
-                const SizedBox(height: 20),
+                SizedBox(height: AppSpacing.verticalLarge),
                 _SectionLabel('معلومات إضافية'),
-                const SizedBox(height: 8),
+                SizedBox(height: AppSpacing.verticalSmall),
                 _Field(
                   controller: _descriptionCtrl,
                   label: 'الوصف',
@@ -177,7 +201,7 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
                   maxLines: 3,
                   enabled: !isSaving,
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: AppSpacing.verticalSmall),
                 _Field(
                   controller: _notesCtrl,
                   label: 'ملاحظات (تُحفظ في سجل التغييرات)',
@@ -185,16 +209,11 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
                   maxLines: 2,
                   enabled: !isSaving,
                 ),
-                const SizedBox(height: 24),
-                FilledButton(
+                SizedBox(height: AppSpacing.verticalXXLarge),
+                AppButton(
                   onPressed: isSaving ? null : _submit,
-                  child: isSaving
-                      ? const SizedBox(
-                          height: 20,
-                          width: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : Text(isEditing ? 'حفظ التعديلات' : 'إضافة الصنف'),
+                  text: isEditing ? 'حفظ التعديلات' : 'إضافة الصنف',
+                  isLoading: isSaving,
                 ),
               ],
             ),
@@ -233,10 +252,9 @@ class _SectionLabel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Text(
       text,
-      style: Theme.of(context)
-          .textTheme
-          .labelLarge
-          ?.copyWith(color: Theme.of(context).colorScheme.primary),
+      style: AppTextStyles.labelLarge.copyWith(
+        color: AppColors.primary,
+      ),
     );
   }
 }
@@ -267,9 +285,12 @@ class _Field extends StatelessWidget {
       enabled: enabled,
       keyboardType: keyboardType,
       maxLines: maxLines,
+      style: AppTextStyles.bodyLarge,
       decoration: InputDecoration(
         labelText: required ? '$label *' : label,
-        border: const OutlineInputBorder(),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppConstants.borderRadiusMedium),
+        ),
       ),
       validator: validator ??
           (required

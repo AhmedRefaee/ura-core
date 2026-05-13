@@ -1,6 +1,9 @@
 import 'dart:async';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/errors/app_result.dart';
+import '../../../core/errors/error_handler.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/chat_message.dart';
 import '../data/chat_repository.dart';
@@ -17,8 +20,11 @@ class ChatThreadLoading extends ChatThreadState {}
 
 class ChatThreadLoaded extends ChatThreadState {
   final List<ChatMessage> messages;
-  final String? pendingInitialText; // cleared after first send
-  const ChatThreadLoaded({required this.messages, this.pendingInitialText});
+  final String? pendingInitialText;
+  const ChatThreadLoaded({
+    required this.messages,
+    this.pendingInitialText,
+  });
   @override
   List<Object?> get props => [messages, pendingInitialText];
 }
@@ -41,6 +47,8 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
   final String? mentionedOrderTitle;
 
   StreamSubscription<List<ChatMessage>>? _sub;
+  List<ChatMessage> _messages = [];
+  Map<String, List<ChatMessageReaction>> _reactions = {};
 
   ChatThreadCubit(
     this._repo, {
@@ -55,15 +63,39 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
     logger.d('ChatThreadCubit → subscribe: $threadId');
     _sub = _repo.subscribeToThread(threadId).listen(
       (messages) {
-        final current = state;
-        final pending = current is ChatThreadLoaded ? current.pendingInitialText : initialText;
-        emit(ChatThreadLoaded(messages: messages, pendingInitialText: pending));
+        _messages = messages;
+        _emitMerged();
       },
       onError: (Object e, StackTrace st) {
         logger.e('ChatThreadCubit → stream error', error: e, stackTrace: st);
-        emit(ChatThreadError(e.toString()));
+        emit(ChatThreadError(ErrorHandler.handle(e).message));
       },
     );
+    _loadReactions();
+  }
+
+  Future<void> _loadReactions() async {
+    final result = await _repo.getReactionsForThread(threadId);
+    if (result is AppSuccess<Map<String, List<ChatMessageReaction>>>) {
+      _reactions = result.data;
+      _emitMerged();
+    }
+  }
+
+  void _emitMerged() {
+    final merged = _messages
+        .map((m) => m.copyWith(reactions: _reactions[m.id] ?? []))
+        .toList();
+    final current = state;
+    final pending = current is ChatThreadLoaded
+        ? current.pendingInitialText
+        : initialText;
+    if (!isClosed) {
+      emit(ChatThreadLoaded(
+        messages: merged,
+        pendingInitialText: pending,
+      ));
+    }
   }
 
   Future<void> sendMessage(
@@ -72,36 +104,84 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
     String? userMentionText,
     String? orderMentionId,
     String? orderMentionText,
-    bool? isUrgent, // overrides isUrgentEntry when provided
+    bool? isUrgent,
+    String? replyToId,
+    String? replyToContent,
+    String? replyToSender,
   }) async {
     logger.d('ChatThreadCubit → sendMessage, urgent=${isUrgent ?? isUrgentEntry}');
-    try {
-      await _repo.sendMessage(
-        threadId: threadId,
-        content: content,
-        orderMentionId: orderMentionId ?? mentionedOrderId,
-        orderMentionText: orderMentionText ?? mentionedOrderTitle,
-        userMentionId: userMentionId,
-        userMentionText: userMentionText,
-        isUrgent: isUrgent ?? isUrgentEntry,
-      );
-      // Clear the initial text hint after the first successful send
-      final current = state;
-      if (current is ChatThreadLoaded && current.pendingInitialText != null) {
-        emit(ChatThreadLoaded(messages: current.messages, pendingInitialText: null));
-      }
-    } catch (e, st) {
-      logger.e('ChatThreadCubit → sendMessage failed', error: e, stackTrace: st);
-      emit(ChatThreadError(e.toString()));
+    final result = await _repo.sendMessage(
+      threadId: threadId,
+      content: content,
+      orderMentionId: orderMentionId ?? mentionedOrderId,
+      orderMentionText: orderMentionText ?? mentionedOrderTitle,
+      userMentionId: userMentionId,
+      userMentionText: userMentionText,
+      isUrgent: isUrgent ?? isUrgentEntry,
+      replyToId: replyToId,
+      replyToContent: replyToContent,
+      replyToSender: replyToSender,
+    );
+    switch (result) {
+      case AppSuccess():
+        final current = state;
+        if (current is ChatThreadLoaded && current.pendingInitialText != null) {
+          emit(ChatThreadLoaded(
+              messages: current.messages, pendingInitialText: null));
+        }
+      case AppFailure(:final error):
+        logger.e('ChatThreadCubit → sendMessage failed: ${error.message}');
+        if (!isClosed) emit(ChatThreadError(error.message));
     }
   }
 
+
+
   Future<void> acknowledgeMessage(String messageId) async {
     logger.d('ChatThreadCubit → acknowledgeMessage: $messageId');
-    try {
-      await _repo.acknowledgeMessage(messageId);
-    } catch (e, st) {
-      logger.e('ChatThreadCubit → acknowledgeMessage failed', error: e, stackTrace: st);
+    final result = await _repo.acknowledgeMessage(messageId);
+    if (result is AppFailure) {
+      logger.e(
+          'ChatThreadCubit → acknowledgeMessage failed: ${result.error.message}');
+    }
+  }
+
+  Future<void> addReaction(String messageId, String emoji) async {
+    logger.d('ChatThreadCubit → addReaction: $messageId $emoji');
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+    // Optimistic update
+    final existing = _reactions[messageId] ?? [];
+    final alreadyReacted =
+        existing.any((r) => r.emoji == emoji && r.userId == myId);
+    if (alreadyReacted) {
+      await removeReaction(messageId, emoji);
+      return;
+    }
+    _reactions[messageId] = [
+      ...existing,
+      ChatMessageReaction(emoji: emoji, userId: myId ?? ''),
+    ];
+    _emitMerged();
+    final result = await _repo.addReaction(messageId, emoji);
+    if (result is AppFailure) {
+      // Rollback optimistic update
+      _reactions[messageId] = existing;
+      _emitMerged();
+    }
+  }
+
+  Future<void> removeReaction(String messageId, String emoji) async {
+    logger.d('ChatThreadCubit → removeReaction: $messageId $emoji');
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+    final existing = _reactions[messageId] ?? [];
+    // Optimistic update
+    _reactions[messageId] =
+        existing.where((r) => !(r.emoji == emoji && r.userId == myId)).toList();
+    _emitMerged();
+    final result = await _repo.removeReaction(messageId, emoji);
+    if (result is AppFailure) {
+      _reactions[messageId] = existing;
+      _emitMerged();
     }
   }
 

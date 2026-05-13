@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../data/inventory_management_repository.dart';
@@ -67,13 +68,14 @@ class InventoryBulkCubit extends Cubit<InventoryBulkState> {
 
   Future<void> loadItems() async {
     emit(InventoryBulkLoading());
-    try {
-      final items = await _repo.fetchInventory();
-      logger.d('InventoryBulkCubit loaded ${items.length} items');
-      emit(InventoryBulkReady(items: items));
-    } catch (e) {
-      logger.e('InventoryBulkCubit load failed', error: e);
-      emit(InventoryBulkError(e.toString()));
+    final result = await _repo.fetchInventory();
+    switch (result) {
+      case AppSuccess(:final data):
+        logger.d('InventoryBulkCubit loaded ${data.length} items');
+        emit(InventoryBulkReady(items: data));
+      case AppFailure(:final error):
+        logger.e('InventoryBulkCubit load failed: ${error.message}');
+        emit(InventoryBulkError(error.message));
     }
   }
 
@@ -81,7 +83,6 @@ class InventoryBulkCubit extends Cubit<InventoryBulkState> {
     final current = state;
     if (current is! InventoryBulkReady) return;
     final updated = Map<String, int>.from(current.pendingQuantities);
-    // Only track if different from the original quantity
     final originalItem = current.items.firstWhere((i) => i.id == itemId);
     if (quantity == originalItem.quantity) {
       updated.remove(itemId);
@@ -94,8 +95,7 @@ class InventoryBulkCubit extends Cubit<InventoryBulkState> {
   void resetItem(String itemId) {
     final current = state;
     if (current is! InventoryBulkReady) return;
-    final updated = Map<String, int>.from(current.pendingQuantities)
-      ..remove(itemId);
+    final updated = Map<String, int>.from(current.pendingQuantities)..remove(itemId);
     emit(current.copyWith(pendingQuantities: updated));
   }
 
@@ -103,16 +103,17 @@ class InventoryBulkCubit extends Cubit<InventoryBulkState> {
     final current = state;
     if (current is! InventoryBulkReady || !current.hasChanges) return;
     emit(InventoryBulkSaving());
-    try {
-      final updates = current.pendingQuantities.entries
-          .map((e) => (itemId: e.key, quantity: e.value))
-          .toList();
-      await _repo.bulkUpdateQuantities(updates);
-      logger.i('InventoryBulkCubit saved ${updates.length} changes');
-      emit(InventoryBulkSuccess());
-    } catch (e) {
-      logger.e('InventoryBulkCubit save failed', error: e);
-      emit(InventoryBulkError(e.toString()));
+    final updates = current.pendingQuantities.entries
+        .map((e) => (itemId: e.key, quantity: e.value))
+        .toList();
+    final result = await _repo.bulkUpdateQuantities(updates);
+    switch (result) {
+      case AppSuccess():
+        logger.i('InventoryBulkCubit saved ${updates.length} changes');
+        emit(InventoryBulkSuccess());
+      case AppFailure(:final error):
+        logger.e('InventoryBulkCubit save failed: ${error.message}');
+        emit(InventoryBulkError(error.message));
     }
   }
 }

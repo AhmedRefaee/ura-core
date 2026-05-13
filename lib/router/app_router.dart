@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../features/auth/logic/auth_cubit.dart';
 import '../features/auth/logic/auth_state.dart';
@@ -12,7 +13,15 @@ import '../features/verifier/ui/verifier_home_screen.dart';
 import '../features/rep/ui/rep_home_screen.dart';
 import '../features/storage/ui/storage_home_screen.dart';
 import '../features/manager/ui/manager_home_screen.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/chat/ui/chat_hub_screen.dart';
+import '../features/chat/ui/chat_thread_screen.dart';
+import '../features/notifications/logic/notifications_cubit.dart';
+import '../features/notifications/ui/notifications_screen.dart';
+import '../features/entities/logic/entities_cubit.dart';
+import '../features/entities/ui/entities_screen.dart';
+import '../features/settings/ui/settings_screen.dart';
+import '../core/di/injection.dart';
 import '../shared/models/profile.dart';
 
 class AppRoutes {
@@ -26,6 +35,9 @@ class AppRoutes {
   static const String storageHome = '/storage';
   static const String managerHome = '/manager';
   static const String chat = '/chat';
+  static const String notifications = '/notifications';
+  static const String entities = '/entities';
+  static const String settings = '/settings';
 }
 
 class GoRouterRefreshStream extends ChangeNotifier {
@@ -114,6 +126,51 @@ GoRouter createRouter(AuthCubit authCubit) {
         builder: (_, _) => const ChatHubScreen(),
       ),
       GoRoute(
+        path: AppRoutes.notifications,
+        builder: (_, _) => BlocProvider(
+          create: (_) => sl<NotificationsCubit>()..load(),
+          child: const NotificationsScreen(),
+        ),
+      ),
+      GoRoute(
+        path: '/chat/:threadId',
+        builder: (_, state) {
+          final threadId = state.pathParameters['threadId']!;
+          return _ChatThreadLoader(threadId: threadId);
+        },
+      ),
+      GoRoute(
+        path: '/order/:orderId',
+        redirect: (_, _) {
+          final authState = authCubit.state;
+          if (authState is AuthAuthenticated) {
+            return _roleRoute(authState.profile.role);
+          }
+          return AppRoutes.login;
+        },
+      ),
+      GoRoute(
+        path: '/pending-user/:userId',
+        redirect: (_, _) {
+          final authState = authCubit.state;
+          if (authState is AuthAuthenticated) {
+            return AppRoutes.managerHome;
+          }
+          return AppRoutes.login;
+        },
+      ),
+      GoRoute(
+        path: AppRoutes.entities,
+        builder: (_, _) => BlocProvider(
+          create: (_) => sl<EntitiesCubit>()..load(),
+          child: const EntitiesScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.settings,
+        builder: (_, _) => const SettingsScreen(),
+      ),
+      GoRoute(
         path: AppRoutes.forgotPassword,
         builder: (_, _) => const ForgotPasswordScreen(),
       ),
@@ -123,6 +180,60 @@ GoRouter createRouter(AuthCubit authCubit) {
       ),
     ],
   );
+}
+
+class _ChatThreadLoader extends StatefulWidget {
+  final String threadId;
+  const _ChatThreadLoader({required this.threadId});
+
+  @override
+  State<_ChatThreadLoader> createState() => _ChatThreadLoaderState();
+}
+
+class _ChatThreadLoaderState extends State<_ChatThreadLoader> {
+  String? _title;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadTitle();
+  }
+
+  Future<void> _loadTitle() async {
+    try {
+      final data = await Supabase.instance.client
+          .from('chat_threads')
+          .select('title')
+          .eq('id', widget.threadId)
+          .single();
+      if (mounted) setState(() { _title = data['title'] as String?; _loading = false; });
+    } catch (_) {
+      if (mounted) setState(() { _title = 'محادثة'; _loading = false; });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final router = GoRouter.of(context);
+    final child = _loading
+        ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+        : ChatThreadScreen(threadId: widget.threadId, threadTitle: _title ?? 'محادثة');
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (router.canPop()) {
+          router.pop();
+        } else {
+          // No back stack (cold-start deep link) — the redirect sends the
+          // authenticated user to their role home screen.
+          router.go(AppRoutes.login);
+        }
+      },
+      child: child,
+    );
+  }
 }
 
 String _roleRoute(UserRole? role) {

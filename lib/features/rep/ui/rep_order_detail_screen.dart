@@ -4,9 +4,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
+import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/order_status_theme.dart';
 import '../../../shared/widgets/receipt_viewer_screen.dart';
+import '../../inventory/ui/inventory_item_detail_screen.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
 import '../logic/rep_order_detail_cubit.dart';
@@ -66,7 +68,7 @@ class RepOrderDetailScreen extends StatelessWidget {
               const SizedBox(height: 20),
               _InfoCard(order: order),
               const SizedBox(height: 16),
-              _ItemsSection(order: order, receipts: state.receipts, isActing: state.isActing),
+              _ItemsSection(order: order, receipts: state.receipts, isActing: state.isActing, stockItems: state.stockItems),
               const SizedBox(height: 24),
               _ActionSection(state: state),
               const SizedBox(height: 24),
@@ -364,11 +366,13 @@ class _ItemsSection extends StatelessWidget {
   final Order order;
   final Map<String, String> receipts;
   final bool isActing;
+  final Map<String, InventoryItem> stockItems;
 
   const _ItemsSection({
     required this.order,
     required this.receipts,
     required this.isActing,
+    required this.stockItems,
   });
 
   @override
@@ -378,6 +382,9 @@ class _ItemsSection extends StatelessWidget {
     final canUpload = order.status == OrderStatus.assigned ||
         order.status == OrderStatus.pickedUp ||
         order.status == OrderStatus.onTheMove;
+
+    final isFinished = order.status == OrderStatus.delivered ||
+        order.status == OrderStatus.deliveredToStorage;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -390,6 +397,10 @@ class _ItemsSection extends StatelessWidget {
               receiptUrl: receipts[item.id],
               isActing: isActing,
               canUpload: canUpload,
+              invItem: order.direction == OrderDirection.outbound
+                  ? stockItems[item.inventoryId]
+                  : null,
+              isFinished: isFinished,
             )),
       ],
     );
@@ -401,17 +412,26 @@ class _ItemTile extends StatelessWidget {
   final String? receiptUrl;
   final bool isActing;
   final bool canUpload;
+  final InventoryItem? invItem;
+  final bool isFinished;
 
   const _ItemTile({
     required this.item,
     required this.receiptUrl,
     required this.isActing,
     required this.canUpload,
+    this.invItem,
+    this.isFinished = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final hasReceipt = receiptUrl != null;
+    final showWarning = !item.isCustom &&
+        !isFinished &&
+        invItem != null &&
+        invItem!.quantity < item.effectiveQuantity;
+
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
@@ -420,7 +440,33 @@ class _ItemTile extends StatelessWidget {
           color: item.isCustom ? Colors.orange : Colors.teal,
         ),
         title: Text(item.displayName),
-        subtitle: Text('الكمية: ${item.effectiveQuantity}'),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('الكمية: ${item.effectiveQuantity}'),
+            if (showWarning)
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => InventoryItemDetailScreen(item: invItem!),
+                  ),
+                ),
+                child: Chip(
+                  avatar: const Icon(Icons.warning_amber_rounded,
+                      color: Colors.orange, size: 16),
+                  label: Text('المتوفر فقط: ${invItem!.quantity}',
+                      style: const TextStyle(
+                          fontSize: 11, color: Colors.orange)),
+                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                  side: BorderSide(
+                      color: Colors.orange.withValues(alpha: 0.4)),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+          ],
+        ),
         trailing: item.isCustom
             ? _ReceiptButton(
                 hasReceipt: hasReceipt,
@@ -565,7 +611,7 @@ class _ActionSectionState extends State<_ActionSection> {
   Widget build(BuildContext context) {
     final order = widget.state.order;
     final isActing = widget.state.isActing;
-    final canProceed = widget.state.allCustomItemsHaveReceipts;
+    final canProceed = true;
     final dir = order.direction;
     final status = order.status;
 

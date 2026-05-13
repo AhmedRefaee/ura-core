@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../logic/auth_cubit.dart';
 import '../logic/auth_state.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -61,7 +63,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         body: SafeArea(
           child: Center(
             child: SingleChildScrollView(
-              padding: const EdgeInsets.all(24),
+              padding: AppSpacing.screenPaddingInsets,
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 400),
                 child: _emailSent ? _SuccessView(email: _emailController.text.trim()) : _FormView(
@@ -97,49 +99,40 @@ class _FormView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Text(
+        Text(
           'إعادة تعيين كلمة المرور',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          style: AppTextStyles.headlineSmall,
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 12),
-        const Text(
+        SizedBox(height: AppSpacing.verticalMedium),
+        Text(
           'أدخل بريدك الإلكتروني وسنرسل لك رابط إعادة التعيين',
-          style: TextStyle(color: Colors.grey),
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 32),
-        TextField(
+        SizedBox(height: AppSpacing.verticalXXXLarge),
+        AppTextField(
           controller: emailController,
           enabled: !isLoading,
           keyboardType: TextInputType.emailAddress,
-          decoration: const InputDecoration(
-            labelText: 'البريد الإلكتروني',
-            border: OutlineInputBorder(),
-          ),
-          onSubmitted: (_) => onSubmit(),
+          label: 'البريد الإلكتروني',
         ),
         if (errorMessage != null) ...[
-          const SizedBox(height: 12),
+          SizedBox(height: AppSpacing.verticalMedium),
           Text(
             errorMessage!,
-            style: TextStyle(color: Theme.of(context).colorScheme.error),
+            style: TextStyle(color: AppColors.error),
             textAlign: TextAlign.center,
           ),
         ],
-        const SizedBox(height: 24),
-        FilledButton(
+        SizedBox(height: AppSpacing.verticalXXLarge),
+        AppButton(
+          text: 'إرسال رابط إعادة التعيين',
           onPressed: isLoading ? null : onSubmit,
-          child: isLoading
-              ? const SizedBox(
-                  height: 20,
-                  width: 20,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : const Text('إرسال رابط إعادة التعيين'),
+          isLoading: isLoading,
+          variant: AppButtonVariant.elevated,
         ),
       ],
     );
@@ -155,30 +148,35 @@ class _SuccessView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Icon(Icons.mark_email_read_outlined,
-            size: 64, color: Colors.green),
-        const SizedBox(height: 24),
-        const Text(
+        Icon(Icons.mark_email_read_outlined,
+            size: 64, color: AppColors.success),
+        SizedBox(height: AppSpacing.verticalXXLarge),
+        Text(
           'تم الإرسال!',
-          style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          style: AppTextStyles.headlineSmall,
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 12),
+        SizedBox(height: AppSpacing.verticalMedium),
         Text(
           'تم إرسال رابط إعادة تعيين كلمة المرور إلى\n$email',
-          style: const TextStyle(color: Colors.grey),
+          style: AppTextStyles.bodyMedium.copyWith(
+            color: AppColors.textSecondary,
+          ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 8),
-        const Text(
+        SizedBox(height: AppSpacing.verticalSmall),
+        Text(
           'افتح بريدك الإلكتروني واضغط على الرابط للمتابعة',
-          style: TextStyle(color: Colors.grey, fontSize: 13),
+          style: AppTextStyles.bodySmall.copyWith(
+            color: AppColors.textSecondary,
+          ),
           textAlign: TextAlign.center,
         ),
-        const SizedBox(height: 32),
-        OutlinedButton(
+        SizedBox(height: AppSpacing.verticalXXXLarge),
+        AppButton(
+          text: 'العودة لتسجيل الدخول',
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('العودة لتسجيل الدخول'),
+          variant: AppButtonVariant.outlined,
         ),
       ],
     );

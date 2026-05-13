@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../logic/inventory_list_cubit.dart';
@@ -42,8 +44,9 @@ class _InventoryAvailabilityViewState
         title: const Text('توافر المخزون'),
         actions: [
           BlocBuilder<InventoryListCubit, InventoryListState>(
-            builder: (context, state) => IconButton(
-              icon: const Icon(Icons.refresh),
+            builder: (context, state) => AppIconButton(
+              icon: Icons.refresh,
+              variant: AppIconButtonVariant.text,
               onPressed: () {
                 _searchController.clear();
                 context.read<InventoryListCubit>().loadInventory();
@@ -56,20 +59,24 @@ class _InventoryAvailabilityViewState
       body: BlocBuilder<InventoryListCubit, InventoryListState>(
         builder: (context, state) {
           if (state is InventoryListLoading || state is InventoryListInitial) {
-            return const Center(child: CircularProgressIndicator());
+            return const Center(child: AppLoadingIndicator());
           }
           if (state is InventoryListError) {
             return Center(
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(state.message,
-                      style: const TextStyle(color: Colors.red)),
-                  const SizedBox(height: 12),
-                  FilledButton(
+                  Text(
+                    state.message,
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      color: AppColors.error,
+                    ),
+                  ),
+                  SizedBox(height: AppSpacing.verticalMedium),
+                  AppButton(
                     onPressed: () =>
                         context.read<InventoryListCubit>().loadInventory(),
-                    child: const Text('إعادة المحاولة'),
+                    text: 'إعادة المحاولة',
                   ),
                 ],
               ),
@@ -101,15 +108,20 @@ class _LoadedView extends StatelessWidget {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
+          padding: AppSpacing.horizontalMediumPadding.copyWith(top: AppSpacing.verticalMedium),
           child: TextField(
             controller: searchController,
+            style: AppTextStyles.bodyLarge,
             decoration: InputDecoration(
               hintText: 'بحث باسم الصنف أو رمز SKU...',
+              hintStyle: AppTextStyles.bodyLarge.copyWith(
+                color: AppColors.textTertiary,
+              ),
               prefixIcon: const Icon(Icons.search),
               suffixIcon: searchController.text.isNotEmpty
-                  ? IconButton(
-                      icon: const Icon(Icons.clear),
+                  ? AppIconButton(
+                      icon: Icons.clear,
+                      variant: AppIconButtonVariant.text,
                       onPressed: () {
                         searchController.clear();
                         context.read<InventoryListCubit>().setSearch('');
@@ -117,15 +129,17 @@ class _LoadedView extends StatelessWidget {
                     )
                   : null,
               border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: BorderRadius.circular(AppConstants.borderRadiusMedium),
               ),
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.horizontalLarge,
+                vertical: 0,
+              ),
             ),
             onChanged: (v) => context.read<InventoryListCubit>().setSearch(v),
           ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: AppSpacing.verticalSmall),
         _FilterRow(state: state),
         const SizedBox(height: 4),
         Expanded(
@@ -135,7 +149,12 @@ class _LoadedView extends StatelessWidget {
               return context.read<InventoryListCubit>().loadInventory();
             },
             child: items.isEmpty
-                ? const Center(child: Text('لا توجد عناصر تطابق البحث'))
+                ? Center(
+                    child: Text(
+                      'لا توجد عناصر تطابق البحث',
+                      style: AppTextStyles.bodyMedium,
+                    ),
+                  )
                 : ListView.builder(
                     itemCount: items.length,
                     itemBuilder: (_, i) => InventoryItemCard(item: items[i]),
@@ -155,39 +174,39 @@ class _FilterRow extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 12),
+      padding: AppSpacing.horizontalMediumPadding,
       child: Row(
         children: [
           // Availability status filters
           _StatusFilterChip(
             label: 'متوفر',
             status: AvailabilityStatus.available,
-            color: Colors.green,
+            color: SemanticColors.success,
             selected: state.statusFilter == AvailabilityStatus.available,
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: AppSpacing.horizontalXSmall),
           _StatusFilterChip(
             label: 'منخفض',
             status: AvailabilityStatus.low,
-            color: Colors.orange,
+            color: SemanticColors.warning,
             selected: state.statusFilter == AvailabilityStatus.low,
           ),
-          const SizedBox(width: 6),
+          SizedBox(width: AppSpacing.horizontalXSmall),
           _StatusFilterChip(
             label: 'نفد',
             status: AvailabilityStatus.outOfStock,
-            color: Colors.red,
+            color: SemanticColors.error,
             selected: state.statusFilter == AvailabilityStatus.outOfStock,
           ),
           // Category filters
           if (state.availableCategories.isNotEmpty) ...[
-            const SizedBox(width: 12),
+            SizedBox(width: AppSpacing.horizontalMedium),
             const VerticalDivider(width: 1),
-            const SizedBox(width: 12),
+            SizedBox(width: AppSpacing.horizontalMedium),
             ...state.availableCategories.map((cat) => Padding(
-                  padding: const EdgeInsets.only(right: 6),
+                  padding: EdgeInsets.only(right: AppSpacing.horizontalXSmall),
                   child: FilterChip(
-                    label: Text(cat),
+                    label: Text(cat, style: AppTextStyles.bodyMedium),
                     selected: state.selectedCategory == cat,
                     onSelected: (on) => context
                         .read<InventoryListCubit>()
@@ -217,11 +236,11 @@ class _StatusFilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FilterChip(
-      label: Text(label),
+      label: Text(label, style: AppTextStyles.bodyMedium),
       selected: selected,
       selectedColor: color.withAlpha(40),
       checkmarkColor: color,
-      labelStyle: TextStyle(
+      labelStyle: AppTextStyles.bodyMedium.copyWith(
         color: selected ? color : null,
         fontWeight: selected ? FontWeight.bold : null,
       ),

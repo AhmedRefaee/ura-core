@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/profile.dart';
@@ -18,10 +19,7 @@ class UserOrdersInitial extends UserOrdersState {}
 class UserOrdersLoading extends UserOrdersState {}
 
 class UserOrdersLoaded extends UserOrdersState {
-  /// Active / in-progress orders (or all orders for non-storage roles).
   final List<Order> orders;
-
-  /// Completed orders — only populated for the storageActor role.
   final List<Order> doneOrders;
 
   const UserOrdersLoaded({
@@ -50,39 +48,48 @@ class UserOrdersCubit extends Cubit<UserOrdersState> {
   Future<void> loadForUser(Profile user) async {
     logger.d('UserOrdersCubit → loadForUser: ${user.id} (${user.role})');
     emit(UserOrdersLoading());
-    try {
-      const doneStatuses = {
-        OrderStatus.delivered,
-        OrderStatus.deliveredToStorage,
-      };
 
-      switch (user.role) {
-        case UserRole.rep:
-          final all = await _repo.fetchOrdersByRep(user.id);
-          emit(UserOrdersLoaded(
-            orders:
-                all.where((o) => !doneStatuses.contains(o.status)).toList(),
-            doneOrders:
-                all.where((o) => doneStatuses.contains(o.status)).toList(),
-          ));
+    const doneStatuses = {
+      OrderStatus.delivered,
+      OrderStatus.deliveredToStorage,
+    };
 
-        case UserRole.storageActor:
-          final all = await _repo.fetchOrdersByStorageActor(user.id);
-          emit(UserOrdersLoaded(
-            orders:
-                all.where((o) => !doneStatuses.contains(o.status)).toList(),
-            doneOrders:
-                all.where((o) => doneStatuses.contains(o.status)).toList(),
-          ));
+    switch (user.role) {
+      case UserRole.rep:
+        final result = await _repo.fetchOrdersByRep(user.id);
+        switch (result) {
+          case AppSuccess(:final data):
+            emit(UserOrdersLoaded(
+              orders: data.where((o) => !doneStatuses.contains(o.status)).toList(),
+              doneOrders: data.where((o) => doneStatuses.contains(o.status)).toList(),
+            ));
+          case AppFailure(:final error):
+            logger.e('UserOrdersCubit → load failed: ${error.message}');
+            emit(UserOrdersError(error.message));
+        }
 
-        default:
-          // verifier and manager: show orders they created
-          final orders = await _repo.fetchOrdersByCreator(user.id);
-          emit(UserOrdersLoaded(orders: orders));
-      }
-    } catch (e, st) {
-      logger.e('UserOrdersCubit → load failed', error: e, stackTrace: st);
-      emit(UserOrdersError(e.toString()));
+      case UserRole.storageActor:
+        final result = await _repo.fetchOrdersByStorageActor(user.id);
+        switch (result) {
+          case AppSuccess(:final data):
+            emit(UserOrdersLoaded(
+              orders: data.where((o) => !doneStatuses.contains(o.status)).toList(),
+              doneOrders: data.where((o) => doneStatuses.contains(o.status)).toList(),
+            ));
+          case AppFailure(:final error):
+            logger.e('UserOrdersCubit → load failed: ${error.message}');
+            emit(UserOrdersError(error.message));
+        }
+
+      default:
+        final result = await _repo.fetchOrdersByCreator(user.id);
+        switch (result) {
+          case AppSuccess(:final data):
+            emit(UserOrdersLoaded(orders: data));
+          case AppFailure(:final error):
+            logger.e('UserOrdersCubit → load failed: ${error.message}');
+            emit(UserOrdersError(error.message));
+        }
     }
   }
 }

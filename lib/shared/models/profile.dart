@@ -32,6 +32,32 @@ class Profile extends Equatable {
     );
   }
 
+  Map<String, dynamic> toMap() {
+    return {
+      'id': id,
+      'full_name': fullName,
+      'phone': phone,
+      'role': _roleToString(role),
+      'is_approved': isApproved,
+      'created_at': createdAt?.toIso8601String(),
+    };
+  }
+
+  static String? _roleToString(UserRole? role) {
+    switch (role) {
+      case UserRole.verifier:
+        return 'verifier';
+      case UserRole.rep:
+        return 'rep';
+      case UserRole.storageActor:
+        return 'storage_actor';
+      case UserRole.manager:
+        return 'manager';
+      case null:
+        return null;
+    }
+  }
+
   static UserRole? _roleFromString(String? value) {
     switch (value) {
       case 'verifier':

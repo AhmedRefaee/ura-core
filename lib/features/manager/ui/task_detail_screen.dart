@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/chat_message.dart';
+import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_edit_log_entry.dart';
 import '../../../shared/models/order_item.dart';
+import '../../inventory/ui/inventory_item_detail_screen.dart';
 import '../../../shared/models/profile.dart';
 import '../../../shared/order_status_theme.dart';
 import '../../../shared/widgets/receipt_viewer_screen.dart';
@@ -15,6 +18,7 @@ import '../../../features/verifier/data/order_repository.dart';
 import '../../../features/verifier/logic/edit_order_cubit.dart';
 import '../../../features/verifier/ui/edit_order_screen.dart';
 import '../logic/task_detail_cubit.dart';
+import '../../profile/ui/profile_screen.dart';
 
 class TaskDetailScreen extends StatelessWidget {
   final String orderId;
@@ -141,7 +145,7 @@ class _TaskDetailView extends StatelessWidget {
               const SizedBox(height: 16),
               _StatusTimeline(order: order, auditLog: auditLog),
               const SizedBox(height: 16),
-              _ItemsCard(items: order.items, orderStatus: order.status, receipts: receipts),
+              _ItemsCard(items: order.items, orderStatus: order.status, receipts: receipts, stockItems: state.stockItems, orderDirection: order.direction),
               const SizedBox(height: 16),
               _EditHistorySection(orderId: order.id),
             ],
@@ -168,7 +172,22 @@ class _OrderInfoCard extends StatelessWidget {
           children: [
             _Row(Icons.business, 'الجهة', order.entity?.name ?? '—'),
             _Row(Icons.swap_horiz, 'الاتجاه', order.directionLabel),
-            _Row(Icons.person_outline, 'المندوب', order.rep?.fullName ?? 'لا يوجد'),
+            _Row(
+              Icons.person_outline,
+              'المندوب',
+              order.rep?.fullName ?? 'لا يوجد',
+              onTap: order.rep != null
+                  ? () => Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) => ProfileScreen(
+                            profile: order.rep!,
+                            isSelf: false,
+                          ),
+                        ),
+                      )
+                  : null,
+            ),
             if (order.notes != null && order.notes!.isNotEmpty)
               _Row(Icons.notes, 'ملاحظات', order.notes!),
           ],
@@ -182,10 +201,26 @@ class _Row extends StatelessWidget {
   final IconData icon;
   final String label;
   final String value;
-  const _Row(this.icon, this.label, this.value);
+  final VoidCallback? onTap;
+  const _Row(this.icon, this.label, this.value, {this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final valueWidget = onTap != null
+        ? GestureDetector(
+            onTap: onTap,
+            child: Text(
+              value,
+              style: TextStyle(
+                fontWeight: FontWeight.w500,
+                fontSize: 13,
+                color: Theme.of(context).colorScheme.primary,
+                decoration: TextDecoration.underline,
+              ),
+            ),
+          )
+        : Text(value,
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13));
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
@@ -193,10 +228,7 @@ class _Row extends StatelessWidget {
           Icon(icon, size: 16, color: Colors.grey),
           const SizedBox(width: 8),
           Text('$label: ', style: const TextStyle(color: Colors.grey, fontSize: 13)),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-          ),
+          Expanded(child: valueWidget),
         ],
       ),
     );
@@ -469,11 +501,15 @@ class _DurationBadge extends StatelessWidget {
 class _ItemsCard extends StatelessWidget {
   final List<OrderItem> items;
   final OrderStatus orderStatus;
+  final OrderDirection orderDirection;
   final Map<String, String> receipts;
+  final Map<String, InventoryItem> stockItems;
   const _ItemsCard({
     required this.items,
     required this.orderStatus,
+    required this.orderDirection,
     required this.receipts,
+    this.stockItems = const {},
   });
 
   String _fmt(DateTime? dt) {
@@ -502,6 +538,9 @@ class _ItemsCard extends StatelessWidget {
               fmt: _fmt,
               orderStatus: orderStatus,
               receipts: receipts,
+              invItem: orderDirection == OrderDirection.outbound
+                  ? stockItems[item.inventoryId]
+                  : null,
             )),
           ],
         ),
@@ -515,11 +554,13 @@ class _ItemRow extends StatelessWidget {
   final String Function(DateTime?) fmt;
   final OrderStatus orderStatus;
   final Map<String, String> receipts;
+  final InventoryItem? invItem;
   const _ItemRow({
     required this.item,
     required this.fmt,
     required this.orderStatus,
     required this.receipts,
+    this.invItem,
   });
 
   @override
@@ -565,6 +606,32 @@ class _ItemRow extends StatelessWidget {
                       : 'الكمية: ${item.quantity}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
+                if (!item.isCustom &&
+                    orderStatus != OrderStatus.delivered &&
+                    orderStatus != OrderStatus.deliveredToStorage &&
+                    invItem != null &&
+                    invItem!.quantity < item.effectiveQuantity)
+                  GestureDetector(
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            InventoryItemDetailScreen(item: invItem!),
+                      ),
+                    ),
+                    child: Chip(
+                      avatar: const Icon(Icons.warning_amber_rounded,
+                          color: Colors.orange, size: 16),
+                      label: Text('المتوفر فقط: ${invItem!.quantity}',
+                          style: const TextStyle(
+                              fontSize: 11, color: Colors.orange)),
+                      backgroundColor:
+                          Colors.orange.withValues(alpha: 0.1),
+                      side: BorderSide(
+                          color: Colors.orange.withValues(alpha: 0.4)),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ),
                 if (!item.isCustom &&
                     !(item.checkStatus == ItemCheckStatus.pending &&
                         orderStatus == OrderStatus.delivered)) ...[
@@ -643,11 +710,13 @@ class _EditHistorySectionState extends State<_EditHistorySection> {
   }
 
   Future<void> _loadEditLog() async {
-    try {
-      final entries = await _repo.fetchEditLog(widget.orderId);
-      if (mounted) setState(() { _entries = entries; _isLoading = false; });
-    } catch (_) {
-      if (mounted) setState(() => _isLoading = false);
+    final result = await _repo.fetchEditLog(widget.orderId);
+    if (!mounted) return;
+    switch (result) {
+      case AppSuccess(:final data):
+        setState(() { _entries = data; _isLoading = false; });
+      case AppFailure():
+        setState(() => _isLoading = false);
     }
   }
 
@@ -814,7 +883,15 @@ class _CommunicationHistorySectionState
   @override
   void initState() {
     super.initState();
-    _future = sl<ChatRepository>().getOrderCommunicationHistory(widget.orderId);
+    _future = _loadHistory();
+  }
+
+  Future<List<ChatMessage>> _loadHistory() async {
+    final result = await sl<ChatRepository>().getOrderCommunicationHistory(widget.orderId);
+    return switch (result) {
+      AppSuccess(:final data) => data,
+      AppFailure() => [],
+    };
   }
 
   @override

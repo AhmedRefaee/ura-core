@@ -1,10 +1,13 @@
 import 'dart:io';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
+import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
 import '../data/storage_repository.dart';
+import '../../verifier/data/inventory_repository.dart';
 
 // ─── States ──────────────────────────────────────────────────────────────────
 
@@ -20,35 +23,27 @@ class StorageOrderDetailLoading extends StorageOrderDetailState {}
 
 class StorageOrderDetailLoaded extends StorageOrderDetailState {
   final Order order;
-  final Map<String, String> receipts; // itemId → imageUrl (Flow 4)
-
-  /// Optimistic check status overrides, rolled back on failure.
+  final Map<String, String> receipts;
+  final Map<String, InventoryItem> stockItems;
   final Map<String, ItemCheckStatus> pendingStatuses;
-
-  /// Optimistic quantity edits by the storage actor before confirming.
   final Map<String, int> editedQuantities;
-
-  /// True while an RPC call is in-flight.
   final bool isActing;
 
   const StorageOrderDetailLoaded({
     required this.order,
     this.receipts = const {},
+    this.stockItems = const {},
     this.pendingStatuses = const {},
     this.editedQuantities = const {},
     this.isActing = false,
   });
 
-  // ── Derived helpers ──────────────────────────────────────────────────────
-
   ItemCheckStatus effectiveStatus(OrderItem item) =>
       pendingStatuses[item.id] ?? item.checkStatus;
 
-  /// Effective quantity for an item: actor's local edit → DB final_quantity → original quantity.
   int effectiveQuantity(OrderItem item) =>
       editedQuantities[item.id] ?? item.effectiveQuantity;
 
-  /// All items checked or rejected (used as gate for inbound_external delivery).
   bool get allItemsReviewed {
     if (order.items.isEmpty) return false;
     return order.items.every((item) {
@@ -60,6 +55,7 @@ class StorageOrderDetailLoaded extends StorageOrderDetailState {
   StorageOrderDetailLoaded copyWith({
     Order? order,
     Map<String, String>? receipts,
+    Map<String, InventoryItem>? stockItems,
     Map<String, ItemCheckStatus>? pendingStatuses,
     Map<String, int>? editedQuantities,
     bool? isActing,
@@ -67,6 +63,7 @@ class StorageOrderDetailLoaded extends StorageOrderDetailState {
     return StorageOrderDetailLoaded(
       order: order ?? this.order,
       receipts: receipts ?? this.receipts,
+      stockItems: stockItems ?? this.stockItems,
       pendingStatuses: pendingStatuses ?? this.pendingStatuses,
       editedQuantities: editedQuantities ?? this.editedQuantities,
       isActing: isActing ?? this.isActing,
@@ -75,7 +72,7 @@ class StorageOrderDetailLoaded extends StorageOrderDetailState {
 
   @override
   List<Object?> get props =>
-      [order, receipts, pendingStatuses, editedQuantities, isActing];
+      [order, receipts, stockItems, pendingStatuses, editedQuantities, isActing];
 }
 
 class StorageOrderDetailError extends StorageOrderDetailState {
@@ -85,8 +82,6 @@ class StorageOrderDetailError extends StorageOrderDetailState {
   List<Object?> get props => [message];
 }
 
-/// Emitted after a confirm action (pickup/delivery) completes successfully.
-/// The screen should pop back to the home screen on this state.
 class StorageOrderDetailSuccess extends StorageOrderDetailState {
   final String message;
   const StorageOrderDetailSuccess(this.message);
@@ -98,65 +93,82 @@ class StorageOrderDetailSuccess extends StorageOrderDetailState {
 
 class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState> {
   final StorageRepository _repo;
+  final InventoryRepository _inventoryRepo;
   final String orderId;
 
-  StorageOrderDetailCubit(this._repo, this.orderId)
+  StorageOrderDetailCubit(this._repo, this.orderId, this._inventoryRepo)
       : super(StorageOrderDetailInitial());
 
   Future<void> load() async {
     logger.d('StorageOrderDetailCubit → load: $orderId');
     emit(StorageOrderDetailLoading());
-    try {
-      final results = await Future.wait([
-        _repo.fetchOrderDetail(orderId),
-        _repo.fetchReceipts(orderId),
-      ]);
-      emit(StorageOrderDetailLoaded(
-        order: results[0] as Order,
-        receipts: results[1] as Map<String, String>,
-      ));
-    } catch (e, st) {
-      logger.e('StorageOrderDetailCubit → load failed', error: e, stackTrace: st);
-      emit(StorageOrderDetailError(e.toString()));
-    }
-  }
 
-  // ── Item check (Flow 4 — inbound_external) ────────────────────────────────
+    final results = await Future.wait([
+      _repo.fetchOrderDetail(orderId),
+      _repo.fetchReceipts(orderId),
+    ]);
+
+    final orderError = results[0].failureOrNull;
+    if (orderError != null) {
+      logger.e('StorageOrderDetailCubit → load failed: ${orderError.message}');
+      emit(StorageOrderDetailError(orderError.message));
+      return;
+    }
+    final receiptsError = results[1].failureOrNull;
+    if (receiptsError != null) {
+      logger.e('StorageOrderDetailCubit → load failed: ${receiptsError.message}');
+      emit(StorageOrderDetailError(receiptsError.message));
+      return;
+    }
+
+    final order = (results[0] as AppSuccess<Order>).data;
+    final invIds = order.items
+        .where((i) => !i.isCustom && i.inventoryId != null)
+        .map((i) => i.inventoryId!)
+        .toList();
+    final stockResult = await _inventoryRepo.fetchItemsByIds(invIds);
+    final stockError = stockResult.failureOrNull;
+    if (stockError != null) {
+      logger.e('StorageOrderDetailCubit → fetchItemsByIds failed: ${stockError.message}');
+      emit(StorageOrderDetailError(stockError.message));
+      return;
+    }
+
+    emit(StorageOrderDetailLoaded(
+      order: order,
+      receipts: (results[1] as AppSuccess<Map<String, String>>).data,
+      stockItems: (stockResult as AppSuccess<Map<String, InventoryItem>>).data,
+    ));
+  }
 
   Future<void> checkItem(String itemId, ItemCheckStatus newStatus) async {
     final s = state;
     if (s is! StorageOrderDetailLoaded) return;
 
-    // Optimistic update
     final optimistic = Map<String, ItemCheckStatus>.from(s.pendingStatuses)
       ..[itemId] = newStatus;
     emit(s.copyWith(pendingStatuses: optimistic));
     logger.d('StorageOrderDetailCubit → checkItem $itemId → $newStatus (optimistic)');
 
-    try {
-      if (newStatus == ItemCheckStatus.pending) {
-        await _repo.revertItemCheckStatus(itemId);
-      } else {
-        await _repo.updateItemCheckStatus(itemId, newStatus);
-      }
-      logger.i('StorageOrderDetailCubit → checkItem saved: $itemId → $newStatus');
-    } catch (e, st) {
-      logger.e('StorageOrderDetailCubit → checkItem failed, rolling back',
-          error: e, stackTrace: st);
-      final current = state;
-      if (current is StorageOrderDetailLoaded) {
-        final rolledBack =
-            Map<String, ItemCheckStatus>.from(current.pendingStatuses)
-              ..remove(itemId);
-        emit(current.copyWith(pendingStatuses: rolledBack));
-      }
-      emit(StorageOrderDetailError(e.toString()));
+    final result = newStatus == ItemCheckStatus.pending
+        ? await _repo.revertItemCheckStatus(itemId)
+        : await _repo.updateItemCheckStatus(itemId, newStatus);
+
+    switch (result) {
+      case AppSuccess():
+        logger.i('StorageOrderDetailCubit → checkItem saved: $itemId → $newStatus');
+      case AppFailure(:final error):
+        logger.e('StorageOrderDetailCubit → checkItem failed, rolling back: ${error.message}');
+        final current = state;
+        if (current is StorageOrderDetailLoaded) {
+          final rolledBack = Map<String, ItemCheckStatus>.from(current.pendingStatuses)
+            ..remove(itemId);
+          emit(current.copyWith(pendingStatuses: rolledBack));
+        }
+        emit(StorageOrderDetailError(error.message));
     }
   }
 
-  // ── Quantity editing ──────────────────────────────────────────────────────
-
-  /// Updates the local (optimistic) quantity. Persists to DB immediately.
   Future<void> editQuantity(String itemId, int quantity) async {
     final s = state;
     if (s is! StorageOrderDetailLoaded) return;
@@ -164,23 +176,21 @@ class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState> {
     final updated = Map<String, int>.from(s.editedQuantities)..[itemId] = quantity;
     emit(s.copyWith(editedQuantities: updated));
 
-    try {
-      await _repo.updateFinalQuantity(itemId, quantity);
-      logger.i('StorageOrderDetailCubit → quantity updated: $itemId → $quantity');
-    } catch (e, st) {
-      logger.e('StorageOrderDetailCubit → editQuantity failed', error: e, stackTrace: st);
-      // Rollback local edit
-      final current = state;
-      if (current is StorageOrderDetailLoaded) {
-        final rolledBack = Map<String, int>.from(current.editedQuantities)
-          ..remove(itemId);
-        emit(current.copyWith(editedQuantities: rolledBack));
-      }
-      emit(StorageOrderDetailError(e.toString()));
+    final result = await _repo.updateFinalQuantity(itemId, quantity);
+    switch (result) {
+      case AppSuccess():
+        logger.i('StorageOrderDetailCubit → quantity updated: $itemId → $quantity');
+      case AppFailure(:final error):
+        logger.e('StorageOrderDetailCubit → editQuantity failed: ${error.message}');
+        final current = state;
+        if (current is StorageOrderDetailLoaded) {
+          final rolledBack = Map<String, int>.from(current.editedQuantities)
+            ..remove(itemId);
+          emit(current.copyWith(editedQuantities: rolledBack));
+        }
+        emit(StorageOrderDetailError(error.message));
     }
   }
-
-  // ── Receipt upload (Flow 4) ───────────────────────────────────────────────
 
   Future<void> uploadReceipt({
     required String orderItemId,
@@ -189,76 +199,80 @@ class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState> {
     final s = state;
     if (s is! StorageOrderDetailLoaded) return;
     emit(s.copyWith(isActing: true));
-    try {
-      final url = await _repo.uploadReceipt(
-        orderId: orderId,
-        orderItemId: orderItemId,
-        imageFile: imageFile,
-      );
-      final updatedReceipts = Map<String, String>.from(s.receipts)
-        ..[orderItemId] = url;
-      final order = await _repo.fetchOrderDetail(orderId);
-      emit(StorageOrderDetailLoaded(
-        order: order,
-        receipts: updatedReceipts,
-        pendingStatuses: s.pendingStatuses,
-        editedQuantities: s.editedQuantities,
-      ));
-    } catch (e, st) {
-      logger.e('StorageOrderDetailCubit → uploadReceipt failed', error: e, stackTrace: st);
-      emit(StorageOrderDetailError(e.toString()));
+
+    final uploadResult = await _repo.uploadReceipt(
+      orderId: orderId,
+      orderItemId: orderItemId,
+      imageFile: imageFile,
+    );
+    switch (uploadResult) {
+      case AppSuccess(:final data):
+        final updatedReceipts = Map<String, String>.from(s.receipts)..[orderItemId] = data;
+        final orderResult = await _repo.fetchOrderDetail(orderId);
+        switch (orderResult) {
+          case AppSuccess(:final data):
+            emit(StorageOrderDetailLoaded(
+              order: data,
+              receipts: updatedReceipts,
+              stockItems: s.stockItems,
+              pendingStatuses: s.pendingStatuses,
+              editedQuantities: s.editedQuantities,
+            ));
+          case AppFailure(:final error):
+            logger.e('StorageOrderDetailCubit → reload after upload failed: ${error.message}');
+            emit(StorageOrderDetailError(error.message));
+        }
+      case AppFailure(:final error):
+        logger.e('StorageOrderDetailCubit → uploadReceipt failed: ${error.message}');
+        emit(StorageOrderDetailError(error.message));
     }
   }
 
-  // ── Confirm actions ───────────────────────────────────────────────────────
-
-  /// Flow 1 (outbound + storage): releases items, decreases inventory.
   Future<void> confirmPickup({String? notes}) async {
     final s = state;
     if (s is! StorageOrderDetailLoaded || s.isActing) return;
     logger.d('StorageOrderDetailCubit → confirmPickup: $orderId');
     emit(s.copyWith(isActing: true));
-    try {
-      final quantities = _buildFinalQuantities(s);
-      await _repo.confirmPickup(orderId, notes: notes, finalQuantities: quantities);
-      logger.i('StorageOrderDetailCubit → confirmPickup success');
-      emit(const StorageOrderDetailSuccess('تم تأكيد الإرسال بنجاح'));
-    } catch (e, st) {
-      logger.e('StorageOrderDetailCubit → confirmPickup failed', error: e, stackTrace: st);
-      emit(StorageOrderDetailError(e.toString()));
+    final result = await _repo.confirmPickup(
+      orderId,
+      notes: notes,
+      finalQuantities: _buildFinalQuantities(s),
+    );
+    switch (result) {
+      case AppSuccess():
+        logger.i('StorageOrderDetailCubit → confirmPickup success');
+        emit(const StorageOrderDetailSuccess('تم تأكيد الإرسال بنجاح'));
+      case AppFailure(:final error):
+        logger.e('StorageOrderDetailCubit → confirmPickup failed: ${error.message}');
+        emit(StorageOrderDetailError(error.message));
     }
   }
 
-  /// Flow 3 (inbound_rep) & Flow 4 (inbound_external): receives items, increases inventory.
   Future<void> confirmDelivery({String? notes}) async {
     final s = state;
     if (s is! StorageOrderDetailLoaded || s.isActing) return;
     logger.d('StorageOrderDetailCubit → confirmDelivery: $orderId');
     emit(s.copyWith(isActing: true));
-    try {
-      final quantities = _buildFinalQuantities(s);
-      await _repo.confirmDelivery(orderId, notes: notes, finalQuantities: quantities);
-      logger.i('StorageOrderDetailCubit → confirmDelivery success');
-      emit(const StorageOrderDetailSuccess('تم تأكيد الاستلام بنجاح'));
-    } catch (e, st) {
-      logger.e('StorageOrderDetailCubit → confirmDelivery failed', error: e, stackTrace: st);
-      emit(StorageOrderDetailError(e.toString()));
+    final result = await _repo.confirmDelivery(
+      orderId,
+      notes: notes,
+      finalQuantities: _buildFinalQuantities(s),
+    );
+    switch (result) {
+      case AppSuccess():
+        logger.i('StorageOrderDetailCubit → confirmDelivery success');
+        emit(const StorageOrderDetailSuccess('تم تأكيد الاستلام بنجاح'));
+      case AppFailure(:final error):
+        logger.e('StorageOrderDetailCubit → confirmDelivery failed: ${error.message}');
+        emit(StorageOrderDetailError(error.message));
     }
   }
 
-  // ── Helpers ───────────────────────────────────────────────────────────────
-
-  /// Builds the final_quantities payload from local edits, only for items
-  /// that have an inventory_id (non-custom).
-  List<Map<String, dynamic>> _buildFinalQuantities(
-      StorageOrderDetailLoaded s) {
+  List<Map<String, dynamic>> _buildFinalQuantities(StorageOrderDetailLoaded s) {
     return s.order.items
         .where((item) => item.inventoryId != null && !item.isCustom)
         .where((item) => s.editedQuantities.containsKey(item.id))
-        .map((item) => {
-              'item_id': item.id,
-              'quantity': s.editedQuantities[item.id]!,
-            })
+        .map((item) => {'item_id': item.id, 'quantity': s.editedQuantities[item.id]!})
         .toList();
   }
 }

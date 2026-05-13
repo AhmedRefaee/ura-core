@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../features/auth/logic/auth_cubit.dart';
 import '../../../features/auth/logic/auth_state.dart';
 import '../../../shared/models/profile.dart';
 import '../../../core/di/injection.dart';
+import '../../../core/errors/app_result.dart';
 import '../data/chat_repository.dart';
 
 class ThreadMembersScreen extends StatefulWidget {
@@ -27,20 +29,57 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
   List<Profile> _members = [];
   bool _loading = true;
   String? _error;
+  bool _systemMessagesEnabled = true;
 
   @override
   void initState() {
     super.initState();
     _loadMembers();
+    _loadSystemMessagesSetting();
   }
 
   Future<void> _loadMembers() async {
     setState(() { _loading = true; _error = null; });
     try {
-      final members = await _repo.getThreadParticipants(widget.threadId);
-      if (mounted) setState(() { _members = members; _loading = false; });
+      final membersResult = await _repo.getThreadParticipants(widget.threadId);
+      if (membersResult is AppSuccess<List<Profile>>) {
+        if (mounted) setState(() { _members = membersResult.data; _loading = false; });
+      } else if (mounted) {
+        final error = (membersResult as AppFailure).error;
+        setState(() { _error = error.message; _loading = false; });
+      }
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
+    }
+  }
+
+  Future<void> _loadSystemMessagesSetting() async {
+    try {
+      final result = await _repo.getThread(widget.threadId);
+      if (result is AppSuccess<Map<String, dynamic>>) {
+        final threadData = result.data;
+        if (mounted) {
+          setState(() {
+            _systemMessagesEnabled =
+                (threadData['system_messages_enabled'] as bool?) ?? true;
+          });
+        }
+      }
+    } catch (e) {
+      // Best effort; default to true
+    }
+  }
+
+  Future<void> _toggleSystemMessages(bool value) async {
+    try {
+      await _repo.toggleSystemMessages(widget.threadId, value);
+      if (mounted) setState(() => _systemMessagesEnabled = value);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
+        );
+      }
     }
   }
 
@@ -87,7 +126,18 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
     final currentIds = _members.map((m) => m.id).toSet();
     List<Profile> allUsers;
     try {
-      allUsers = await _repo.getUsers();
+      final usersResult = await _repo.getUsers();
+      if (usersResult is AppSuccess<List<Profile>>) {
+        allUsers = usersResult.data;
+      } else {
+        final error = (usersResult as AppFailure).error;
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('خطأ: ${error.message}'), backgroundColor: Colors.red),
+          );
+        }
+        return;
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -126,6 +176,9 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
   @override
   Widget build(BuildContext context) {
     final canManage = _canManage(context);
+    final myId = Supabase.instance.client.auth.currentUser?.id;
+    final isCreator = myId != null && myId == widget.createdBy;
+    
     return Scaffold(
       appBar: AppBar(
         title: Text('أعضاء: ${widget.threadTitle}'),
@@ -136,7 +189,30 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
           ),
         ],
       ),
-      body: _buildBody(canManage),
+      body: Column(
+        children: [
+          Expanded(child: _buildBody(canManage)),
+          // System messages toggle (only for thread creator)
+          if (isCreator)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surface,
+                border: Border(top: BorderSide(color: Colors.grey.shade200)),
+              ),
+              child: SwitchListTile(
+                title: const Text('رسائل النظام التلقائية'),
+                subtitle: const Text(
+                  'إظهار إشعارات تغيير حالة الطلب في المحادثة',
+                  style: TextStyle(fontSize: 12),
+                ),
+                value: _systemMessagesEnabled,
+                onChanged: _toggleSystemMessages,
+                contentPadding: EdgeInsets.zero,
+              ),
+            ),
+        ],
+      ),
       floatingActionButton: canManage
           ? FloatingActionButton.extended(
               onPressed: _addMembers,

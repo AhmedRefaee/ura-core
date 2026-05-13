@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'profile.dart';
 
@@ -71,8 +72,22 @@ class OrderItem extends Equatable {
     );
   }
 
-  String get displayName =>
-      isCustom ? (customDescription ?? 'صنف مخصص') : (inventoryName ?? inventoryId ?? '');
+  Map<String, dynamic>? get customItemJson {
+    final desc = customDescription;
+    if (desc == null || !desc.startsWith('{')) return null;
+    try {
+      return jsonDecode(desc) as Map<String, dynamic>;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  String get displayName {
+    if (!isCustom) return inventoryName ?? inventoryId ?? '';
+    final json = customItemJson;
+    if (json != null) return json['name'] as String? ?? 'صنف مخصص';
+    return customDescription ?? 'صنف مخصص';
+  }
 
   @override
   List<Object?> get props => [id, orderId, inventoryId, quantity, finalQuantity, isCustom, sourceInventoryId, checkStatus];

@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/profile.dart';
 import '../data/manager_repository.dart';
@@ -40,12 +41,13 @@ class UserTypeCubit extends Cubit<UserTypeState> {
   Future<void> load(String role) async {
     logger.d('UserTypeCubit → load: $role');
     emit(UserTypeLoading());
-    try {
-      final users = await _repo.fetchUsersByRole(role);
-      emit(UserTypeLoaded(users));
-    } catch (e, st) {
-      logger.e('UserTypeCubit → load failed', error: e, stackTrace: st);
-      emit(UserTypeError(e.toString()));
+    final result = await _repo.fetchUsersByRole(role);
+    switch (result) {
+      case AppSuccess(:final data):
+        emit(UserTypeLoaded(data));
+      case AppFailure(:final error):
+        logger.e('UserTypeCubit → load failed: ${error.message}');
+        emit(UserTypeError(error.message));
     }
   }
 }

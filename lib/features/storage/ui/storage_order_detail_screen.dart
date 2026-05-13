@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
+import '../../inventory/ui/inventory_form_screen.dart';
+import '../../inventory/ui/inventory_item_detail_screen.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
 import '../logic/storage_order_detail_cubit.dart';
@@ -250,6 +253,11 @@ class _ItemsSection extends StatelessWidget {
             state: state,
             showCheckControls: showCheckControls,
             showQtyEdit: storageTurn && item.inventoryId != null,
+            invItem: state.order.direction == OrderDirection.outbound
+                ? state.stockItems[item.inventoryId]
+                : null,
+            isFinished: state.order.status == OrderStatus.delivered ||
+                state.order.status == OrderStatus.deliveredToStorage,
           ),
         ),
       ],
@@ -262,18 +270,26 @@ class _ItemTile extends StatelessWidget {
   final StorageOrderDetailLoaded state;
   final bool showCheckControls;
   final bool showQtyEdit;
+  final InventoryItem? invItem;
+  final bool isFinished;
 
   const _ItemTile({
     required this.item,
     required this.state,
     required this.showCheckControls,
     required this.showQtyEdit,
+    this.invItem,
+    this.isFinished = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final effectiveQty = state.effectiveQuantity(item);
     final effectiveStatus = state.effectiveStatus(item);
+    final showWarning = !item.isCustom &&
+        !isFinished &&
+        invItem != null &&
+        invItem!.quantity < effectiveQty;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -321,10 +337,73 @@ class _ItemTile extends StatelessWidget {
             else
               Text('الكمية: $effectiveQty',
                   style: const TextStyle(fontSize: 13, color: Colors.grey)),
+            if (showWarning)
+              GestureDetector(
+                onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (_) => InventoryItemDetailScreen(item: invItem!),
+                  ),
+                ),
+                child: Chip(
+                  avatar: const Icon(Icons.warning_amber_rounded,
+                      color: Colors.orange, size: 16),
+                  label: Text('المتوفر فقط: ${invItem!.quantity}',
+                      style: const TextStyle(
+                          fontSize: 11, color: Colors.orange)),
+                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                  side: BorderSide(
+                      color: Colors.orange.withValues(alpha: 0.4)),
+                  visualDensity: VisualDensity.compact,
+                ),
+              ),
+            if (item.isCustom)
+              Align(
+                alignment: AlignmentDirectional.centerEnd,
+                child: TextButton.icon(
+                  icon: const Icon(Icons.add_box_outlined, size: 16),
+                  label: const Text('إضافة للمخزن'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.teal,
+                    visualDensity: VisualDensity.compact,
+                    textStyle: const TextStyle(fontSize: 13),
+                  ),
+                  onPressed: () => _openAddToStorage(context, item),
+                ),
+              ),
           ],
         ),
       ),
     );
+  }
+
+  void _openAddToStorage(BuildContext context, OrderItem item) async {
+    final json = item.customItemJson;
+    final prefill = CustomItemPrefill(
+      name: json != null ? (json['name'] as String? ?? item.customDescription ?? '') : (item.customDescription ?? ''),
+      quantity: item.effectiveQuantity,
+      unit: json?['unit'] as String? ?? 'قطعة',
+      sku: json?['sku'] as String?,
+      category: json?['category'] as String?,
+      minQuantity: (json?['minQty'] as num?)?.toInt() ?? 0,
+      description: json?['description'] as String?,
+    );
+
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => InventoryFormScreen(prefill: prefill),
+      ),
+    );
+
+    if (added == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تمت إضافة "${prefill.name}" للمخزن'),
+          backgroundColor: Colors.teal,
+        ),
+      );
+    }
   }
 }
 

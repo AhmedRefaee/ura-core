@@ -1,5 +1,7 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../data/inventory_management_repository.dart';
@@ -75,7 +77,6 @@ class InventoryListLoaded extends InventoryListState {
       [allItems, searchQuery, selectedCategory, statusFilter];
 }
 
-// Sentinel for nullable copyWith fields
 const _sentinel = Object();
 
 class InventoryListError extends InventoryListState {
@@ -89,39 +90,60 @@ class InventoryListError extends InventoryListState {
 
 class InventoryListCubit extends Cubit<InventoryListState> {
   final InventoryManagementRepository _repo;
+  RealtimeChannel? _channel;
 
   InventoryListCubit(this._repo) : super(InventoryListInitial());
 
   Future<void> loadInventory() async {
     emit(InventoryListLoading());
-    try {
-      final items = await _repo.fetchInventory();
-      logger.d('InventoryListCubit loaded ${items.length} items');
-      emit(InventoryListLoaded(allItems: items));
-    } catch (e) {
-      logger.e('InventoryListCubit load failed', error: e);
-      emit(InventoryListError(e.toString()));
+    await _fetchInventory();
+  }
+
+  Future<void> _fetchInventory() async {
+    final result = await _repo.fetchInventory();
+    if (isClosed) return;
+    switch (result) {
+      case AppSuccess(:final data):
+        logger.d('InventoryListCubit loaded ${data.length} items');
+        final current = state;
+        emit(InventoryListLoaded(allItems: data).copyWith(
+          searchQuery: current is InventoryListLoaded ? current.searchQuery : '',
+          selectedCategory: current is InventoryListLoaded ? current.selectedCategory : null,
+          statusFilter: current is InventoryListLoaded ? current.statusFilter : null,
+        ));
+        _channel ??= Supabase.instance.client
+            .channel('inventory-list-$hashCode')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'inventory_items',
+              callback: (_) => _fetchInventory(),
+            )
+            .subscribe();
+      case AppFailure(:final error):
+        logger.e('InventoryListCubit load failed: ${error.message}');
+        if (!isClosed) emit(InventoryListError(error.message));
     }
+  }
+
+  @override
+  Future<void> close() async {
+    await _channel?.unsubscribe();
+    return super.close();
   }
 
   void setSearch(String query) {
     final current = state;
-    if (current is InventoryListLoaded) {
-      emit(current.copyWith(searchQuery: query));
-    }
+    if (current is InventoryListLoaded) emit(current.copyWith(searchQuery: query));
   }
 
   void setCategory(String? category) {
     final current = state;
-    if (current is InventoryListLoaded) {
-      emit(current.copyWith(selectedCategory: category));
-    }
+    if (current is InventoryListLoaded) emit(current.copyWith(selectedCategory: category));
   }
 
   void setStatusFilter(AvailabilityStatus? status) {
     final current = state;
-    if (current is InventoryListLoaded) {
-      emit(current.copyWith(statusFilter: status));
-    }
+    if (current is InventoryListLoaded) emit(current.copyWith(statusFilter: status));
   }
 }

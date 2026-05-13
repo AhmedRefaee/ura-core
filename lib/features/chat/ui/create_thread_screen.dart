@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/di/injection.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../shared/models/profile.dart';
 import '../data/chat_repository.dart';
 
@@ -33,11 +34,13 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
   }
 
   Future<void> _loadUsers() async {
-    try {
-      final users = await _repo.getUsers();
-      if (mounted) setState(() { _users = users; _loadingUsers = false; });
-    } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loadingUsers = false; });
+    final result = await _repo.getUsers();
+    if (!mounted) return;
+    switch (result) {
+      case AppSuccess(:final data):
+        setState(() { _users = data; _loadingUsers = false; });
+      case AppFailure(:final error):
+        setState(() { _error = error.message; _loadingUsers = false; });
     }
   }
 
@@ -50,17 +53,18 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
       return;
     }
     setState(() => _creating = true);
-    try {
-      final threadId = await _repo.createThread(title);
-      await Future.wait(_selected.map((uid) => _repo.addParticipant(threadId, uid)));
-      if (mounted) Navigator.pop(context, (threadId: threadId, title: title));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('خطأ: $e'), backgroundColor: Colors.red),
-        );
-        setState(() => _creating = false);
-      }
+    final threadResult = await _repo.createThread(title);
+    switch (threadResult) {
+      case AppFailure(:final error):
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(error.message), backgroundColor: Colors.red),
+          );
+          setState(() => _creating = false);
+        }
+      case AppSuccess(:final data):
+        await Future.wait(_selected.map((uid) => _repo.addParticipant(data, uid)));
+        if (mounted) Navigator.pop(context, (threadId: data, title: title));
     }
   }
 

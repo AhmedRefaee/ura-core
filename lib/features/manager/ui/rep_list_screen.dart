@@ -3,8 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/order_status_theme.dart';
+import '../../profile/ui/profile_screen.dart';
 import '../logic/rep_list_cubit.dart';
-import 'user_orders_screen.dart';
 
 /// Shared screen showing all reps with cards colored by their latest task status.
 /// Used by both Verifier and Manager.
@@ -27,7 +27,7 @@ class _RepListView extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('المندوبون'),
+        title: const Text('المناديب'),
         actions: [
           IconButton(
             icon: const Icon(Icons.refresh),
@@ -96,7 +96,7 @@ class _RepCard extends StatelessWidget {
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => UserOrdersScreen(user: rep.profile),
+            builder: (_) => ProfileScreen(profile: rep.profile, isSelf: false),
           ),
         ),
         child: Padding(

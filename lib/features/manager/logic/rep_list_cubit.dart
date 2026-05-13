@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/profile.dart';
@@ -31,7 +32,6 @@ class RepListError extends RepListState {
   List<Object?> get props => [message];
 }
 
-/// A rep profile paired with their most recent order status.
 class RepWithStatus extends Equatable {
   final Profile profile;
   final OrderStatus? latestStatus;
@@ -50,25 +50,30 @@ class RepListCubit extends Cubit<RepListState> {
   Future<void> load() async {
     logger.d('RepListCubit → load');
     emit(RepListLoading());
-    try {
-      final results = await Future.wait([
-        _repo.fetchUsersByRole('rep'),
-        _repo.fetchLatestOrderStatusByRep(),
-      ]);
-      final reps = results[0] as List<Profile>;
-      final statusMap = results[1] as Map<String, OrderStatus>;
 
-      final repList = reps
-          .map((r) => RepWithStatus(
-                profile: r,
-                latestStatus: statusMap[r.id],
-              ))
-          .toList();
+    final results = await Future.wait([
+      _repo.fetchUsersByRole('rep'),
+      _repo.fetchLatestOrderStatusByRep(),
+    ]);
 
-      emit(RepListLoaded(repList));
-    } catch (e, st) {
-      logger.e('RepListCubit → load failed', error: e, stackTrace: st);
-      emit(RepListError(e.toString()));
+    final repsError = results[0].failureOrNull;
+    if (repsError != null) {
+      logger.e('RepListCubit → load failed: ${repsError.message}');
+      emit(RepListError(repsError.message));
+      return;
     }
+    final statusError = results[1].failureOrNull;
+    if (statusError != null) {
+      logger.e('RepListCubit → load failed: ${statusError.message}');
+      emit(RepListError(statusError.message));
+      return;
+    }
+
+    final reps = (results[0] as AppSuccess<List<Profile>>).data;
+    final statusMap = (results[1] as AppSuccess<Map<String, OrderStatus>>).data;
+
+    emit(RepListLoaded(
+      reps.map((r) => RepWithStatus(profile: r, latestStatus: statusMap[r.id])).toList(),
+    ));
   }
 }

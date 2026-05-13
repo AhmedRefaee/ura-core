@@ -42,8 +42,8 @@ class MentionSuggestions extends StatelessWidget {
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
-          top: BorderSide(color: Colors.grey.shade200),
-          bottom: BorderSide(color: Colors.grey.shade200),
+          top: BorderSide(color: Theme.of(context).dividerColor),
+          bottom: BorderSide(color: Theme.of(context).dividerColor),
         ),
         boxShadow: [
           BoxShadow(
@@ -54,10 +54,10 @@ class MentionSuggestions extends StatelessWidget {
         ],
       ),
       child: totalCount == 0
-          ? const Padding(
-              padding: EdgeInsets.symmetric(vertical: 16),
+          ? Padding(
+              padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
-                child: Text('لا توجد نتائج', style: TextStyle(color: Colors.grey)),
+                child: Text('لا توجد نتائج', style: TextStyle(color: Theme.of(context).hintColor)),
               ),
             )
           : ListView.builder(

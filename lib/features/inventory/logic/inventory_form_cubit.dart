@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../data/inventory_management_repository.dart';
@@ -46,37 +47,40 @@ class InventoryFormCubit extends Cubit<InventoryFormState> {
     String? notes,
   }) async {
     emit(InventoryFormSaving());
-    try {
-      if (isEditing) {
-        await _repo.updateItem(
-          initialItem!.id,
-          name: name,
-          unit: unit,
-          quantity: quantity,
-          sku: sku,
-          category: category,
-          minQuantity: minQuantity,
-          description: description,
-          notes: notes,
-        );
-        logger.i('InventoryFormCubit updated item ${initialItem!.id}');
-      } else {
-        await _repo.createItem(
-          name: name,
-          unit: unit,
-          quantity: quantity,
-          sku: sku,
-          category: category,
-          minQuantity: minQuantity,
-          description: description,
-          notes: notes,
-        );
-        logger.i('InventoryFormCubit created new item: $name');
-      }
-      emit(InventoryFormSuccess());
-    } catch (e) {
-      logger.e('InventoryFormCubit submit failed', error: e);
-      emit(InventoryFormError(e.toString()));
+
+    final AppResult<void> result;
+    if (isEditing) {
+      result = await _repo.updateItem(
+        initialItem!.id,
+        name: name,
+        unit: unit,
+        quantity: quantity,
+        sku: sku,
+        category: category,
+        minQuantity: minQuantity,
+        description: description,
+        notes: notes,
+      );
+    } else {
+      result = await _repo.createItem(
+        name: name,
+        unit: unit,
+        quantity: quantity,
+        sku: sku,
+        category: category,
+        minQuantity: minQuantity,
+        description: description,
+        notes: notes,
+      );
+    }
+
+    switch (result) {
+      case AppSuccess():
+        logger.i('InventoryFormCubit ${isEditing ? "updated" : "created"}: $name');
+        emit(InventoryFormSuccess());
+      case AppFailure(:final error):
+        logger.e('InventoryFormCubit submit failed: ${error.message}');
+        emit(InventoryFormError(error.message));
     }
   }
 }

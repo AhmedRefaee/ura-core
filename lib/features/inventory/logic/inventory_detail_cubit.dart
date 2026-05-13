@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/inventory_audit_log_entry.dart';
 import '../../../shared/models/inventory_item.dart';
@@ -69,34 +70,46 @@ class InventoryDetailCubit extends Cubit<InventoryDetailState> {
 
   Future<void> load() async {
     emit(InventoryDetailLoading());
-    try {
-      final results = await Future.wait([
-        _repo.fetchItemDetail(_itemId),
-        _repo.fetchAuditLog(_itemId),
-      ]);
-      logger.d('InventoryDetailCubit loaded item $_itemId');
-      emit(InventoryDetailLoaded(
-        item: results[0] as InventoryItem,
-        auditLog: results[1] as List<InventoryAuditLogEntry>,
-      ));
-    } catch (e) {
-      logger.e('InventoryDetailCubit load failed', error: e);
-      emit(InventoryDetailError(e.toString()));
+
+    final results = await Future.wait([
+      _repo.fetchItemDetail(_itemId),
+      _repo.fetchAuditLog(_itemId),
+    ]);
+
+    final itemError = results[0].failureOrNull;
+    if (itemError != null) {
+      logger.e('InventoryDetailCubit load failed: ${itemError.message}');
+      emit(InventoryDetailError(itemError.message));
+      return;
     }
+    final auditError = results[1].failureOrNull;
+    if (auditError != null) {
+      logger.e('InventoryDetailCubit load failed: ${auditError.message}');
+      emit(InventoryDetailError(auditError.message));
+      return;
+    }
+
+    logger.d('InventoryDetailCubit loaded item $_itemId');
+    emit(InventoryDetailLoaded(
+      item: (results[0] as AppSuccess<InventoryItem>).data,
+      auditLog: (results[1] as AppSuccess<List<InventoryAuditLogEntry>>).data,
+    ));
   }
 
   Future<void> deleteItem() async {
     final current = state;
     if (current is! InventoryDetailLoaded) return;
     emit(current.copyWith(isActing: true));
-    try {
-      await _repo.deleteItem(_itemId);
-      logger.i('InventoryDetailCubit deleted item $_itemId');
-      emit(const InventoryDetailSuccess('تم حذف العنصر بنجاح'));
-    } catch (e) {
-      logger.e('InventoryDetailCubit deleteItem failed', error: e);
-      emit(current.copyWith(isActing: false));
-      emit(InventoryDetailError(e.toString()));
+
+    final result = await _repo.deleteItem(_itemId);
+    switch (result) {
+      case AppSuccess():
+        logger.i('InventoryDetailCubit deleted item $_itemId');
+        emit(const InventoryDetailSuccess('تم حذف العنصر بنجاح'));
+      case AppFailure(:final error):
+        logger.e('InventoryDetailCubit deleteItem failed: ${error.message}');
+        emit(current.copyWith(isActing: false));
+        emit(InventoryDetailError(error.message));
     }
   }
 }

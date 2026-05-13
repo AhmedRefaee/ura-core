@@ -4,6 +4,8 @@ import 'package:go_router/go_router.dart';
 import '../logic/auth_cubit.dart';
 import '../logic/auth_state.dart';
 import '../../../router/app_router.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -15,12 +17,16 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
+  final _emailFocusNode = FocusNode();
+  final _passwordFocusNode = FocusNode();
   String? _errorMessage;
 
   @override
   void dispose() {
     _emailController.dispose();
     _passwordController.dispose();
+    _emailFocusNode.dispose();
+    _passwordFocusNode.dispose();
     super.dispose();
   }
 
@@ -31,6 +37,8 @@ class _LoginScreenState extends State<LoginScreen> {
           _passwordController.text,
         );
   }
+
+
 
   @override
   Widget build(BuildContext context) {
@@ -46,77 +54,63 @@ class _LoginScreenState extends State<LoginScreen> {
           body: SafeArea(
             child: Center(
               child: SingleChildScrollView(
-                padding: const EdgeInsets.all(24),
+                padding: AppSpacing.screenPaddingInsets,
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 400),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      const Text(
+                      Text(
                         'تسجيل الدخول',
-                        style: TextStyle(
-                          fontSize: 28,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: AppTextStyles.headlineMedium,
                         textAlign: TextAlign.center,
                       ),
-                      const SizedBox(height: 32),
-                      TextField(
+                      SizedBox(height: AppSpacing.verticalXXXLarge),
+                      AppTextField(
                         controller: _emailController,
                         enabled: !isLoading,
                         keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
-                          labelText: 'البريد الإلكتروني',
-                          border: OutlineInputBorder(),
-                        ),
-                        onSubmitted: (_) => _submit(),
+                        label: 'البريد الإلكتروني',
+                        focusNode: _emailFocusNode,
                       ),
-                      const SizedBox(height: 16),
-                      TextField(
+                      SizedBox(height: AppSpacing.verticalLarge),
+                      AppTextField(
                         controller: _passwordController,
                         enabled: !isLoading,
-                        obscureText: true,
-                        decoration: const InputDecoration(
-                          labelText: 'كلمة المرور',
-                          border: OutlineInputBorder(),
-                        ),
-                        onSubmitted: (_) => _submit(),
+                        keyboardType: TextInputType.visiblePassword,
+                        label: 'كلمة المرور',
+                        focusNode: _passwordFocusNode,
                       ),
                       if (_errorMessage != null) ...[
-                        const SizedBox(height: 12),
+                        SizedBox(height: AppSpacing.verticalMedium),
                         Text(
                           _errorMessage!,
                           style: TextStyle(
-                            color: Theme.of(context).colorScheme.error,
+                            color: AppColors.error,
                           ),
                           textAlign: TextAlign.center,
                         ),
                       ],
-                      const SizedBox(height: 24),
-                      FilledButton(
+                      SizedBox(height: AppSpacing.verticalXXLarge),
+                      AppButton(
+                        text: 'دخول',
                         onPressed: isLoading ? null : _submit,
-                        child: isLoading
-                            ? const SizedBox(
-                                height: 20,
-                                width: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : const Text('دخول'),
+                        isLoading: isLoading,
+                        variant: AppButtonVariant.elevated,
                       ),
-                      const SizedBox(height: 12),
-                      TextButton(
+                      SizedBox(height: AppSpacing.verticalMedium),
+                      AppButton(
+                        text: 'ليس لديك حساب؟ سجّل الآن',
                         onPressed:
                             isLoading ? null : () => context.go(AppRoutes.register),
-                        child: const Text('ليس لديك حساب؟ سجّل الآن'),
+                        variant: AppButtonVariant.text,
                       ),
-                      TextButton(
+                      AppButton(
+                        text: 'نسيت كلمة المرور؟',
                         onPressed: isLoading
                             ? null
                             : () => context.go(AppRoutes.forgotPassword),
-                        child: const Text('نسيت كلمة المرور؟'),
+                        variant: AppButtonVariant.text,
                       ),
                     ],
                   ),

@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../logic/inventory_bulk_cubit.dart';
@@ -27,11 +29,10 @@ class _InventoryBulkEditView extends StatelessWidget {
           Navigator.pop(context, true);
         }
         if (state is InventoryBulkError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.red,
-            ),
+          AppSnackbar.show(
+            context,
+            message: state.message,
+            variant: AppSnackbarVariant.error,
           );
         }
       },
@@ -42,12 +43,12 @@ class _InventoryBulkEditView extends StatelessWidget {
             actions: [
               if (state is InventoryBulkReady && state.hasChanges)
                 Padding(
-                  padding: const EdgeInsets.only(left: 8),
+                  padding: EdgeInsets.only(left: AppSpacing.horizontalSmall),
                   child: Center(
                     child: Text(
                       '${state.pendingQuantities.length} تغيير',
-                      style: TextStyle(
-                        color: Theme.of(context).colorScheme.primary,
+                      style: AppTextStyles.labelLarge.copyWith(
+                        color: AppColors.primary,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
@@ -58,16 +59,16 @@ class _InventoryBulkEditView extends StatelessWidget {
           body: () {
             if (state is InventoryBulkLoading ||
                 state is InventoryBulkInitial) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: AppLoadingIndicator());
             }
             if (state is InventoryBulkSaving) {
               return const Center(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 12),
-                    Text('جاري الحفظ...'),
+                    AppLoadingIndicator(),
+                    SizedBox(height: AppSpacing.verticalMedium),
+                    Text('جاري الحفظ...', style: AppTextStyles.bodyMedium),
                   ],
                 ),
               );
@@ -77,13 +78,17 @@ class _InventoryBulkEditView extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(state.message,
-                        style: const TextStyle(color: Colors.red)),
-                    const SizedBox(height: 12),
-                    FilledButton(
+                    Text(
+                      state.message,
+                      style: AppTextStyles.bodyMedium.copyWith(
+                        color: AppColors.error,
+                      ),
+                    ),
+                    SizedBox(height: AppSpacing.verticalMedium),
+                    AppButton(
                       onPressed: () =>
                           context.read<InventoryBulkCubit>().loadItems(),
-                      child: const Text('إعادة المحاولة'),
+                      text: 'إعادة المحاولة',
                     ),
                   ],
                 ),
@@ -91,10 +96,15 @@ class _InventoryBulkEditView extends StatelessWidget {
             }
             if (state is InventoryBulkReady) {
               if (state.items.isEmpty) {
-                return const Center(child: Text('لا توجد عناصر في المخزون'));
+                return Center(
+                    child: Text(
+                      'لا توجد عناصر في المخزون',
+                      style: AppTextStyles.bodyMedium,
+                    ),
+                  );
               }
               return ListView.builder(
-                padding: const EdgeInsets.only(bottom: 100),
+                padding: EdgeInsets.only(bottom: AppSpacing.verticalXXXLarge),
                 itemCount: state.items.length,
                 itemBuilder: (_, i) =>
                     _BulkItemRow(item: state.items[i], state: state),
@@ -154,12 +164,12 @@ class _BulkItemRowState extends State<_BulkItemRow> {
         widget.state.pendingQuantities.containsKey(widget.item.id);
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalMedium, vertical: AppSpacing.verticalXSmall),
       color: isChanged
-          ? Theme.of(context).colorScheme.primaryContainer.withAlpha(60)
+          ? AppColors.primary.withAlpha(60)
           : null,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: AppSpacing.allMedium,
         child: Row(
           children: [
             Expanded(
@@ -168,24 +178,28 @@ class _BulkItemRowState extends State<_BulkItemRow> {
                 children: [
                   Text(
                     widget.item.itemName,
-                    style: const TextStyle(
-                        fontWeight: FontWeight.w600, fontSize: 14),
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
                   ),
                   if (widget.item.category != null)
                     Text(
                       widget.item.category!,
-                      style:
-                          const TextStyle(fontSize: 12, color: Colors.grey),
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                      ),
                     ),
                 ],
               ),
             ),
             if (isChanged)
               Padding(
-                padding: const EdgeInsets.only(left: 8),
+                padding: EdgeInsets.only(left: AppSpacing.horizontalSmall),
                 child: Text(
                   '(أصلي: ${widget.item.quantity})',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
                 ),
               ),
             SizedBox(
@@ -194,15 +208,16 @@ class _BulkItemRowState extends State<_BulkItemRow> {
                 controller: _ctrl,
                 keyboardType: TextInputType.number,
                 textAlign: TextAlign.center,
+                style: AppTextStyles.bodyMedium,
                 decoration: InputDecoration(
                   isDense: true,
-                  contentPadding: const EdgeInsets.symmetric(
-                      vertical: 8, horizontal: 8),
+                  contentPadding: EdgeInsets.symmetric(
+                      vertical: AppSpacing.verticalSmall, horizontal: AppSpacing.horizontalSmall),
                   border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(AppConstants.borderRadiusSmall),
                     borderSide: isChanged
                         ? BorderSide(
-                            color: Theme.of(context).colorScheme.primary,
+                            color: AppColors.primary,
                             width: 2)
                         : const BorderSide(),
                   ),
@@ -240,17 +255,18 @@ class _BottomBar extends StatelessWidget {
   Widget build(BuildContext context) {
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
-        child: FilledButton.icon(
+        padding: AppSpacing.horizontalMediumPadding.copyWith(
+          top: AppSpacing.verticalSmall,
+          bottom: AppSpacing.verticalMedium,
+        ),
+        child: AppButton(
           onPressed: state.hasChanges
               ? () => context.read<InventoryBulkCubit>().saveChanges()
               : null,
-          icon: const Icon(Icons.save_outlined),
-          label: Text(
-            state.hasChanges
+          text: state.hasChanges
                 ? 'حفظ ${state.pendingQuantities.length} تغيير'
                 : 'لا توجد تغييرات',
-          ),
+          icon: Icons.save_outlined,
         ),
       ),
     );

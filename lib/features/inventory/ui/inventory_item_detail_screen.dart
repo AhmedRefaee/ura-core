@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_audit_log_entry.dart';
 import '../../../shared/models/inventory_item.dart';
@@ -31,17 +33,18 @@ class _InventoryItemDetailView extends StatelessWidget {
     return BlocConsumer<InventoryDetailCubit, InventoryDetailState>(
       listener: (context, state) {
         if (state is InventoryDetailSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(state.message)),
+          AppSnackbar.show(
+            context,
+            message: state.message,
+            variant: AppSnackbarVariant.success,
           );
           Navigator.pop(context);
         }
         if (state is InventoryDetailError) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(state.message),
-              backgroundColor: Colors.red,
-            ),
+          AppSnackbar.show(
+            context,
+            message: state.message,
+            variant: AppSnackbarVariant.error,
           );
         }
       },
@@ -55,17 +58,19 @@ class _InventoryItemDetailView extends StatelessWidget {
           appBar: AppBar(
             title: Text(item.itemName),
             actions: [
-              IconButton(
-                icon: const Icon(Icons.edit_outlined),
+              AppIconButton(
+                icon: Icons.edit_outlined,
                 tooltip: 'تعديل',
+                variant: AppIconButtonVariant.text,
                 onPressed: isActing
                     ? null
                     : () => _openEdit(context, item),
               ),
-              IconButton(
-                icon: const Icon(Icons.delete_outline),
+              AppIconButton(
+                icon: Icons.delete_outline,
                 tooltip: 'حذف',
-                color: Colors.red,
+                variant: AppIconButtonVariant.text,
+                iconColor: AppColors.error,
                 onPressed: isActing
                     ? null
                     : () => _confirmDelete(context),
@@ -75,7 +80,7 @@ class _InventoryItemDetailView extends StatelessWidget {
           body: () {
             if (state is InventoryDetailLoading ||
                 state is InventoryDetailInitial) {
-              return const Center(child: CircularProgressIndicator());
+              return const Center(child: AppLoadingIndicator());
             }
             if (state is InventoryDetailLoaded) {
               return _DetailBody(state: state);
@@ -103,20 +108,21 @@ class _InventoryItemDetailView extends StatelessWidget {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('تأكيد الحذف'),
-        content: const Text('هل أنت متأكد من حذف هذا الصنف؟ لا يمكن التراجع عن هذا الإجراء.'),
+        title: Text('تأكيد الحذف', style: AppTextStyles.titleLarge),
+        content: Text('هل أنت متأكد من حذف هذا الصنف؟ لا يمكن التراجع عن هذا الإجراء.',
+            style: AppTextStyles.bodyMedium),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('إلغاء'),
+            child: Text('إلغاء', style: AppTextStyles.labelLarge),
           ),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+          AppButton(
             onPressed: () {
               Navigator.pop(ctx);
               context.read<InventoryDetailCubit>().deleteItem();
             },
-            child: const Text('حذف'),
+            text: 'حذف',
+            backgroundColor: AppColors.error,
           ),
         ],
       ),
@@ -132,12 +138,12 @@ class _DetailBody extends StatelessWidget {
   Widget build(BuildContext context) {
     final item = state.item;
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: AppSpacing.allMedium,
       children: [
         // Item info card
         Card(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: AppSpacing.allMedium,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -146,16 +152,13 @@ class _DetailBody extends StatelessWidget {
                     Expanded(
                       child: Text(
                         item.itemName,
-                        style: const TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                        ),
+                        style: AppTextStyles.titleLarge,
                       ),
                     ),
                     AvailabilityBadge(status: item.availabilityStatus),
                   ],
                 ),
-                const Divider(height: 24),
+                Divider(height: AppSpacing.verticalXXLarge),
                 _InfoRow(label: 'الكمية', value: '${item.quantity} ${item.unit}'),
                 if (item.sku != null)
                   _InfoRow(label: 'رمز SKU', value: item.sku!),
@@ -172,22 +175,23 @@ class _DetailBody extends StatelessWidget {
             ),
           ),
         ),
-        const SizedBox(height: 20),
+        SizedBox(height: AppSpacing.verticalLarge),
         // Audit log section
         Text(
           'سجل التغييرات',
-          style: Theme.of(context)
-              .textTheme
-              .titleMedium
-              ?.copyWith(fontWeight: FontWeight.bold),
+          style: AppTextStyles.titleMedium.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
         ),
-        const SizedBox(height: 8),
+        SizedBox(height: AppSpacing.verticalSmall),
         if (state.auditLog.isEmpty)
-          const Center(
+          Center(
             child: Padding(
-              padding: EdgeInsets.all(16),
+              padding: AppSpacing.allMedium,
               child: Text('لا يوجد سجل تغييرات',
-                  style: TextStyle(color: Colors.grey)),
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    color: AppColors.textSecondary,
+                  )),
             ),
           )
         else
@@ -205,7 +209,7 @@ class _InfoRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.symmetric(vertical: AppSpacing.verticalXSmall),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -213,13 +217,17 @@ class _InfoRow extends StatelessWidget {
             width: 100,
             child: Text(
               label,
-              style: const TextStyle(color: Colors.grey, fontSize: 13),
+              style: AppTextStyles.bodySmall.copyWith(
+                color: AppColors.textSecondary,
+              ),
             ),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
+              style: AppTextStyles.bodyMedium.copyWith(
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -238,36 +246,43 @@ class _AuditLogTile extends StatelessWidget {
         entry.oldQuantity != null && entry.newQuantity != null;
 
     return Card(
-      margin: const EdgeInsets.symmetric(vertical: 4),
+      margin: EdgeInsets.symmetric(vertical: AppSpacing.verticalXSmall),
       child: ListTile(
-        leading: const Icon(Icons.history, color: Colors.blueGrey),
+        leading: Icon(Icons.history, color: AppColors.textSecondary),
         title: Text(entry.actionLabel,
-            style: const TextStyle(fontWeight: FontWeight.w600)),
+            style: AppTextStyles.bodyMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                )),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             if (hasQuantityChange)
               Text(
                 '${entry.oldQuantity} → ${entry.newQuantity}',
-                style: const TextStyle(fontSize: 13),
+                style: AppTextStyles.bodySmall,
               ),
             if (entry.performer != null)
               Text(
                 entry.performer!.fullName,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
             if (entry.notes != null && entry.notes!.isNotEmpty)
               Text(
                 entry.notes!,
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               ),
           ],
         ),
         trailing: entry.performedAt != null
             ? Text(
                 _formatDate(entry.performedAt!),
-                style:
-                    const TextStyle(fontSize: 11, color: Colors.grey),
+                style: AppTextStyles.bodySmall.copyWith(
+                  color: AppColors.textSecondary,
+                ),
               )
             : null,
       ),

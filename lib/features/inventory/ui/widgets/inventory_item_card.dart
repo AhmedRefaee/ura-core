@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/design_system/theme/theme.dart';
 import '../../../../shared/models/inventory_item.dart';
 import 'availability_badge.dart';
 
@@ -17,16 +18,16 @@ class InventoryItemCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      margin: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalMedium, vertical: AppSpacing.verticalSmall),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppConstants.borderRadiusMedium),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: AppSpacing.allMedium,
           child: Row(
             children: [
-              const Icon(Icons.inventory_2_outlined, size: 32, color: Colors.blueGrey),
-              const SizedBox(width: 12),
+              Icon(Icons.inventory_2_outlined, size: 32, color: AppColors.textSecondary),
+              SizedBox(width: AppSpacing.horizontalMedium),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,

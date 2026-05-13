@@ -1,72 +1,79 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/cache/memory_cache.dart';
+import '../../../core/errors/app_result.dart';
+import '../../../core/errors/error_handler.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/inventory_audit_log_entry.dart';
 import '../../../shared/models/inventory_item.dart';
 
 class InventoryManagementRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
+  final _inventoryCache = MemoryCache<String, List<InventoryItem>>(ttl: Duration(minutes: 2));
 
-  // ── Public (all roles) ──────────────────────────────────────────────────────
-
-  Future<List<InventoryItem>> fetchInventory({
+  Future<AppResult<List<InventoryItem>>> fetchInventory({
     String? search,
     String? category,
   }) async {
     try {
+      final cacheKey = 'inventory:${search ?? ''}:${category ?? ''}';
+      final cached = _inventoryCache.get(cacheKey);
+      if (cached != null) {
+        logger.d('fetchInventory → cache hit: $cacheKey');
+        return AppSuccess(cached);
+      }
+      
       var query = _supabase
           .from('inventory')
           .select('id, item_name, sku, quantity, unit, category, min_quantity, description');
-
       if (search != null && search.isNotEmpty) {
         query = query.ilike('item_name', '%$search%');
       }
       if (category != null) {
         query = query.eq('category', category);
       }
-
       final data = await query.order('item_name');
-      return (data as List).map((m) => InventoryItem.fromMap(m as Map<String, dynamic>)).toList();
+      final result = (data as List).map((m) => InventoryItem.fromMap(m as Map<String, dynamic>)).toList();
+      _inventoryCache.set(cacheKey, result);
+      return AppSuccess(result);
     } catch (e, st) {
       logger.e('fetchInventory failed', error: e, stackTrace: st);
-      rethrow;
+      return AppFailure(ErrorHandler.handle(e));
     }
   }
 
-  // ── Storage Actor — read ────────────────────────────────────────────────────
-
-  Future<InventoryItem> fetchItemDetail(String itemId) async {
+  Future<AppResult<InventoryItem>> fetchItemDetail(String itemId) async {
     try {
       final data = await _supabase
           .from('inventory')
           .select('id, item_name, sku, quantity, unit, category, min_quantity, description')
           .eq('id', itemId)
           .single();
-      return InventoryItem.fromMap(data);
+      return AppSuccess(InventoryItem.fromMap(data));
     } catch (e, st) {
       logger.e('fetchItemDetail failed', error: e, stackTrace: st);
-      rethrow;
+      return AppFailure(ErrorHandler.handle(e));
     }
   }
 
-  Future<List<InventoryAuditLogEntry>> fetchAuditLog(String itemId) async {
+  Future<AppResult<List<InventoryAuditLogEntry>>> fetchAuditLog(String itemId) async {
     try {
       final data = await _supabase
           .from('inventory_audit_log')
-          .select('*, performer:profiles!inventory_audit_log_performed_by_fkey(id, full_name, role)')
+          .select('id, item_id, action, old_quantity, new_quantity, performed_by, notes, performed_at, performer:profiles!inventory_audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)')
           .eq('item_id', itemId)
           .order('performed_at', ascending: false);
-      return (data as List)
-          .map((m) => InventoryAuditLogEntry.fromMap(m as Map<String, dynamic>))
-          .toList();
+      return AppSuccess(
+        (data as List)
+            .map((m) => InventoryAuditLogEntry.fromMap(m as Map<String, dynamic>))
+            .toList(),
+      );
     } catch (e, st) {
       logger.e('fetchAuditLog failed', error: e, stackTrace: st);
-      rethrow;
+      return AppFailure(ErrorHandler.handle(e));
     }
   }
 
-  // ── Storage Actor — CRUD ────────────────────────────────────────────────────
-
-  Future<void> createItem({
+  Future<AppResult<void>> createItem({
     required String name,
     required String unit,
     required int quantity,
@@ -88,16 +95,18 @@ class InventoryManagementRepository {
         'p_notes': notes,
       });
       if (result is Map && result['success'] == false) {
-        throw Exception(result['error'] ?? 'فشل إنشاء العنصر');
+        return AppFailure(ErrorHandler.fromRpcResult(result));
       }
+      _inventoryCache.clear();
       logger.i('Inventory item created: $name');
+      return const AppSuccess(null);
     } catch (e, st) {
       logger.e('createItem failed', error: e, stackTrace: st);
-      rethrow;
+      return AppFailure(ErrorHandler.handle(e));
     }
   }
 
-  Future<void> updateItem(
+  Future<AppResult<void>> updateItem(
     String itemId, {
     required String name,
     required String unit,
@@ -121,31 +130,35 @@ class InventoryManagementRepository {
         'p_notes': notes,
       });
       if (result is Map && result['success'] == false) {
-        throw Exception(result['error'] ?? 'فشل تعديل العنصر');
+        return AppFailure(ErrorHandler.fromRpcResult(result));
       }
+      _inventoryCache.clear();
       logger.i('Inventory item updated: $itemId');
+      return const AppSuccess(null);
     } catch (e, st) {
       logger.e('updateItem failed', error: e, stackTrace: st);
-      rethrow;
+      return AppFailure(ErrorHandler.handle(e));
     }
   }
 
-  Future<void> deleteItem(String itemId) async {
+  Future<AppResult<void>> deleteItem(String itemId) async {
     try {
       final result = await _supabase.rpc('inventory_delete_item', params: {
         'p_item_id': itemId,
       });
       if (result is Map && result['success'] == false) {
-        throw Exception(result['error'] ?? 'فشل حذف العنصر');
+        return AppFailure(ErrorHandler.fromRpcResult(result));
       }
+      _inventoryCache.clear();
       logger.i('Inventory item deleted: $itemId');
+      return const AppSuccess(null);
     } catch (e, st) {
       logger.e('deleteItem failed', error: e, stackTrace: st);
-      rethrow;
+      return AppFailure(ErrorHandler.handle(e));
     }
   }
 
-  Future<void> bulkUpdateQuantities(
+  Future<AppResult<void>> bulkUpdateQuantities(
     List<({String itemId, int quantity})> updates,
   ) async {
     try {
@@ -156,12 +169,14 @@ class InventoryManagementRepository {
         'p_updates': payload,
       });
       if (result is Map && result['success'] == false) {
-        throw Exception(result['error'] ?? 'فشل التعديل الجماعي');
+        return AppFailure(ErrorHandler.fromRpcResult(result));
       }
+      _inventoryCache.clear();
       logger.i('Bulk quantity update: ${updates.length} items');
+      return const AppSuccess(null);
     } catch (e, st) {
       logger.e('bulkUpdateQuantities failed', error: e, stackTrace: st);
-      rethrow;
+      return AppFailure(ErrorHandler.handle(e));
     }
   }
 }

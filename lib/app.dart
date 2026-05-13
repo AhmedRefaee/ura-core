@@ -3,10 +3,14 @@ import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:go_router/go_router.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'core/di/injection.dart';
 import 'core/logging/app_logger.dart';
+import 'core/notifications/notification_service.dart';
+import 'core/design_system/theme/app_theme.dart';
 import 'features/auth/logic/auth_cubit.dart';
+import 'features/settings/logic/theme_cubit.dart';
 import 'router/app_router.dart';
 
 bool _isAuthCallback(Uri uri) =>
@@ -23,6 +27,7 @@ class UraApp extends StatefulWidget {
 
 class _UraAppState extends State<UraApp> {
   late final StreamSubscription _linkSubscription;
+  GoRouter? _router;
 
   @override
   void initState() {
@@ -46,11 +51,21 @@ class _UraAppState extends State<UraApp> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocProvider(
-      create: (_) => sl<AuthCubit>()..checkSession(),
-      child: Builder(
-        builder: (context) {
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider(
+          create: (_) => sl<AuthCubit>()..checkSession(),
+        ),
+        BlocProvider(
+          create: (_) => sl<ThemeCubit>()..initializeTheme(),
+        ),
+      ],
+      child: BlocBuilder<ThemeCubit, ThemeState>(
+        builder: (context, themeState) {
           final authCubit = context.read<AuthCubit>();
+          _router ??= createRouter(authCubit);
+          sl<NotificationService>().setRouter(_router!);
+
           return MaterialApp.router(
             title: 'URA CORE',
             debugShowCheckedModeBanner: false,
@@ -61,11 +76,10 @@ class _UraAppState extends State<UraApp> {
               GlobalWidgetsLocalizations.delegate,
               GlobalCupertinoLocalizations.delegate,
             ],
-            theme: ThemeData(
-              colorScheme: ColorScheme.fromSeed(seedColor: Colors.teal),
-              useMaterial3: true,
-            ),
-            routerConfig: createRouter(authCubit),
+            theme: AppTheme.light,
+            darkTheme: AppTheme.dark,
+            themeMode: themeState.isDarkMode ? ThemeMode.dark : ThemeMode.light,
+            routerConfig: _router!,
           );
         },
       ),

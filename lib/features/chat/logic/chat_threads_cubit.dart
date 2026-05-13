@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/chat_thread.dart';
 import '../data/chat_repository.dart';
@@ -40,26 +41,29 @@ class ChatThreadsCubit extends Cubit<ChatThreadsState> {
   Future<void> loadThreads() async {
     logger.d('ChatThreadsCubit → loadThreads');
     emit(ChatThreadsLoading());
-    try {
-      final threads = await _repo.getThreads();
-      emit(ChatThreadsLoaded(threads));
-    } catch (e, st) {
-      logger.e('ChatThreadsCubit → loadThreads failed', error: e, stackTrace: st);
-      emit(ChatThreadsError(e.toString()));
+    final result = await _repo.getThreads();
+    if (!isClosed) {
+      switch (result) {
+        case AppSuccess(:final data):
+          emit(ChatThreadsLoaded(data));
+        case AppFailure(:final error):
+          logger.e('ChatThreadsCubit → loadThreads failed: ${error.message}');
+          emit(ChatThreadsError(error.message));
+      }
     }
   }
 
-  /// Creates a new thread and returns its id, then reloads the list.
   Future<String?> createThread(String title) async {
     logger.d('ChatThreadsCubit → createThread: $title');
-    try {
-      final id = await _repo.createThread(title);
-      await loadThreads();
-      return id;
-    } catch (e, st) {
-      logger.e('ChatThreadsCubit → createThread failed', error: e, stackTrace: st);
-      emit(ChatThreadsError(e.toString()));
-      return null;
+    final result = await _repo.createThread(title);
+    switch (result) {
+      case AppSuccess(:final data):
+        await loadThreads();
+        return data;
+      case AppFailure(:final error):
+        logger.e('ChatThreadsCubit → createThread failed: ${error.message}');
+        if (!isClosed) emit(ChatThreadsError(error.message));
+        return null;
     }
   }
 }

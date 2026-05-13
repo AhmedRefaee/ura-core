@@ -1,10 +1,21 @@
 import 'package:get_it/get_it.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../cache/local_profile_source.dart';
+import '../notifications/notification_service.dart';
+import '../../features/notifications/data/notifications_repository.dart';
+import '../../features/notifications/logic/chat_badge_cubit.dart';
+import '../../features/notifications/logic/notifications_badge_cubit.dart';
+import '../../features/notifications/logic/notifications_cubit.dart';
 import '../../features/auth/data/auth_repository.dart';
 import '../../features/auth/logic/auth_cubit.dart';
+import '../../features/settings/data/settings_repository.dart';
+import '../../features/settings/logic/theme_cubit.dart';
 import '../../features/verifier/data/entity_repository.dart';
 import '../../features/verifier/data/inventory_repository.dart';
 import '../../features/verifier/data/order_repository.dart';
+import '../../features/verifier/data/order_template_repository.dart';
 import '../../features/verifier/logic/create_order_cubit.dart';
+import '../../features/verifier/logic/order_templates_cubit.dart';
 import '../../features/verifier/logic/edit_order_cubit.dart';
 import '../../features/verifier/logic/orders_cubit.dart';
 import '../../features/rep/data/rep_orders_repository.dart';
@@ -14,9 +25,11 @@ import '../../features/storage/data/storage_repository.dart';
 import '../../features/storage/logic/storage_order_detail_cubit.dart';
 import '../../features/storage/logic/storage_orders_cubit.dart';
 import '../../features/manager/data/manager_repository.dart';
+import '../../features/manager/data/stats_repository.dart';
 import '../../features/manager/logic/manager_pending_users_cubit.dart';
 import '../../features/manager/logic/monitor_orders_cubit.dart';
 import '../../features/manager/logic/rep_list_cubit.dart';
+import '../../features/manager/logic/stats_cubit.dart';
 import '../../features/manager/logic/task_detail_cubit.dart';
 import '../../features/manager/logic/user_orders_cubit.dart';
 import '../../features/manager/logic/user_type_cubit.dart';
@@ -28,16 +41,35 @@ import '../../features/inventory/logic/inventory_list_cubit.dart';
 import '../../features/chat/data/chat_repository.dart';
 import '../../features/chat/logic/chat_threads_cubit.dart';
 import '../../features/chat/logic/order_chat_badge_cubit.dart';
+import '../../features/entities/logic/entities_cubit.dart';
 import '../../shared/models/inventory_item.dart';
 
 final sl = GetIt.instance;
 
 Future<void> setupDependencies() async {
+  final prefs = await SharedPreferences.getInstance();
+
+  sl.registerLazySingleton<LocalProfileSource>(() => LocalProfileSource(prefs));
+  sl.registerLazySingleton<NotificationService>(() => NotificationService());
+  sl.registerLazySingleton<SettingsRepository>(() => SettingsRepository(prefs));
+  sl.registerLazySingleton<ThemeCubit>(() => ThemeCubit(sl<SettingsRepository>()));
+  sl.registerLazySingleton<NotificationsRepository>(() => NotificationsRepository());
+  sl.registerLazySingleton<NotificationsBadgeCubit>(
+    () => NotificationsBadgeCubit(sl<NotificationsRepository>()),
+  );
+  sl.registerLazySingleton<ChatBadgeCubit>(
+    () => ChatBadgeCubit(sl<NotificationsRepository>()),
+  );
+  sl.registerFactory<NotificationsCubit>(
+    () => NotificationsCubit(sl<NotificationsRepository>()),
+  );
+
   // Repositories
   sl.registerLazySingleton<AuthRepository>(() => AuthRepository());
   sl.registerLazySingleton<OrderRepository>(() => OrderRepository());
   sl.registerLazySingleton<EntityRepository>(() => EntityRepository());
   sl.registerLazySingleton<InventoryRepository>(() => InventoryRepository());
+  sl.registerLazySingleton<OrderTemplateRepository>(() => OrderTemplateRepository());
   sl.registerLazySingleton<RepOrdersRepository>(() => RepOrdersRepository());
   sl.registerLazySingleton<ChatRepository>(() => ChatRepository());
 
@@ -50,13 +82,19 @@ Future<void> setupDependencies() async {
   );
 
   // Auth & Orders
-  sl.registerFactory<AuthCubit>(() => AuthCubit(sl<AuthRepository>()));
+  sl.registerFactory<AuthCubit>(
+    () => AuthCubit(sl<AuthRepository>(), sl<LocalProfileSource>()),
+  );
   sl.registerFactory<OrdersCubit>(() => OrdersCubit(sl<OrderRepository>()));
   sl.registerFactory<CreateOrderCubit>(() => CreateOrderCubit(
         sl<OrderRepository>(),
         sl<EntityRepository>(),
         sl<InventoryRepository>(),
+        sl<OrderTemplateRepository>(),
       ));
+  sl.registerFactory<OrderTemplatesCubit>(
+    () => OrderTemplatesCubit(sl<OrderTemplateRepository>()),
+  );
   sl.registerFactoryParam<EditOrderCubit, String, void>(
     (orderId, _) => EditOrderCubit(
       sl<OrderRepository>(),
@@ -72,6 +110,7 @@ Future<void> setupDependencies() async {
       sl<RepOrdersRepository>(),
       orderId,
       sl<ChatRepository>(),
+      sl<InventoryRepository>(),
     ),
   );
 
@@ -81,7 +120,7 @@ Future<void> setupDependencies() async {
     () => StorageOrdersCubit(sl<StorageRepository>()),
   );
   sl.registerFactoryParam<StorageOrderDetailCubit, String, void>(
-    (orderId, _) => StorageOrderDetailCubit(sl<StorageRepository>(), orderId),
+    (orderId, _) => StorageOrderDetailCubit(sl<StorageRepository>(), orderId, sl<InventoryRepository>()),
   );
 
   // Inventory
@@ -103,6 +142,7 @@ Future<void> setupDependencies() async {
 
   // Manager
   sl.registerLazySingleton<ManagerRepository>(() => ManagerRepository());
+  sl.registerLazySingleton<StatsRepository>(() => StatsRepository());
   sl.registerFactory<MonitorOrdersCubit>(
     () => MonitorOrdersCubit(sl<ManagerRepository>()),
   );
@@ -119,6 +159,14 @@ Future<void> setupDependencies() async {
     () => UserOrdersCubit(sl<ManagerRepository>()),
   );
   sl.registerFactoryParam<TaskDetailCubit, String, void>(
-    (orderId, _) => TaskDetailCubit(sl<ManagerRepository>(), orderId),
+    (orderId, _) => TaskDetailCubit(sl<ManagerRepository>(), orderId, sl<InventoryRepository>()),
+  );
+  sl.registerFactory<StatsCubit>(
+    () => StatsCubit(sl<StatsRepository>()),
+  );
+
+  // Entities
+  sl.registerFactory<EntitiesCubit>(
+    () => EntitiesCubit(sl<EntityRepository>()),
   );
 }

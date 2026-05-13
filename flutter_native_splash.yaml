@@ -1,0 +1,22 @@
+flutter_native_splash:
+  # White background matches the logo's own background — seamless appearance.
+  # Dark mode intentionally uses the same white for brand consistency.
+  color: "#FFFFFF"
+  color_dark: "#FFFFFF"
+
+  image: assets/icons/app_icon.png
+  image_dark: assets/icons/app_icon.png
+
+  # Keep status/nav bars visible — enterprise-standard behavior
+  fullscreen: false
+
+  # Android 12+ uses a separate SplashScreen API that ignores launch_background.xml.
+  # This block is required for correct branding on Android 12+ devices.
+  android_12:
+    image: assets/icons/app_icon.png
+    icon_background_color: "#FFFFFF"
+    image_dark: assets/icons/app_icon.png
+    icon_background_color_dark: "#FFFFFF"
+
+  android: true
+  ios: true

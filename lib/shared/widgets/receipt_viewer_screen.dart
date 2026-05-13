@@ -75,9 +75,9 @@ class _ReceiptViewerScreenState extends State<ReceiptViewerScreen> {
         child: InteractiveViewer(
           child: CachedNetworkImage(
             imageUrl: widget.url,
-            placeholder: (_, __) =>
+            placeholder: (_, _) =>
                 const CircularProgressIndicator(color: Colors.white),
-            errorWidget: (_, __, ___) =>
+            errorWidget: (_, _, _) =>
                 const Icon(Icons.broken_image, color: Colors.white, size: 64),
           ),
         ),

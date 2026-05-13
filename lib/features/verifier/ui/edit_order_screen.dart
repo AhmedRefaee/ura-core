@@ -6,6 +6,7 @@ import '../../../shared/models/order_item.dart';
 import '../../../shared/widgets/receipt_viewer_screen.dart';
 import '../logic/edit_order_cubit.dart';
 import 'widgets/add_item_sheet.dart';
+import '../../../core/design_system/theme/theme.dart';
 
 class EditOrderScreen extends StatelessWidget {
   const EditOrderScreen({super.key});
@@ -59,7 +60,7 @@ class EditOrderScreen extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(state.message),
-                  const SizedBox(height: 12),
+                  SizedBox(height: AppSpacing.verticalMedium),
                   FilledButton(
                     onPressed: () =>
                         context.read<EditOrderCubit>().loadOrder(),
@@ -79,13 +80,13 @@ class EditOrderScreen extends StatelessWidget {
           body: ready == null
               ? const Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
+                  padding: AppSpacing.allLarge,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Order info header
                       _OrderInfoHeader(order: ready.originalOrder),
-                      const SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.verticalXLarge),
 
                       // Current items
                       Row(
@@ -116,7 +117,7 @@ class EditOrderScreen extends StatelessWidget {
 
                       // Added items (from AddItemAction)
                       if (ready.addedItems.isNotEmpty) ...[
-                        const SizedBox(height: 12),
+                        SizedBox(height: AppSpacing.verticalMedium),
                         const _SectionTitle('أصناف مضافة'),
                         ...ready.addedItems.map((draft) => ListTile(
                               dense: true,
@@ -130,8 +131,8 @@ class EditOrderScreen extends StatelessWidget {
                               title: Text(draft.displayName),
                               subtitle: Text('الكمية: ${draft.quantity}'),
                               trailing: Container(
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 6, vertical: 2),
+                                padding: EdgeInsets.symmetric(
+                                    horizontal: AppSpacing.horizontalXSmall, vertical: AppSpacing.verticalXSmall),
                                 decoration: BoxDecoration(
                                   color: Colors.green.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(4),
@@ -145,7 +146,7 @@ class EditOrderScreen extends StatelessWidget {
                             )),
                       ],
 
-                      const SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.verticalXLarge),
 
                       // Pending changes summary
                       if (ready.pendingActions.isNotEmpty) ...[
@@ -155,7 +156,7 @@ class EditOrderScreen extends StatelessWidget {
                           onUndo: (index) =>
                               context.read<EditOrderCubit>().undoAction(index),
                         ),
-                        const SizedBox(height: 20),
+                        SizedBox(height: AppSpacing.verticalXLarge),
                       ],
 
                       // Reason field (required)
@@ -169,7 +170,7 @@ class EditOrderScreen extends StatelessWidget {
                         onChanged: (v) =>
                             context.read<EditOrderCubit>().setReason(v),
                       ),
-                      const SizedBox(height: 32),
+                      SizedBox(height: AppSpacing.verticalXXXLarge),
 
                       FilledButton(
                         onPressed: isSubmitting || !(ready.canSubmit)
@@ -222,7 +223,7 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: AppSpacing.verticalSmall),
       child: Text(text,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
     );
@@ -237,19 +238,19 @@ class _OrderInfoHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: AppSpacing.allMedium,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 const Icon(Icons.info_outline, size: 18, color: Colors.grey),
-                const SizedBox(width: 8),
+                SizedBox(width: AppSpacing.horizontalSmall),
                 Text('طلب ${order.directionLabel}',
                     style: const TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: AppSpacing.verticalSmall),
             if (order.entity != null)
               Text('الجهة: ${order.entity!.name}',
                   style: const TextStyle(fontSize: 13)),
@@ -298,7 +299,7 @@ class _EditableItemTile extends StatelessWidget {
         subtitle: Text('الكمية: ${item.quantity}',
             style: const TextStyle(color: Colors.grey)),
         trailing: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+          padding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalXSmall, vertical: AppSpacing.verticalXSmall),
           decoration: BoxDecoration(
             color: Colors.red.withValues(alpha: 0.15),
             borderRadius: BorderRadius.circular(4),
@@ -320,7 +321,7 @@ class _EditableItemTile extends StatelessWidget {
     }
 
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.symmetric(vertical: AppSpacing.verticalXSmall),
       child: Row(
         children: [
           Icon(
@@ -328,7 +329,7 @@ class _EditableItemTile extends StatelessWidget {
             color: item.isCustom ? Colors.orange : Colors.teal,
             size: 20,
           ),
-          const SizedBox(width: 8),
+          SizedBox(width: AppSpacing.horizontalSmall),
           Expanded(
             flex: 3,
             child: Column(
@@ -433,7 +434,7 @@ class _QuantityFieldState extends State<_QuantityField> {
       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
       decoration: const InputDecoration(
         border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalSmall, vertical: AppSpacing.horizontalSmall),
         isDense: true,
       ),
       onChanged: (v) {
@@ -460,24 +461,24 @@ class _ChangesSummaryCard extends StatelessWidget {
     return Card(
       color: Colors.amber.withValues(alpha: 0.08),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: AppSpacing.allMedium,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 const Icon(Icons.history, size: 18, color: Colors.amber),
-                const SizedBox(width: 8),
+                SizedBox(width: AppSpacing.horizontalSmall),
                 Text('${actions.length} تغيير',
                     style: const TextStyle(fontWeight: FontWeight.bold)),
               ],
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: AppSpacing.verticalSmall),
             ...actions.asMap().entries.map((entry) {
               final i = entry.key;
               final action = entry.value;
               return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.verticalXSmall),
                 child: Row(
                   children: [
                     Expanded(child: Text(_actionLabel(action),

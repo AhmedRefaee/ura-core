@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../shared/models/entity.dart';
+import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/profile.dart';
 import '../logic/create_order_cubit.dart';
+import '../../inventory/ui/inventory_item_detail_screen.dart';
 import 'widgets/add_item_sheet.dart';
+import 'widgets/templates_sheet.dart';
+import '../../../core/design_system/theme/theme.dart';
 
 class CreateOrderScreen extends StatelessWidget {
   const CreateOrderScreen({super.key});
@@ -27,6 +31,11 @@ class CreateOrderScreen extends StatelessWidget {
             ),
           );
         }
+        if (state is CreateOrderReady && state.templateSaveSucceeded) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('تم حفظ القالب بنجاح')),
+          );
+        }
       },
       builder: (context, state) {
         if (state is CreateOrderInitial || state is CreateOrderLoadingLookups) {
@@ -42,7 +51,7 @@ class CreateOrderScreen extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(state.message),
-                  const SizedBox(height: 12),
+                  SizedBox(height: AppSpacing.verticalMedium),
                   FilledButton(
                     onPressed: () =>
                         context.read<CreateOrderCubit>().loadLookups(),
@@ -58,11 +67,22 @@ class CreateOrderScreen extends StatelessWidget {
         final isSubmitting = state is CreateOrderSubmitting;
 
         return Scaffold(
-          appBar: AppBar(title: const Text('طلب جديد')),
+          appBar: AppBar(
+            title: const Text('طلب جديد'),
+            actions: [
+              if (ready != null && ready.canSubmit)
+                IconButton(
+                  tooltip: 'حفظ كقالب',
+                  icon: const Icon(Icons.bookmark_add_outlined),
+                  onPressed: () =>
+                      context.read<CreateOrderCubit>().saveAsTemplate(),
+                ),
+            ],
+          ),
           body: ready == null
               ? const Center(child: CircularProgressIndicator())
               : SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
+                  padding: AppSpacing.allLarge,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
@@ -73,7 +93,7 @@ class CreateOrderScreen extends StatelessWidget {
                         onChanged: (d) =>
                             context.read<CreateOrderCubit>().setDirection(d),
                       ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.verticalXLarge),
 
                       // Entity
                       _SectionTitle(ready.direction == OrderDirection.outbound
@@ -86,7 +106,7 @@ class CreateOrderScreen extends StatelessWidget {
                         onChanged: (e) =>
                             context.read<CreateOrderCubit>().selectEntity(e),
                       ),
-                      const SizedBox(height: 20),
+                      SizedBox(height: AppSpacing.verticalXLarge),
 
                       // Rep (not for inbound_external)
                       if (ready.direction != OrderDirection.inboundExternal) ...[
@@ -97,7 +117,7 @@ class CreateOrderScreen extends StatelessWidget {
                           onChanged: (r) =>
                               context.read<CreateOrderCubit>().selectRep(r),
                         ),
-                        const SizedBox(height: 20),
+                        SizedBox(height: AppSpacing.verticalXLarge),
                       ],
 
                       // Items
@@ -105,34 +125,25 @@ class CreateOrderScreen extends StatelessWidget {
                         children: [
                           _SectionTitle('الأصناف'),
                           const Spacer(),
+                          if (ready.selectedEntity != null)
+                            TextButton.icon(
+                              onPressed: () => _showTemplatesSheet(context, ready),
+                              icon: const Icon(Icons.flash_on, size: 18),
+                              label: const Text('قالب'),
+                            ),
                           TextButton.icon(
                             onPressed: () => _showAddItemDialog(context, ready),
                             icon: const Icon(Icons.add),
-                            
                             label: const Text('إضافة'),
                           ),
                         ],
                       ),
-                      if (ready.items.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Text('لم يتم إضافة أصناف بعد',
-                              style: TextStyle(color: Colors.grey)),
-                        )
-                      else
-                        ...ready.items.asMap().entries.map((e) => ListTile(
-                              dense: true,
-                              title: Text(e.value.displayName),
-                              subtitle: Text('الكمية: ${e.value.quantity}'),
-                              trailing: IconButton(
-                                icon: const Icon(Icons.delete_outline,
-                                    color: Colors.red),
-                                onPressed: () => context
-                                    .read<CreateOrderCubit>()
-                                    .removeItem(e.key),
-                              ),
-                            )),
-                      const SizedBox(height: 20),
+                      _OrderItemsList(
+                        items: ready.items,
+                        inventory: ready.inventory,
+                        direction: ready.direction,
+                      ),
+                      SizedBox(height: AppSpacing.verticalXLarge),
 
                       // Notes
                       _SectionTitle('ملاحظات (اختياري)'),
@@ -145,7 +156,7 @@ class CreateOrderScreen extends StatelessWidget {
                         onChanged: (v) =>
                             context.read<CreateOrderCubit>().setNotes(v),
                       ),
-                      const SizedBox(height: 32),
+                      SizedBox(height: AppSpacing.verticalXXXLarge),
 
                       FilledButton(
                         onPressed: isSubmitting || !ready.canSubmit
@@ -170,16 +181,126 @@ class CreateOrderScreen extends StatelessWidget {
 
   void _showAddItemDialog(BuildContext context, CreateOrderReady state) {
     final cubit = context.read<CreateOrderCubit>();
+    final inventory = state.direction == OrderDirection.outbound
+        ? _applyDraftReservations(state.inventory, state.items)
+        : state.inventory;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => AddItemSheet(
-          inventory: state.inventory,
+          inventory: inventory,
           orderDirection: state.direction,
           onAddInventoryItems: (items) => cubit.addMultipleItems(items),
           onAddCustomItem: (desc, qty, {sourceInventoryId}) =>
               cubit.addCustomItem(desc, qty, sourceInventoryId: sourceInventoryId),
         ),
+      ),
+    );
+  }
+
+  List<InventoryItem> _applyDraftReservations(
+    List<InventoryItem> inventory,
+    List<DraftOrderItem> draftItems,
+  ) {
+    final Map<String, int> reserved = {};
+    for (final item in draftItems) {
+      if (item.inventoryId != null) {
+        reserved[item.inventoryId!] = (reserved[item.inventoryId!] ?? 0) + item.quantity;
+      }
+    }
+    if (reserved.isEmpty) return inventory;
+    return inventory.map((inv) {
+      final r = reserved[inv.id] ?? 0;
+      if (r == 0) return inv;
+      return InventoryItem(
+        id: inv.id,
+        itemName: inv.itemName,
+        sku: inv.sku,
+        quantity: (inv.quantity - r).clamp(0, inv.quantity),
+        unit: inv.unit,
+        category: inv.category,
+        minQuantity: inv.minQuantity,
+        description: inv.description,
+      );
+    }).toList();
+  }
+
+  void _showTemplatesSheet(BuildContext context, CreateOrderReady state) {
+    final cubit = context.read<CreateOrderCubit>();
+    showTemplatesSheet(
+      context: context,
+      entityId: state.selectedEntity!.id,
+      entityName: state.selectedEntity!.name,
+      onApply: (template) => cubit.applyTemplate(template),
+    );
+  }
+}
+
+class _OrderItemsList extends StatelessWidget {
+  final List<DraftOrderItem> items;
+  final List<InventoryItem> inventory;
+  final OrderDirection direction;
+
+  const _OrderItemsList({
+    required this.items,
+    required this.inventory,
+    required this.direction,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (items.isEmpty) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 8),
+        child: Text('لم يتم إضافة أصناف بعد', style: TextStyle(color: Colors.grey)),
+      );
+    }
+    return Column(
+      children: [
+        for (int i = 0; i < items.length; i++)
+          _buildItemTile(context, i, items[i]),
+      ],
+    );
+  }
+
+  Widget _buildItemTile(BuildContext context, int index, DraftOrderItem item) {
+    final invItem = direction == OrderDirection.outbound && item.inventoryId != null
+        ? inventory.where((inv) => inv.id == item.inventoryId).firstOrNull
+        : null;
+    final isOverStock = invItem != null && item.quantity > invItem.quantity;
+
+    return ListTile(
+      dense: true,
+      title: Text(item.displayName),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text('الكمية: ${item.quantity}'),
+          if (isOverStock)
+            GestureDetector(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => InventoryItemDetailScreen(item: invItem),
+                ),
+              ),
+              child: Chip(
+                avatar: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 16),
+                label: Text(
+                  'المتوفر فقط: ${invItem.quantity}',
+                  style: const TextStyle(fontSize: 11, color: Colors.orange),
+                ),
+                backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                side: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
+                visualDensity: VisualDensity.compact,
+              ),
+            ),
+        ],
+      ),
+      trailing: IconButton(
+        icon: const Icon(Icons.delete_outline, color: Colors.red),
+        onPressed: () => context.read<CreateOrderCubit>().removeItem(index),
       ),
     );
   }
@@ -192,7 +313,7 @@ class _SectionTitle extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: EdgeInsets.only(bottom: AppSpacing.verticalSmall),
       child: Text(text,
           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
     );
@@ -210,7 +331,8 @@ class _DirectionSelector extends StatelessWidget {
       segments: const [
         ButtonSegment(value: OrderDirection.outbound, label: Text('صادر')),
         ButtonSegment(value: OrderDirection.inboundRep, label: Text('وارد (مندوب)')),
-        ButtonSegment(value: OrderDirection.inboundExternal, label: Text('وارد (خارجي)')),
+        ButtonSegment(
+            value: OrderDirection.inboundExternal, label: Text('وارد (خارجي)')),
       ],
       selected: {selected},
       onSelectionChanged: (s) => onChanged(s.first),
@@ -233,16 +355,13 @@ class _EntityPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final filtered = direction == OrderDirection.outbound
-        ? entities.where((e) => e.type == EntityType.customer).toList()
-        : entities.where((e) => e.type == EntityType.supplier).toList();
-
+    final theme = Theme.of(context);
     return InkWell(
-      onTap: () => _showEntitySheet(context, filtered),
+      onTap: () => _showEntitySheet(context, entities),
       child: InputDecorator(
         decoration: const InputDecoration(
           border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalMedium, vertical: AppSpacing.verticalLarge),
         ),
         child: Row(
           children: [
@@ -250,23 +369,23 @@ class _EntityPicker extends StatelessWidget {
               child: Text(
                 selected?.name ?? 'اختر...',
                 style: TextStyle(
-                  color: selected != null ? null : Colors.grey[600],
+                  color: selected != null ? null : theme.hintColor,
                 ),
               ),
             ),
-            const Icon(Icons.arrow_drop_down),
+            Icon(Icons.arrow_drop_down, color: theme.iconTheme.color),
           ],
         ),
       ),
     );
   }
 
-  void _showEntitySheet(BuildContext context, List<Entity> filteredEntities) {
+  void _showEntitySheet(BuildContext context, List<Entity> entities) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
       builder: (sheetContext) => _EntitySheet(
-        entities: filteredEntities,
+        entities: entities,
         selected: selected,
         onSelected: (entity) {
           onChanged(entity);
@@ -294,6 +413,7 @@ class _EntitySheet extends StatefulWidget {
 
 class _EntitySheetState extends State<_EntitySheet> {
   final TextEditingController _searchController = TextEditingController();
+  EntityCategory? _categoryFilter;
   List<Entity> _filtered = [];
 
   @override
@@ -311,52 +431,74 @@ class _EntitySheetState extends State<_EntitySheet> {
   }
 
   void _onSearchChanged() {
+    _applyFilters();
+  }
+
+  void _onCategoryFilterChanged(EntityCategory? category) {
+    setState(() {
+      _categoryFilter = category;
+    });
+    _applyFilters();
+  }
+
+  void _applyFilters() {
     final query = _searchController.text.toLowerCase();
     setState(() {
-      _filtered = widget.entities
-          .where((e) => e.name.toLowerCase().contains(query))
-          .toList();
+      _filtered = widget.entities.where((entity) {
+        // Filter by category
+        if (_categoryFilter != null && entity.category != _categoryFilter) {
+          return false;
+        }
+        // Filter by search query
+        if (query.isNotEmpty && !entity.name.toLowerCase().contains(query)) {
+          return false;
+        }
+        return true;
+      }).toList();
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
       minChildSize: 0.5,
       maxChildSize: 0.95,
       expand: false,
       builder: (context, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: theme.scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           children: [
-            // Handle bar
             Container(
-              margin: const EdgeInsets.only(top: 8),
+              margin: EdgeInsets.only(top: AppSpacing.verticalSmall),
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey[300],
+                color: theme.dividerColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            // Header
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: AppSpacing.allLarge,
               child: Text(
                 widget.selected == null ? 'اختر جهة' : 'تغيير الجهة',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: theme.textTheme.titleLarge?.color,
+                ),
               ),
             ),
-            // Search bar
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
+              padding: AppSpacing.horizontalLargePadding,
+              child: TextFormField(
                 controller: _searchController,
-                autofocus: true,
+                onTapOutside: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
                 decoration: InputDecoration(
                   hintText: 'ابحث باسم الجهة...',
                   prefixIcon: const Icon(Icons.search),
@@ -364,17 +506,19 @@ class _EntitySheetState extends State<_EntitySheet> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[100],
+                  fillColor: theme.inputDecorationTheme.fillColor ?? theme.scaffoldBackgroundColor,
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            // Entity list
+            SizedBox(height: AppSpacing.verticalMedium),
+            _FilterChips(
+              selectedFilter: _categoryFilter,
+              onChanged: _onCategoryFilterChanged,
+            ),
+            SizedBox(height: AppSpacing.verticalSmall),
             Expanded(
               child: _filtered.isEmpty
-                  ? const Center(
-                      child: Text('لا توجد نتائج'),
-                    )
+                  ? const Center(child: Text('لا توجد نتائج'))
                   : ListView.builder(
                       controller: scrollController,
                       itemCount: _filtered.length,
@@ -387,7 +531,7 @@ class _EntitySheetState extends State<_EntitySheet> {
                               ? const Icon(Icons.check, color: Colors.green)
                               : null,
                           selected: isSelected,
-                          selectedTileColor: Colors.green.withOpacity(0.1),
+                          selectedTileColor: Colors.green.withValues(alpha: 0.1),
                           onTap: () => widget.onSelected(entity),
                         );
                       },
@@ -396,6 +540,78 @@ class _EntitySheetState extends State<_EntitySheet> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _FilterChips extends StatelessWidget {
+  final EntityCategory? selectedFilter;
+  final ValueChanged<EntityCategory?> onChanged;
+
+  const _FilterChips({
+    required this.selectedFilter,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: AppSpacing.horizontalLargePadding,
+      child: Row(
+        children: [
+          _FilterChip(
+            label: 'الكل',
+            isSelected: selectedFilter == null,
+            onTap: () => onChanged(null),
+          ),
+          SizedBox(width: AppSpacing.horizontalSmall),
+          _FilterChip(
+            label: 'وارد',
+            isSelected: selectedFilter == EntityCategory.incoming,
+            onTap: () => onChanged(EntityCategory.incoming),
+          ),
+          SizedBox(width: AppSpacing.horizontalSmall),
+          _FilterChip(
+            label: 'صادر',
+            isSelected: selectedFilter == EntityCategory.outgoing,
+            onTap: () => onChanged(EntityCategory.outgoing),
+          ),
+          SizedBox(width: AppSpacing.horizontalSmall),
+        ],
+      ),
+    );
+  }
+}
+
+class _FilterChip extends StatelessWidget {
+  final String label;
+  final bool isSelected;
+  final VoidCallback onTap;
+
+  const _FilterChip({
+    required this.label,
+    required this.isSelected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    
+    return FilterChip(
+      label: Text(label),
+      selected: isSelected,
+      onSelected: (_) => onTap(),
+      backgroundColor: theme.colorScheme.surface,
+      selectedColor: theme.colorScheme.primaryContainer,
+      checkmarkColor: theme.colorScheme.onPrimaryContainer,
+      labelStyle: TextStyle(
+        color: isSelected
+            ? theme.colorScheme.onPrimaryContainer
+            : theme.colorScheme.onSurface,
+      ),
+      padding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalMedium, vertical: AppSpacing.verticalSmall),
     );
   }
 }
@@ -413,12 +629,13 @@ class _RepPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return InkWell(
       onTap: () => _showRepSheet(context, reps),
       child: InputDecorator(
         decoration: const InputDecoration(
           border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+          contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalMedium, vertical: AppSpacing.verticalLarge),
         ),
         child: Row(
           children: [
@@ -426,11 +643,11 @@ class _RepPicker extends StatelessWidget {
               child: Text(
                 selected?.fullName ?? 'اختر مندوباً...',
                 style: TextStyle(
-                  color: selected != null ? null : Colors.grey[600],
+                  color: selected != null ? null : theme.hintColor,
                 ),
               ),
             ),
-            const Icon(Icons.arrow_drop_down),
+            Icon(Icons.arrow_drop_down, color: theme.iconTheme.color),
           ],
         ),
       ),
@@ -497,42 +714,45 @@ class _RepSheetState extends State<_RepSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
       minChildSize: 0.5,
       maxChildSize: 0.95,
       expand: false,
       builder: (context, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: theme.scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           children: [
-            // Handle bar
             Container(
-              margin: const EdgeInsets.only(top: 8),
+              margin: EdgeInsets.only(top: AppSpacing.verticalSmall),
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey[300],
+                color: theme.dividerColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-            // Header
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: AppSpacing.allLarge,
               child: Text(
                 widget.selected == null ? 'اختر مندوباً' : 'تغيير المندوب',
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: theme.textTheme.titleLarge?.color,
+                ),
               ),
             ),
-            // Search bar
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: TextField(
+              padding: AppSpacing.horizontalLargePadding,
+              child: TextFormField(
                 controller: _searchController,
-                autofocus: true,
+                onTapOutside: (_) =>
+                    FocusManager.instance.primaryFocus?.unfocus(),
                 decoration: InputDecoration(
                   hintText: 'ابحث باسم المندوب...',
                   prefixIcon: const Icon(Icons.search),
@@ -540,17 +760,14 @@ class _RepSheetState extends State<_RepSheet> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   filled: true,
-                  fillColor: Colors.grey[100],
+                  fillColor: theme.inputDecorationTheme.fillColor ?? theme.scaffoldBackgroundColor,
                 ),
               ),
             ),
-            const SizedBox(height: 12),
-            // Rep list
+            SizedBox(height: AppSpacing.verticalMedium),
             Expanded(
               child: _filtered.isEmpty
-                  ? const Center(
-                      child: Text('لا توجد نتائج'),
-                    )
+                  ? const Center(child: Text('لا توجد نتائج'))
                   : ListView.builder(
                       controller: scrollController,
                       itemCount: _filtered.length,
@@ -563,7 +780,7 @@ class _RepSheetState extends State<_RepSheet> {
                               ? const Icon(Icons.check, color: Colors.green)
                               : null,
                           selected: isSelected,
-                          selectedTileColor: Colors.green.withOpacity(0.1),
+                          selectedTileColor: Colors.green.withValues(alpha: 0.1),
                           onTap: () => widget.onSelected(rep),
                         );
                       },
@@ -575,4 +792,3 @@ class _RepSheetState extends State<_RepSheet> {
     );
   }
 }
-

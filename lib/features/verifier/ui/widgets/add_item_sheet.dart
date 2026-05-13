@@ -1,6 +1,8 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../../../shared/models/inventory_item.dart';
 import '../../../../shared/models/order.dart';
+import '../../../../core/design_system/theme/theme.dart';
 
 /// Shared widget for adding items to an order.
 /// Used by both CreateOrderScreen and EditOrderScreen.
@@ -26,6 +28,11 @@ class _AddItemSheetState extends State<AddItemSheet> {
   bool _isCustom = false;
   final _descController = TextEditingController();
   final _customQtyController = TextEditingController(text: '1');
+  final _unitCtrl = TextEditingController(text: 'قطعة');
+  final _skuCtrl = TextEditingController();
+  final _categoryCtrl = TextEditingController();
+  final _minQtyCtrl = TextEditingController(text: '0');
+  final _extraDescCtrl = TextEditingController();
   final _searchController = TextEditingController();
   final Map<String, TextEditingController> _quantityControllers = {};
   String _search = '';
@@ -46,6 +53,11 @@ class _AddItemSheetState extends State<AddItemSheet> {
   void dispose() {
     _descController.dispose();
     _customQtyController.dispose();
+    _unitCtrl.dispose();
+    _skuCtrl.dispose();
+    _categoryCtrl.dispose();
+    _minQtyCtrl.dispose();
+    _extraDescCtrl.dispose();
     _searchController.dispose();
     for (final controller in _quantityControllers.values) {
       controller.dispose();
@@ -62,24 +74,30 @@ class _AddItemSheetState extends State<AddItemSheet> {
       }).toList();
 
   void _submit() {
+    final inventoryItems = <({InventoryItem item, int quantity})>[];
+    for (final item in widget.inventory) {
+      final qty = int.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
+      if (qty > 0) inventoryItems.add((item: item, quantity: qty));
+    }
+    if (inventoryItems.isNotEmpty) widget.onAddInventoryItems(inventoryItems);
+
     if (_isCustom) {
-      final desc = _descController.text.trim();
+      final name = _descController.text.trim();
       final qty = int.tryParse(_customQtyController.text) ?? 0;
-      if (desc.isNotEmpty && qty > 0) {
-        widget.onAddCustomItem(desc, qty, sourceInventoryId: _convertSourceInventoryId);
-      }
-    } else {
-      final itemsWithQuantities = <({InventoryItem item, int quantity})>[];
-      for (final item in _filtered) {
-        final qty = int.tryParse(_quantityControllers[item.id]!.text) ?? 0;
-        if (qty > 0) {
-          itemsWithQuantities.add((item: item, quantity: qty));
-        }
-      }
-      if (itemsWithQuantities.isNotEmpty) {
-        widget.onAddInventoryItems(itemsWithQuantities);
+      if (name.isNotEmpty && qty > 0) {
+        final payload = jsonEncode({
+          'name': name,
+          'qty': qty,
+          'unit': _unitCtrl.text.trim().isEmpty ? 'قطعة' : _unitCtrl.text.trim(),
+          if (_skuCtrl.text.trim().isNotEmpty) 'sku': _skuCtrl.text.trim(),
+          if (_categoryCtrl.text.trim().isNotEmpty) 'category': _categoryCtrl.text.trim(),
+          'minQty': int.tryParse(_minQtyCtrl.text) ?? 0,
+          if (_extraDescCtrl.text.trim().isNotEmpty) 'description': _extraDescCtrl.text.trim(),
+        });
+        widget.onAddCustomItem(payload, qty, sourceInventoryId: _convertSourceInventoryId);
       }
     }
+
     Navigator.pop(context);
   }
 
@@ -115,7 +133,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
 
   Widget _buildRestockingBadge() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalXSmall, vertical: AppSpacing.verticalXSmall),
       decoration: BoxDecoration(
         color: Colors.teal.withAlpha(30),
         borderRadius: BorderRadius.circular(4),
@@ -125,7 +143,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(Icons.arrow_upward, size: 10, color: Colors.teal),
-          SizedBox(width: 2),
+          SizedBox(width: AppSpacing.horizontalXSmall),
           Text(
             'إعادة تخزين',
             style: TextStyle(fontSize: 10, color: Colors.teal, fontWeight: FontWeight.bold),
@@ -159,7 +177,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
 
   Widget _buildStockBadge(InventoryItem item) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      padding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalXSmall, vertical: AppSpacing.verticalXSmall),
       decoration: BoxDecoration(
         color: _stockColor(item).withValues(alpha: 0.15),
         borderRadius: BorderRadius.circular(4),
@@ -177,17 +195,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
 
   bool get _isInbound => widget.orderDirection != OrderDirection.outbound;
 
-  /// Only blocks submission for outbound; inbound orders can restock any item.
-  bool get _hasInvalidSelection {
-    if (_isCustom || _isInbound) return false;
-    for (final item in _filtered) {
-      final qty = int.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
-      if (qty > 0 && item.quantity == 0) return true;
-    }
-    return false;
-  }
-
-  /// True if at least one item has a quantity entered (for enabling the button).
   bool get _hasAnySelection {
     if (_isCustom) {
       return _descController.text.trim().isNotEmpty &&
@@ -229,7 +236,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
         ),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: AppSpacing.allLarge,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
@@ -248,13 +255,13 @@ class _AddItemSheetState extends State<AddItemSheet> {
                 const Text('مخصص'),
               ],
             ),
-            const SizedBox(height: 16),
+            SizedBox(height: AppSpacing.verticalLarge),
             if (_isCustom) ...[
               if (_convertSourceInventoryId != null)
                 Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
+                  padding: EdgeInsets.only(bottom: AppSpacing.verticalSmall),
                   child: Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: AppSpacing.allSmall,
                     decoration: BoxDecoration(
                       color: Colors.orange.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
@@ -263,7 +270,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     child: Row(
                       children: [
                         const Icon(Icons.swap_horiz, color: Colors.orange, size: 18),
-                        const SizedBox(width: 8),
+                        SizedBox(width: AppSpacing.horizontalSmall),
                         const Expanded(
                           child: Text(
                             'تم التحويل من صنف المخزون',
@@ -284,36 +291,59 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     ),
                   ),
                 ),
-              TextField(
-                controller: _descController,
-                decoration: const InputDecoration(
-                  labelText: 'وصف الصنف',
-                  border: OutlineInputBorder(),
+              Expanded(
+                child: ListView(
+                  children: [
+                    _CustomField(
+                      controller: _descController,
+                      label: 'اسم الصنف *',
+                      onChanged: (_) => setState(() {}),
+                    ),
+                    SizedBox(height: AppSpacing.verticalMedium),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: _CustomField(
+                            controller: _customQtyController,
+                            label: 'الكمية *',
+                            keyboardType: TextInputType.number,
+                            onChanged: (_) => setState(() {}),
+                          ),
+                        ),
+                        SizedBox(width: AppSpacing.horizontalMedium),
+                        Expanded(
+                          child: _CustomField(
+                            controller: _unitCtrl,
+                            label: 'الوحدة *',
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: AppSpacing.verticalMedium),
+                    _CustomField(
+                      controller: _skuCtrl,
+                      label: 'رمز SKU (اختياري)',
+                    ),
+                    SizedBox(height: AppSpacing.verticalMedium),
+                    _CustomField(
+                      controller: _categoryCtrl,
+                      label: 'الفئة (اختياري)',
+                    ),
+                    SizedBox(height: AppSpacing.verticalMedium),
+                    _CustomField(
+                      controller: _minQtyCtrl,
+                      label: 'حد التنبيه (اختياري)',
+                      keyboardType: TextInputType.number,
+                    ),
+                    SizedBox(height: AppSpacing.verticalMedium),
+                    _CustomField(
+                      controller: _extraDescCtrl,
+                      label: 'الوصف (اختياري)',
+                      maxLines: 3,
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 12),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Text('الكمية',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      )),
-                  const SizedBox(height: 4),
-                  TextField(
-                    controller: _customQtyController,
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    decoration: const InputDecoration(
-                      border: OutlineInputBorder(),
-                      contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 14),
-                    ),
-                  ),
-                ],
               ),
             ] else ...[
               TextField(
@@ -334,11 +364,11 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   contentPadding:
-                      const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                      EdgeInsets.symmetric(horizontal: AppSpacing.horizontalLarge, vertical: 0),
                 ),
                 onChanged: (v) => setState(() => _search = v),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: AppSpacing.verticalSmall),
               SingleChildScrollView(
                 scrollDirection: Axis.horizontal,
                 child: Row(
@@ -348,13 +378,13 @@ class _AddItemSheetState extends State<AddItemSheet> {
                       status: AvailabilityStatus.available,
                       color: Colors.green,
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: AppSpacing.horizontalSmall),
                     _buildStatusChip(
                       label: 'منخفض',
                       status: AvailabilityStatus.low,
                       color: Colors.orange,
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: AppSpacing.horizontalSmall),
                     _buildStatusChip(
                       label: 'نفد',
                       status: AvailabilityStatus.outOfStock,
@@ -363,7 +393,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                   ],
                 ),
               ),
-              const SizedBox(height: 8),
+              SizedBox(height: AppSpacing.verticalSmall),
               Expanded(
                 child: ListView.builder(
                   itemCount: _filtered.length,
@@ -376,7 +406,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     return Column(
                       children: [
                         Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
+                          padding: EdgeInsets.symmetric(vertical: AppSpacing.verticalXSmall),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -391,7 +421,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                           item.itemName,
                                           style: const TextStyle(fontWeight: FontWeight.w500),
                                         ),
-                                        const SizedBox(height: 2),
+                                        SizedBox(height: AppSpacing.verticalXSmall),
                                         Row(
                                           children: [
                                             Text(
@@ -402,17 +432,17 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                                 color: _stockColor(item),
                                               ),
                                             ),
-                                            const SizedBox(width: 8),
+                                            SizedBox(width: AppSpacing.horizontalSmall),
                                             _buildStockBadge(item),
                                             if (restocking) ...[
-                                              const SizedBox(width: 6),
+                                              SizedBox(width: AppSpacing.horizontalSmall),
                                               _buildRestockingBadge(),
                                             ],
                                           ],
                                         ),
                                         if (item.description != null && item.description!.isNotEmpty)
                                           Padding(
-                                            padding: const EdgeInsets.only(top: 2),
+                                            padding: EdgeInsets.only(top: AppSpacing.verticalXSmall),
                                             child: SelectableText(
                                               item.description!,
                                               style: const TextStyle(fontSize: 12, color: Colors.grey),
@@ -421,7 +451,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
+                                  SizedBox(width: AppSpacing.horizontalSmall),
                                   Expanded(
                                     flex: 1,
                                     child: Column(
@@ -433,7 +463,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                               fontWeight: FontWeight.bold,
                                             ),
                                             textAlign: TextAlign.center),
-                                        const SizedBox(height: 4),
+                                        SizedBox(height: AppSpacing.verticalXSmall),
                                         TextField(
                                           controller: _quantityControllers[item.id],
                                           keyboardType: TextInputType.number,
@@ -445,7 +475,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                           onChanged: (_) => setState(() {}),
                                           decoration: InputDecoration(
                                             border: const OutlineInputBorder(),
-                                            contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+                                            contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalSmall, vertical: AppSpacing.verticalMedium),
                                             enabledBorder: restocking
                                                 ? const OutlineInputBorder(
                                                     borderSide: BorderSide(color: Colors.teal, width: 2),
@@ -467,7 +497,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                               ),
                               if (warning != null)
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 4),
+                                  padding: EdgeInsets.only(top: AppSpacing.verticalXSmall),
                                   child: Text(
                                     warning,
                                     style: TextStyle(
@@ -479,7 +509,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                 ),
                               if (isOutOfStock && !_isInbound)
                                 Padding(
-                                  padding: const EdgeInsets.only(top: 4),
+                                  padding: EdgeInsets.only(top: AppSpacing.verticalXSmall),
                                   child: TextButton.icon(
                                     onPressed: () => _convertToCustom(item),
                                     icon: const Icon(Icons.swap_horiz, size: 16),
@@ -497,7 +527,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                         ),
                         if (i < _filtered.length - 1)
                           const Padding(
-                            padding: EdgeInsets.only(right: 30, left: 30, top: 10),
+                            padding: EdgeInsets.only(right: AppSpacing.horizontalXXXLarge, left: AppSpacing.horizontalXXXLarge, top: AppSpacing.verticalMedium),
                             child: Divider(
                               height: 1,
                               thickness: 1,
@@ -515,12 +545,43 @@ class _AddItemSheetState extends State<AddItemSheet> {
       ),
       bottomNavigationBar: SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: AppSpacing.allLarge,
           child: FilledButton(
-            onPressed: !_hasAnySelection || _hasInvalidSelection ? null : _submit,
+            onPressed: !_hasAnySelection ? null : _submit,
             child: Text(_isCustom ? 'إضافة صنف مخصص' : 'إضافة الأصناف المحددة'),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _CustomField extends StatelessWidget {
+  final TextEditingController controller;
+  final String label;
+  final TextInputType? keyboardType;
+  final int maxLines;
+  final ValueChanged<String>? onChanged;
+
+  const _CustomField({
+    required this.controller,
+    required this.label,
+    this.keyboardType,
+    this.maxLines = 1,
+    this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: controller,
+      keyboardType: keyboardType,
+      maxLines: maxLines,
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        labelText: label,
+        border: const OutlineInputBorder(),
+        contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalMedium, vertical: AppSpacing.verticalMedium),
       ),
     );
   }

@@ -1,12 +1,13 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
 import '../data/inventory_repository.dart';
 import '../data/order_repository.dart';
-import 'create_order_cubit.dart' show DraftOrderItem;
+import '../../../shared/models/draft_order_item.dart';
 
 // ── Edit Actions ──────────────────────────────────────────────────────
 
@@ -67,7 +68,6 @@ class EditOrderInitial extends EditOrderState {}
 
 class EditOrderLoading extends EditOrderState {}
 
-// Sentinel used by copyWith to distinguish "don't change" from "set to null".
 const _stockErrorSentinel = Object();
 
 class EditOrderReady extends EditOrderState {
@@ -110,10 +110,8 @@ class EditOrderReady extends EditOrderState {
       reason != null &&
       reason!.trim().isNotEmpty;
 
-  /// Returns the effective items list after applying all pending actions.
   List<OrderItem> get effectiveItems {
     final items = List<OrderItem>.from(originalOrder.items);
-
     for (final action in pendingActions) {
       switch (action) {
         case UpdateQuantityAction(:final itemId, :final newQuantity):
@@ -136,13 +134,12 @@ class EditOrderReady extends EditOrderState {
         case RemoveItemAction(:final itemId):
           items.removeWhere((i) => i.id == itemId);
         case AddItemAction():
-          break; // Added items don't have an OrderItem yet
+          break;
       }
     }
     return items;
   }
 
-  /// Returns draft items that will be added (from AddItemAction).
   List<DraftOrderItem> get addedItems => pendingActions
       .whereType<AddItemAction>()
       .map((a) => a.item)
@@ -176,48 +173,50 @@ class EditOrderCubit extends Cubit<EditOrderState> {
   Future<void> loadOrder() async {
     logger.d('EditOrderCubit → loadOrder: $orderId');
     emit(EditOrderLoading());
-    try {
-      final results = await Future.wait([
-        _orderRepo.fetchOrderForEdit(orderId),
-        _inventoryRepo.fetchInventory(),
-        _orderRepo.fetchReceipts(orderId),
-      ]);
-      emit(EditOrderReady(
-        originalOrder: results[0] as Order,
-        inventory: results[1] as List<InventoryItem>,
-        receipts: results[2] as Map<String, String>,
-      ));
-      logger.i('EditOrderCubit → order loaded for editing');
-    } catch (e, st) {
-      logger.e('EditOrderCubit → loadOrder failed', error: e, stackTrace: st);
-      emit(EditOrderError(e.toString()));
+
+    final results = await Future.wait([
+      _orderRepo.fetchOrderForEdit(orderId),
+      _inventoryRepo.fetchInventory(),
+      _orderRepo.fetchReceipts(orderId),
+    ]);
+
+    final orderResult = results[0] as AppResult<Order>;
+    final inventoryResult = results[1] as AppResult<List<InventoryItem>>;
+    final receiptsResult = results[2] as AppResult<Map<String, String>>;
+
+    final orderError = orderResult.failureOrNull;
+    if (orderError != null) {
+      logger.e('EditOrderCubit → loadOrder failed: ${orderError.message}');
+      emit(EditOrderError(orderError.message));
+      return;
     }
+    final inventoryError = inventoryResult.failureOrNull;
+    if (inventoryError != null) {
+      logger.e('EditOrderCubit → loadOrder failed: ${inventoryError.message}');
+      emit(EditOrderError(inventoryError.message));
+      return;
+    }
+    final receiptsError = receiptsResult.failureOrNull;
+    if (receiptsError != null) {
+      logger.e('EditOrderCubit → loadOrder failed: ${receiptsError.message}');
+      emit(EditOrderError(receiptsError.message));
+      return;
+    }
+
+    emit(EditOrderReady(
+      originalOrder: (orderResult as AppSuccess<Order>).data,
+      inventory: (inventoryResult as AppSuccess<List<InventoryItem>>).data,
+      receipts: (receiptsResult as AppSuccess<Map<String, String>>).data,
+    ));
+    logger.i('EditOrderCubit → order loaded for editing');
   }
 
   void updateItemQuantity(String itemId, int newQuantity) {
     final s = state;
     if (s is! EditOrderReady) return;
-
     final item = s.originalOrder.items.firstWhere((i) => i.id == itemId);
-
-    // Increasing qty after release means taking more from stock — validate.
-    if (newQuantity > item.quantity && item.inventoryId != null) {
-      final needed = newQuantity - item.quantity;
-      final invItem = s.inventory.where((i) => i.id == item.inventoryId).firstOrNull;
-      if (invItem == null || invItem.quantity < needed) {
-        emit(s.copyWith(
-          stockError:
-              'المخزون غير كافٍ — المتوفر: ${invItem?.quantity ?? 0}، المطلوب: $needed',
-        ));
-        return;
-      }
-    }
-
-    // Remove any existing update action for this item
     final updated = List<EditAction>.from(s.pendingActions)
       ..removeWhere((a) => a is UpdateQuantityAction && a.itemId == itemId);
-
-    // Only add if quantity actually changed from original
     if (newQuantity != item.quantity) {
       updated.add(UpdateQuantityAction(
         itemId: itemId,
@@ -226,21 +225,15 @@ class EditOrderCubit extends Cubit<EditOrderState> {
         newQuantity: newQuantity,
       ));
     }
-
     emit(s.copyWith(pendingActions: updated, stockError: null));
   }
 
   void removeItem(String itemId) {
     final s = state;
     if (s is! EditOrderReady) return;
-
     final item = s.originalOrder.items.firstWhere((i) => i.id == itemId);
-
-    // Remove any existing update action for this item (can't update what's removed)
     final updated = List<EditAction>.from(s.pendingActions)
       ..removeWhere((a) => a is UpdateQuantityAction && a.itemId == itemId);
-
-    // Add removal if not already present
     if (!updated.any((a) => a is RemoveItemAction && a.itemId == itemId)) {
       updated.add(RemoveItemAction(
         itemId: itemId,
@@ -248,23 +241,12 @@ class EditOrderCubit extends Cubit<EditOrderState> {
         quantity: item.quantity,
       ));
     }
-
     emit(s.copyWith(pendingActions: updated, stockError: null));
   }
 
   void addInventoryItem(InventoryItem item, int quantity) {
     final s = state;
     if (s is! EditOrderReady) return;
-
-    // Adding a new item deducts from stock — validate.
-    if (item.quantity < quantity) {
-      emit(s.copyWith(
-        stockError:
-            'المخزون غير كافٍ — المتوفر: ${item.quantity}، المطلوب: $quantity',
-      ));
-      return;
-    }
-
     final updated = List<EditAction>.from(s.pendingActions)
       ..add(AddItemAction(
         item: DraftOrderItem(
@@ -310,64 +292,62 @@ class EditOrderCubit extends Cubit<EditOrderState> {
     if (s is! EditOrderReady || !s.canSubmit) return;
     logger.d('EditOrderCubit → submit');
     emit(EditOrderSubmitting());
-    try {
-      // Build RPC parameters from pending actions
-      final updates = <Map<String, dynamic>>[];
-      final removals = <String>[];
-      final additions = <Map<String, dynamic>>[];
 
-      for (final action in s.pendingActions) {
-        switch (action) {
-          case UpdateQuantityAction(:final itemId, :final newQuantity):
-            updates.add({
-              'item_id': itemId,
-              'new_quantity': newQuantity,
-            });
-          case RemoveItemAction(:final itemId):
-            removals.add(itemId);
-          case AddItemAction(:final item):
-            additions.add(item.toInsertMap());
-        }
+    final updates = <Map<String, dynamic>>[];
+    final removals = <String>[];
+    final additions = <Map<String, dynamic>>[];
+
+    for (final action in s.pendingActions) {
+      switch (action) {
+        case UpdateQuantityAction(:final itemId, :final newQuantity):
+          updates.add({'item_id': itemId, 'new_quantity': newQuantity});
+        case RemoveItemAction(:final itemId):
+          removals.add(itemId);
+        case AddItemAction(:final item):
+          additions.add(item.toInsertMap());
       }
-
-      await _orderRepo.editOrderItems(
-        orderId: orderId,
-        reason: s.reason!,
-        updates: updates,
-        removals: removals,
-        additions: additions,
-      );
-
-      // Reconcile inventory: compute deltas from the pending actions and apply
-      // them in a single bulk RPC call.
-      final deltas = _computeInventoryDeltas(s);
-      if (deltas.isNotEmpty) {
-        await _inventoryRepo.incrementStockBulk(deltas);
-      }
-
-      emit(EditOrderSuccess());
-    } catch (e, st) {
-      logger.e('EditOrderCubit → submit failed', error: e, stackTrace: st);
-      emit(EditOrderError(e.toString()));
     }
+
+    final editResult = await _orderRepo.editOrderItems(
+      orderId: orderId,
+      reason: s.reason!,
+      updates: updates,
+      removals: removals,
+      additions: additions,
+    );
+
+    switch (editResult) {
+      case AppFailure(:final error):
+        logger.e('EditOrderCubit → submit failed: ${error.message}');
+        emit(EditOrderError(error.message));
+        return;
+      case AppSuccess():
+        break;
+    }
+
+    final deltas = _computeInventoryDeltas(s);
+    if (deltas.isNotEmpty) {
+      final stockResult = await _inventoryRepo.incrementStockBulk(deltas);
+      final stockError = stockResult.failureOrNull;
+      if (stockError != null) {
+        logger.e('EditOrderCubit → incrementStockBulk failed: ${stockError.message}');
+        emit(EditOrderError(stockError.message));
+        return;
+      }
+    }
+
+    emit(EditOrderSuccess());
   }
 
-  /// Computes inventory deltas from all pending actions.
-  ///
-  /// Positive delta  → stock increases (qty decrease / item removal).
-  /// Negative delta  → stock decreases (qty increase / new item addition).
-  /// Custom items (no inventoryId) are skipped — they don't touch inventory.
   Map<String, int> _computeInventoryDeltas(EditOrderReady s) {
     final Map<String, int> deltas = {};
-
     for (final action in s.pendingActions) {
       switch (action) {
         case UpdateQuantityAction(:final itemId, :final oldQuantity, :final newQuantity):
           final orderItem = s.originalOrder.items.firstWhere((i) => i.id == itemId);
           final invId = orderItem.inventoryId;
           if (invId != null) {
-            final delta = oldQuantity - newQuantity;
-            deltas[invId] = (deltas[invId] ?? 0) + delta;
+            deltas[invId] = (deltas[invId] ?? 0) + (oldQuantity - newQuantity);
           }
         case RemoveItemAction(:final itemId, :final quantity):
           final orderItem = s.originalOrder.items.firstWhere((i) => i.id == itemId);
@@ -382,7 +362,6 @@ class EditOrderCubit extends Cubit<EditOrderState> {
           }
       }
     }
-
     return deltas;
   }
 }

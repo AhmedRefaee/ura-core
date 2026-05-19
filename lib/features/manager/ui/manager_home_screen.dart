@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
+import '../../../shared/widgets/notification_dot.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 import '../../auth/logic/auth_cubit.dart';
 import '../../auth/logic/auth_state.dart';
 import '../../chat/logic/chat_threads_cubit.dart';
@@ -50,48 +52,6 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_navIndex == 2 ? 'المحادثات' : 'لوحة المدير'),
-        actions: [
-          BlocBuilder<NotificationsBadgeCubit, int>(
-            builder: (context, count) => Badge(
-              isLabelVisible: count > 0,
-              alignment: Alignment.topRight,
-              offset: const Offset(-8, 8),
-              label: Text(
-                count > 9 ? '9+' : '$count',
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: IconButton(
-                icon: const Icon(Icons.notifications_outlined),
-                tooltip: 'الإشعارات',
-                onPressed: () => context.push('/notifications'),
-              ),
-            ),
-          ),
-          if (_navIndex == 0)
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              onPressed: () => context.read<MonitorOrdersCubit>().load(),
-              tooltip: 'تحديث',
-            ),
-          if (_navIndex == 2) ...[
-            if (chatHubCanCreate(context))
-              IconButton(
-                icon: const Icon(Icons.add_comment_outlined),
-                tooltip: 'محادثة جديدة',
-                onPressed: () => chatHubCreateThread(context),
-              ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'تحديث',
-              onPressed: () =>
-                  context.read<ChatThreadsCubit>().loadThreads(),
-            ),
-          ],
-        ],
-      ),
       body: _navIndex == 4
           ? _SettingsTab(
               onInventoryTap: () => Navigator.push(
@@ -103,7 +63,34 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
               onLogout: () => context.read<AuthCubit>().signOut(),
             )
           : _navIndex == 2
-              ? const ChatHubBody()
+              ? CollapsingHeaderWrapper(
+                  title: const Text('المحادثات'),
+                  actions: [
+                    if (chatHubCanCreate(context))
+                      IconButton(
+                        icon: const Icon(Icons.add_comment_outlined),
+                        tooltip: 'محادثة جديدة',
+                        onPressed: () => chatHubCreateThread(context),
+                      ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh),
+                      tooltip: 'تحديث',
+                      onPressed: () =>
+                          context.read<ChatThreadsCubit>().loadThreads(),
+                    ),
+                    BlocBuilder<NotificationsBadgeCubit, int>(
+                      builder: (context, count) => NotificationDot(
+                        isVisible: count > 0,
+                        child: IconButton(
+                          icon: const Icon(Icons.notifications_outlined),
+                          tooltip: 'الإشعارات',
+                          onPressed: () => context.push('/notifications'),
+                        ),
+                      ),
+                    ),
+                  ],
+                  body: const ChatHubBody(),
+                )
               : IndexedStack(
                   index: _navIndex < 2 ? _navIndex : _navIndex - 1,
                   children: const [
@@ -128,24 +115,14 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
           ),
           NavigationDestination(
             icon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => Badge(
-                isLabelVisible: count > 0,
-                alignment: Alignment.topRight,
-                offset: const Offset(-8, 8),
-                label: Text(count > 9 ? '9+' : '$count', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                backgroundColor: Colors.red,
+              builder: (context, count) => NotificationDot(
+                isVisible: count > 0,
                 child: const Icon(Icons.chat_bubble_outline),
               ),
             ),
             selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => Badge(
-                isLabelVisible: count > 0,
-                alignment: Alignment.topRight,
-                offset: const Offset(-8, 8),
-                label: Text(count > 9 ? '9+' : '$count', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                backgroundColor: Colors.red,
+              builder: (context, count) => NotificationDot(
+                isVisible: count > 0,
                 child: const Icon(Icons.chat_bubble),
               ),
             ),
@@ -169,26 +146,66 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
 
 // ── Users Tab ─────────────────────────────────────────────────────────────────
 
-class _UsersTab extends StatelessWidget {
+class _UsersTab extends StatefulWidget {
   const _UsersTab();
 
   @override
+  State<_UsersTab> createState() => _UsersTabState();
+}
+
+class _UsersTabState extends State<_UsersTab>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        children: [
-          const TabBar(
-            tabs: [
-              Tab(text: 'طلبات الانضمام'),
-              Tab(text: 'المستخدمون'),
-            ],
+    return CollapsingHeaderWrapper(
+      title: const Text('لوحة المدير'),
+      actions: [
+        BlocBuilder<NotificationsBadgeCubit, int>(
+          builder: (context, count) => NotificationDot(
+            isVisible: count > 0,
+            child: IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: 'الإشعارات',
+              onPressed: () => context.push('/notifications'),
+            ),
           ),
-          const Expanded(
-            child: TabBarView(
-              children: [
-                ManagerPendingUsersScreen(),
-                _AllUsersTab(),
+        ),
+      ],
+      sliverBottom: TabBar(
+        controller: _tabController,
+        tabs: const [
+          Tab(text: 'طلبات الانضمام'),
+          Tab(text: 'المستخدمون'),
+        ],
+      ),
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          Builder(
+            builder: (ctx) => CollapsingInnerScrollBody(
+              slivers: const [
+                SliverFillRemaining(child: ManagerPendingUsersScreen()),
+              ],
+            ),
+          ),
+          Builder(
+            builder: (ctx) => CollapsingInnerScrollBody(
+              slivers: const [
+                SliverFillRemaining(child: _AllUsersTab()),
               ],
             ),
           ),
@@ -323,52 +340,73 @@ class _SettingsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        ListTile(
-          leading: const Icon(Icons.person_outline),
-          title: const Text('ملفي الشخصي'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            final state = context.read<AuthCubit>().state;
-            if (state is AuthAuthenticated) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ProfileScreen(profile: state.profile),
-                ),
-              );
-            }
-          },
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.inventory_2_outlined),
-          title: const Text('المخزون'),
-          onTap: onInventoryTap,
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.business_outlined),
-          title: const Text('إدارة الجهات'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.push('/entities'),
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.settings),
-          title: const Text('الإعدادات'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.push('/settings'),
-        ),
-        const Divider(),
-        ListTile(
-          leading: const Icon(Icons.logout),
-          title: const Text('تسجيل الخروج'),
-          onTap: onLogout,
+    return CollapsingHeaderWrapper(
+      title: const Text('الإعدادات'),
+      actions: [
+        BlocBuilder<NotificationsBadgeCubit, int>(
+          builder: (context, count) => NotificationDot(
+            isVisible: count > 0,
+            child: IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: 'الإشعارات',
+              onPressed: () => context.push('/notifications'),
+            ),
+          ),
         ),
       ],
+      body: Builder(
+        builder: (ctx) => CollapsingInnerScrollBody(
+          slivers: [
+            SliverList(
+              delegate: SliverChildListDelegate([
+                ListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: const Text('ملفي الشخصي'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    final state = context.read<AuthCubit>().state;
+                    if (state is AuthAuthenticated) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              ProfileScreen(profile: state.profile),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.inventory_2_outlined),
+                  title: const Text('المخزون'),
+                  onTap: onInventoryTap,
+                ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.business_outlined),
+                  title: const Text('إدارة الجهات'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/entities'),
+                ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.settings),
+                  title: const Text('الإعدادات'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/settings'),
+                ),
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.logout),
+                  title: const Text('تسجيل الخروج'),
+                  onTap: onLogout,
+                ),
+              ]),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

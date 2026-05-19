@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fl_chart/fl_chart.dart';
+import 'package:go_router/go_router.dart';
 import '../../../shared/models/profile.dart';
+import '../../../shared/widgets/notification_dot.dart';
+import '../../notifications/logic/notifications_badge_cubit.dart';
 import '../../profile/ui/profile_screen.dart';
 import '../logic/stats_cubit.dart';
 import '../data/stats_models.dart';
@@ -35,38 +38,95 @@ class _StatsScreenState extends State<StatsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<StatsCubit, StatsState>(
-      builder: (context, state) {
-        if (state is StatsLoading) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (state is StatsError) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 64, color: Colors.red),
-                const SizedBox(height: 16),
-                Text(state.message,
-                    style: const TextStyle(color: Colors.red),
-                    textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => context.read<StatsCubit>().load(_selectedPeriod),
-                  child: const Text('إعادة المحاولة'),
-                ),
-              ],
+    final theme = Theme.of(context);
+    return ColoredBox(
+      color: theme.colorScheme.surface,
+      child: SafeArea(
+        top: true,
+        bottom: false,
+        child: BlocBuilder<StatsCubit, StatsState>(
+          builder: (context, state) {
+            if (state is StatsLoading) {
+              return CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  _buildSliverAppBar(context),
+                  const SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ],
+              );
+            }
+            if (state is StatsError) {
+              return CustomScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
+                slivers: [
+                  _buildSliverAppBar(context),
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.error_outline,
+                              size: 64, color: Colors.red),
+                          const SizedBox(height: 16),
+                          Text(state.message,
+                              style: const TextStyle(color: Colors.red),
+                              textAlign: TextAlign.center),
+                          const SizedBox(height: 16),
+                          FilledButton(
+                            onPressed: () => context
+                                .read<StatsCubit>()
+                                .load(_selectedPeriod),
+                            child: const Text('إعادة المحاولة'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            }
+            if (state is StatsLoaded) {
+              return RefreshIndicator(
+                onRefresh: () =>
+                    context.read<StatsCubit>().load(_selectedPeriod),
+                child: _buildContent(context, state.data),
+              );
+            }
+            return const SizedBox.shrink();
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSliverAppBar(BuildContext context) {
+    final theme = Theme.of(context);
+    return SliverAppBar(
+      title: const Text('الإحصائيات'),
+      floating: true,
+      snap: false,
+      pinned: false,
+      backgroundColor: theme.colorScheme.surface,
+      foregroundColor: theme.colorScheme.onSurface,
+      centerTitle: true,
+      titleTextStyle: theme.textTheme.titleLarge?.copyWith(
+        color: theme.colorScheme.onSurface,
+      ),
+      actions: [
+        BlocBuilder<NotificationsBadgeCubit, int>(
+          builder: (context, count) => NotificationDot(
+            isVisible: count > 0,
+            child: IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: 'الإشعارات',
+              onPressed: () => context.go('/notifications'),
             ),
-          );
-        }
-        if (state is StatsLoaded) {
-          return RefreshIndicator(
-            onRefresh: () => context.read<StatsCubit>().load(_selectedPeriod),
-            child: _buildContent(context, state.data),
-          );
-        }
-        return const SizedBox.shrink();
-      },
+          ),
+        ),
+      ],
     );
   }
 
@@ -74,6 +134,7 @@ class _StatsScreenState extends State<StatsScreen> {
     return CustomScrollView(
       physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
+        _buildSliverAppBar(context),
         SliverToBoxAdapter(child: _buildHeader(context)),
         SliverToBoxAdapter(child: _buildKpiCards(context, data.globalOverview)),
         SliverToBoxAdapter(child: _buildMonthlyTrendSection(context, data.monthlySummary)),

@@ -179,4 +179,68 @@ class InventoryManagementRepository {
       return AppFailure(ErrorHandler.handle(e));
     }
   }
+
+  Future<AppResult<Set<String>>> fetchExistingSkus() async {
+    try {
+      final data = await _supabase
+          .from('inventory')
+          .select('sku')
+          .not('sku', 'is', null);
+      final skus = (data as List)
+          .map((row) => (row['sku'] as String).toLowerCase())
+          .toSet();
+      return AppSuccess(skus);
+    } catch (e, st) {
+      logger.e('fetchExistingSkus failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<void>> bulkImportItems(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    try {
+      await _supabase.from('inventory').insert(rows);
+      _inventoryCache.clear();
+      logger.i('Bulk import: ${rows.length} items inserted');
+      return const AppSuccess(null);
+    } catch (e, st) {
+      logger.e('bulkImportItems failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<List<InventoryItem>>> fetchAllForExport() async {
+    try {
+      final data = await _supabase
+          .from('inventory')
+          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, notes')
+          .order('item_name');
+      final result = (data as List)
+          .map((m) => InventoryItem.fromMap(m as Map<String, dynamic>))
+          .toList();
+      return AppSuccess(result);
+    } catch (e, st) {
+      logger.e('fetchAllForExport failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<void>> bulkUpdateItems(
+    List<Map<String, dynamic>> rows,
+  ) async {
+    try {
+      for (final row in rows) {
+        final id = row['id'] as String;
+        final data = Map<String, dynamic>.from(row)..remove('id');
+        await _supabase.from('inventory').update(data).eq('id', id);
+      }
+      _inventoryCache.clear();
+      logger.i('Bulk update: ${rows.length} items updated');
+      return const AppSuccess(null);
+    } catch (e, st) {
+      logger.e('bulkUpdateItems failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
 }

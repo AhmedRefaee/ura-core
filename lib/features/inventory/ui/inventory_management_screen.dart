@@ -8,7 +8,13 @@ import '../logic/inventory_list_cubit.dart';
 import 'inventory_bulk_edit_screen.dart';
 import 'inventory_form_screen.dart';
 import 'inventory_item_detail_screen.dart';
+import '../logic/bulk_edit_excel_cubit.dart';
+import '../logic/import_items_cubit.dart';
+import 'bulk_edit_excel_screen.dart';
+import 'import_items_screen.dart';
 import 'widgets/inventory_item_card.dart';
+
+enum _ExcelAction { importNew, bulkEdit }
 
 class InventoryManagementScreen extends StatelessWidget {
   const InventoryManagementScreen({super.key});
@@ -45,6 +51,32 @@ class _InventoryManagementViewState extends State<_InventoryManagementView> {
       appBar: AppBar(
         title: const Text('إدارة المخزون'),
         actions: [
+          PopupMenuButton<_ExcelAction>(
+            icon: const Icon(Icons.table_chart_outlined),
+            tooltip: 'خيارات Excel',
+            onSelected: (action) {
+              if (action == _ExcelAction.importNew) _openImport(context);
+              if (action == _ExcelAction.bulkEdit) _openBulkEditExcel(context);
+            },
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                value: _ExcelAction.importNew,
+                child: ListTile(
+                  leading: Icon(Icons.upload_file_outlined),
+                  title: Text('استيراد عناصر جديدة'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+              const PopupMenuItem(
+                value: _ExcelAction.bulkEdit,
+                child: ListTile(
+                  leading: Icon(Icons.sync_alt_outlined),
+                  title: Text('تعديل جماعي عبر Excel'),
+                  contentPadding: EdgeInsets.zero,
+                ),
+              ),
+            ],
+          ),
           AppIconButton(
             icon: Icons.edit_note_outlined,
             tooltip: 'تعديل الكميات',
@@ -127,6 +159,36 @@ class _InventoryManagementViewState extends State<_InventoryManagementView> {
       MaterialPageRoute(builder: (_) => const InventoryFormScreen()),
     );
     if (created == true && context.mounted) {
+      context.read<InventoryListCubit>().loadInventory();
+    }
+  }
+
+  void _openImport(BuildContext context) async {
+    final imported = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<ImportItemsCubit>(),
+          child: const ImportItemsScreen(),
+        ),
+      ),
+    );
+    if (imported == true && context.mounted) {
+      context.read<InventoryListCubit>().loadInventory();
+    }
+  }
+
+  void _openBulkEditExcel(BuildContext context) async {
+    final updated = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<BulkEditExcelCubit>(),
+          child: const BulkEditExcelScreen(),
+        ),
+      ),
+    );
+    if (updated == true && context.mounted) {
       context.read<InventoryListCubit>().loadInventory();
     }
   }

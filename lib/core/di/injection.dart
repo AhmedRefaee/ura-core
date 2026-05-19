@@ -34,6 +34,8 @@ import '../../features/manager/logic/task_detail_cubit.dart';
 import '../../features/manager/logic/user_orders_cubit.dart';
 import '../../features/manager/logic/user_type_cubit.dart';
 import '../../features/inventory/data/inventory_management_repository.dart';
+import '../../features/inventory/logic/bulk_edit_excel_cubit.dart';
+import '../../features/inventory/logic/import_items_cubit.dart';
 import '../../features/inventory/logic/inventory_bulk_cubit.dart';
 import '../../features/inventory/logic/inventory_detail_cubit.dart';
 import '../../features/inventory/logic/inventory_form_cubit.dart';
@@ -138,6 +140,12 @@ Future<void> setupDependencies() async {
   );
   sl.registerFactory<InventoryBulkCubit>(
     () => InventoryBulkCubit(sl<InventoryManagementRepository>()),
+  );
+  sl.registerFactory<ImportItemsCubit>(
+    () => ImportItemsCubit(sl<InventoryManagementRepository>()),
+  );
+  sl.registerFactory<BulkEditExcelCubit>(
+    () => BulkEditExcelCubit(sl<InventoryManagementRepository>()),
   );
 
   // Manager

@@ -13,6 +13,7 @@ class InventoryItem extends Equatable {
   final String? category;
   final int minQuantity;
   final String? description;
+  final String? notes;
 
   const InventoryItem({
     required this.id,
@@ -23,6 +24,7 @@ class InventoryItem extends Equatable {
     this.category,
     this.minQuantity = 0,
     this.description,
+    this.notes,
   });
 
   AvailabilityStatus get availabilityStatus {
@@ -47,9 +49,10 @@ class InventoryItem extends Equatable {
       category: map['category'] as String?,
       minQuantity: map['min_quantity'] as int? ?? 0,
       description: map['description'] as String?,
+      notes: map['notes'] as String?,
     );
   }
 
   @override
-  List<Object?> get props => [id, itemName, sku, quantity, unit, category, minQuantity, description];
+  List<Object?> get props => [id, itemName, sku, quantity, unit, category, minQuantity, description, notes];
 }

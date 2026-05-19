@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
 import '../../../core/di/injection.dart';
+import '../../../shared/widgets/notification_dot.dart';
 import '../../../core/design_system/theme/theme.dart';
 import '../../../core/design_system/widgets/widgets.dart';
 import '../../auth/logic/auth_cubit.dart';
@@ -23,6 +24,7 @@ import '../logic/orders_state.dart';
 import 'create_order_screen.dart';
 import 'widgets/order_card.dart';
 import '../../../shared/models/order.dart';
+import '../../../shared/widgets/order_sort_filter_bar.dart';
 
 class VerifierHomeScreen extends StatelessWidget {
   const VerifierHomeScreen({super.key});
@@ -78,56 +80,39 @@ class _ScaffoldBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(navIndex == 2 ? 'المحادثات' : 'لوحة تحكم المشرف'),
-        actions: [
-          BlocBuilder<NotificationsBadgeCubit, int>(
-            builder: (context, count) => Badge(
-              isLabelVisible: count > 0,
-              alignment: Alignment.topRight,
-              offset: const Offset(-8, 8),
-              label: Text(
-                count > 9 ? '9+' : '$count',
-                style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold),
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-              child: IconButton(
-                icon: const Icon(Icons.notifications_outlined),
-                tooltip: 'الإشعارات',
-                onPressed: () => context.push('/notifications'),
-              ),
-            ),
-          ),
-          if (navIndex == 0)
-            BlocBuilder<OrdersCubit, OrdersState>(
-              builder: (context, state) => IconButton(
-                icon: const Icon(Icons.refresh),
-                onPressed: () => context.read<OrdersCubit>().loadOrders(),
-                tooltip: 'تحديث',
-              ),
-            ),
-          if (navIndex == 2) ...[
-            if (chatHubCanCreate(context))
-              IconButton(
-                icon: const Icon(Icons.add_comment_outlined),
-                tooltip: 'محادثة جديدة',
-                onPressed: () => chatHubCreateThread(context),
-              ),
-            IconButton(
-              icon: const Icon(Icons.refresh),
-              tooltip: 'تحديث',
-              onPressed: () =>
-                  context.read<ChatThreadsCubit>().loadThreads(),
-            ),
-          ],
-        ],
-      ),
       body: switch (navIndex) {
         0 || 1 => IndexedStack(
             index: navIndex,
             children: const [_OrdersTab(), RepListScreen()],
           ),
-        2 => const ChatHubBody(),
+        2 => CollapsingHeaderWrapper(
+            title: const Text('المحادثات'),
+            actions: [
+              if (chatHubCanCreate(context))
+                IconButton(
+                  icon: const Icon(Icons.add_comment_outlined),
+                  tooltip: 'محادثة جديدة',
+                  onPressed: () => chatHubCreateThread(context),
+                ),
+              IconButton(
+                icon: const Icon(Icons.refresh),
+                tooltip: 'تحديث',
+                onPressed: () =>
+                    context.read<ChatThreadsCubit>().loadThreads(),
+              ),
+              BlocBuilder<NotificationsBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: IconButton(
+                    icon: const Icon(Icons.notifications_outlined),
+                    tooltip: 'الإشعارات',
+                    onPressed: () => context.push('/notifications'),
+                  ),
+                ),
+              ),
+            ],
+            body: const ChatHubBody(),
+          ),
         3 => const StatsScreen(),
         _ => _SettingsTab(
             onInventoryTap: () => Navigator.push(
@@ -162,24 +147,14 @@ class _ScaffoldBody extends StatelessWidget {
           ),
           NavigationDestination(
             icon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => Badge(
-                isLabelVisible: count > 0,
-                alignment: Alignment.topRight,
-                offset: const Offset(-8, 8),
-                label: Text(count > 9 ? '9+' : '$count', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                backgroundColor: AppColors.error,
+              builder: (context, count) => NotificationDot(
+                isVisible: count > 0,
                 child: const Icon(Icons.chat_bubble_outline),
               ),
             ),
             selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => Badge(
-                isLabelVisible: count > 0,
-                alignment: Alignment.topRight,
-                offset: const Offset(-8, 8),
-                label: Text(count > 9 ? '9+' : '$count', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-                backgroundColor: AppColors.error,
+              builder: (context, count) => NotificationDot(
+                isVisible: count > 0,
                 child: const Icon(Icons.chat_bubble),
               ),
             ),
@@ -216,29 +191,79 @@ class _ScaffoldBody extends StatelessWidget {
   }
 }
 
-class _OrdersTab extends StatelessWidget {
+// ── Orders Tab ────────────────────────────────────────────────────────────────
+
+class _OrdersTab extends StatefulWidget {
   const _OrdersTab();
 
   @override
+  State<_OrdersTab> createState() => _OrdersTabState();
+}
+
+class _OrdersTabState extends State<_OrdersTab>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
+  String _searchQuery = '';
+  bool _groupByEntity = false;
+  OrderSortMode _sortMode = OrderSortMode.mostRecent;
+  OrderDirectionFilter _directionFilter = OrderDirectionFilter.all;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+    _tabController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 2,
-      child: Column(
-        children: [
-          const TabBar(
-            tabs: [
-              Tab(text: 'نشطة'),
-              Tab(text: 'مكتملة'),
-            ],
+    return CollapsingHeaderWrapper(
+      title: const Text('لوحة تحكم المشرف'),
+      actions: [
+        BlocBuilder<NotificationsBadgeCubit, int>(
+          builder: (context, count) => NotificationDot(
+            isVisible: count > 0,
+            child: IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: 'الإشعارات',
+              onPressed: () => context.push('/notifications'),
+            ),
           ),
-          Expanded(
-            child: BlocBuilder<OrdersCubit, OrdersState>(
-              builder: (context, state) {
-                if (state is OrdersLoading || state is OrdersInitial) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (state is OrdersError) {
-                  return Center(
+        ),
+        BlocBuilder<OrdersCubit, OrdersState>(
+          builder: (context, state) => IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: () => context.read<OrdersCubit>().loadOrders(),
+            tooltip: 'تحديث',
+          ),
+        ),
+      ],
+      sliverBottom: _VerifierOrdersTabHeader(
+        tabController: _tabController,
+      ),
+      body: BlocBuilder<OrdersCubit, OrdersState>(
+        builder: (context, state) {
+          if (state is OrdersLoading || state is OrdersInitial) {
+            return Builder(
+              builder: (ctx) => CollapsingInnerScrollBody(slivers: const [
+                SliverFillRemaining(
+                  child: Center(child: CircularProgressIndicator()),
+                ),
+              ]),
+            );
+          }
+          if (state is OrdersError) {
+            return Builder(
+              builder: (ctx) => CollapsingInnerScrollBody(slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -253,65 +278,147 @@ class _OrdersTab extends StatelessWidget {
                         ),
                       ],
                     ),
-                  );
-                }
-                if (state is OrdersLoaded) {
-                  const doneStatuses = {
-                    OrderStatus.delivered,
-                    OrderStatus.deliveredToStorage,
-                  };
-                  final active = state.orders
-                      .where((o) => !doneStatuses.contains(o.status))
-                      .toList();
-                  final completed = state.orders
-                      .where((o) => doneStatuses.contains(o.status))
-                      .toList();
-                  return TabBarView(
-                    children: [
-                      _OrderList(
-                          orders: active,
-                          emptyMessage: 'لا توجد طلبات نشطة'),
-                      _OrderList(
-                          orders: completed,
-                          emptyMessage: 'لا توجد طلبات مكتملة'),
-                    ],
-                  );
-                }
-                return const SizedBox.shrink();
-              },
-            ),
-          ),
-        ],
+                  ),
+                ),
+              ]),
+            );
+          }
+          if (state is OrdersLoaded) {
+            const doneStatuses = {
+              OrderStatus.delivered,
+              OrderStatus.deliveredToStorage,
+            };
+            final active = state.orders
+                .where((o) => !doneStatuses.contains(o.status))
+                .toList();
+            final completed = state.orders
+                .where((o) => doneStatuses.contains(o.status))
+                .toList();
+            return TabBarView(
+              controller: _tabController,
+              children: [
+                _OrderList(
+                  orders: active,
+                  emptyMessage: 'لا توجد طلبات نشطة',
+                  searchQuery: _searchQuery,
+                  sortMode: _sortMode,
+                  onSearchChanged: (q) => setState(() => _searchQuery = q),
+                  onSortModeChanged: (mode) =>
+                      setState(() => _sortMode = mode),
+                  directionFilter: _directionFilter,
+                  onDirectionFilterChanged: (filter) =>
+                      setState(() => _directionFilter = filter),
+                ),
+                _groupByEntity
+                    ? _GroupedByEntityList(
+                        orders: completed,
+                        searchQuery: _searchQuery,
+                        sortMode: _sortMode,
+                        groupByEntity: _groupByEntity,
+                        onSearchChanged: (q) =>
+                            setState(() => _searchQuery = q),
+                        onSortModeChanged: (mode) =>
+                            setState(() => _sortMode = mode),
+                        directionFilter: _directionFilter,
+                        onDirectionFilterChanged: (filter) =>
+                            setState(() => _directionFilter = filter),
+                        onGroupByChanged: (value) =>
+                            setState(() => _groupByEntity = value),
+                      )
+                    : _OrderList(
+                        orders: completed,
+                        emptyMessage: 'لا توجد طلبات مكتملة',
+                        searchQuery: _searchQuery,
+                        sortMode: _sortMode,
+                        groupByEntity: _groupByEntity,
+                        onSearchChanged: (q) =>
+                            setState(() => _searchQuery = q),
+                        onSortModeChanged: (mode) =>
+                            setState(() => _sortMode = mode),
+                        directionFilter: _directionFilter,
+                        onDirectionFilterChanged: (filter) =>
+                            setState(() => _directionFilter = filter),
+                        onGroupByChanged: (value) =>
+                            setState(() => _groupByEntity = value),
+                      ),
+              ],
+            );
+          }
+          return Builder(
+            builder: (ctx) => const CollapsingInnerScrollBody(slivers: [
+              SliverFillRemaining(child: SizedBox.shrink()),
+            ]),
+          );
+        },
       ),
     );
   }
 }
 
-class _OrderList extends StatelessWidget {
-  final List<Order> orders;
-  final String emptyMessage;
-  const _OrderList({required this.orders, required this.emptyMessage});
+// ── Header bottom: tabs only ──────────────────────────────────────────────────
+
+class _VerifierOrdersTabHeader extends StatelessWidget
+    implements PreferredSizeWidget {
+  final TabController tabController;
+
+  const _VerifierOrdersTabHeader({
+    required this.tabController,
+  });
+
+  @override
+  Size get preferredSize => const Size.fromHeight(kTextTabBarHeight);
 
   @override
   Widget build(BuildContext context) {
-    if (orders.isEmpty) {
-      return RefreshIndicator(
-        onRefresh: () => context.read<OrdersCubit>().loadOrders(),
-        child: ListView(
-          physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            SizedBox(
-              height: 400,
-              child: Center(child: Text(emptyMessage)),
-            ),
-          ],
-        ),
-      );
-    }
+    return TabBar(
+      controller: tabController,
+      tabs: const [
+        Tab(text: 'نشطة'),
+        Tab(text: 'مكتملة'),
+      ],
+    );
+  }
+}
+
+// ── Order list ────────────────────────────────────────────────────────────────
+
+class _OrderList extends StatelessWidget {
+  final List<Order> orders;
+  final String emptyMessage;
+  final String searchQuery;
+  final OrderSortMode sortMode;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<OrderSortMode> onSortModeChanged;
+  final OrderDirectionFilter directionFilter;
+  final ValueChanged<OrderDirectionFilter> onDirectionFilterChanged;
+  final bool? groupByEntity;
+  final ValueChanged<bool>? onGroupByChanged;
+  const _OrderList({
+    required this.orders,
+    required this.emptyMessage,
+    required this.sortMode,
+    required this.onSearchChanged,
+    required this.onSortModeChanged,
+    required this.directionFilter,
+    required this.onDirectionFilterChanged,
+    this.searchQuery = '',
+    this.groupByEntity,
+    this.onGroupByChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final visible = sortOrders(
+      filterOrdersByDirection(
+        filterOrdersByQuery(orders, searchQuery),
+        directionFilter,
+      ),
+      sortMode,
+    );
 
     return BlocBuilder<OrderChatBadgeCubit, OrderChatBadgeState>(
       builder: (context, badgeState) {
-        final sortedOrders = List<Order>.from(orders);
+        final sortedOrders = List<Order>.from(visible);
         sortedOrders.sort((a, b) {
           final aHasUrgent =
               badgeState.urgentCountByOrderId.containsKey(a.id);
@@ -322,42 +429,72 @@ class _OrderList extends StatelessWidget {
           return 0;
         });
 
-        return RefreshIndicator(
-          onRefresh: () => context.read<OrdersCubit>().loadOrders(),
-          child: ListView.builder(
-          itemCount: sortedOrders.length,
-          itemBuilder: (context, i) {
-            final order = sortedOrders[i];
-            final hasUrgent = order.status != OrderStatus.delivered &&
-                badgeState.urgentCountByOrderId.containsKey(order.id);
-            return Stack(
-              children: [
-                OrderCard(
-                  order: order,
-                  onTap: () async {
-                    final deleted = await Navigator.push<bool>(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TaskDetailScreen(
-                          orderId: order.id,
-                          showDeleteButton: true,
-                        ),
-                      ),
-                    );
-                    if ((deleted ?? false) && context.mounted) {
-                      context.read<OrdersCubit>().loadOrders();
-                    }
-                  },
+        return Builder(
+          builder: (ctx) => RefreshIndicator(
+            onRefresh: () => context.read<OrdersCubit>().loadOrders(),
+            child: CollapsingInnerScrollBody(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: OrderSortFilterBar(
+                    searchQuery: searchQuery,
+                    onSearchChanged: onSearchChanged,
+                    sortMode: sortMode,
+                    onSortModeChanged: onSortModeChanged,
+                    directionFilter: directionFilter,
+                    onDirectionFilterChanged: onDirectionFilterChanged,
+                    groupByEntity: groupByEntity,
+                    onGroupByEntityChanged: onGroupByChanged,
+                    searchHint: 'بحث بالجهة أو المندوب...',
+                  ),
                 ),
-                if (hasUrgent)
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: _UrgentBadge(),
+                if (sortedOrders.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: Text(emptyMessage)),
+                  )
+                else
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) {
+                        final order = sortedOrders[i];
+                        final hasUrgent =
+                            order.status != OrderStatus.delivered &&
+                                badgeState.urgentCountByOrderId
+                                    .containsKey(order.id);
+                        return Stack(
+                          children: [
+                            OrderCard(
+                              order: order,
+                              onTap: () async {
+                                final deleted = await Navigator.push<bool>(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (_) => TaskDetailScreen(
+                                      orderId: order.id,
+                                      showDeleteButton: true,
+                                      useVerifierRepository: true,
+                                    ),
+                                  ),
+                                );
+                                if ((deleted ?? false) && context.mounted) {
+                                  context.read<OrdersCubit>().loadOrders();
+                                }
+                              },
+                            ),
+                            if (hasUrgent)
+                              Positioned(
+                                top: 8,
+                                right: 8,
+                                child: _UrgentBadge(),
+                              ),
+                          ],
+                        );
+                      },
+                      childCount: sortedOrders.length,
+                    ),
                   ),
               ],
-            );
-          },
+            ),
           ),
         );
       },
@@ -371,7 +508,9 @@ class _UrgentBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: AppSpacing.symmetric(horizontal: AppSpacing.horizontalSmall, vertical: AppSpacing.verticalXSmall),
+      padding: AppSpacing.symmetric(
+          horizontal: AppSpacing.horizontalSmall,
+          vertical: AppSpacing.verticalXSmall),
       decoration: BoxDecoration(
         color: AppColors.error,
         borderRadius: BorderRadius.circular(AppConstants.borderRadiusSmall),
@@ -387,6 +526,145 @@ class _UrgentBadge extends StatelessWidget {
   }
 }
 
+class _GroupedByEntityList extends StatelessWidget {
+  final List<Order> orders;
+  final String searchQuery;
+  final OrderSortMode sortMode;
+  final bool groupByEntity;
+  final ValueChanged<String> onSearchChanged;
+  final ValueChanged<OrderSortMode> onSortModeChanged;
+  final OrderDirectionFilter directionFilter;
+  final ValueChanged<OrderDirectionFilter> onDirectionFilterChanged;
+  final ValueChanged<bool> onGroupByChanged;
+
+  const _GroupedByEntityList({
+    required this.orders,
+    required this.sortMode,
+    required this.groupByEntity,
+    required this.onSearchChanged,
+    required this.onSortModeChanged,
+    required this.directionFilter,
+    required this.onDirectionFilterChanged,
+    required this.onGroupByChanged,
+    this.searchQuery = '',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = sortOrders(
+      filterOrdersByDirection(
+        filterOrdersByQuery(orders, searchQuery),
+        directionFilter,
+      ),
+      sortMode,
+    );
+
+    final grouped = <String, List<Order>>{};
+    for (final order in filtered) {
+      (grouped[order.entityId] ??= []).add(order);
+    }
+    final autoExpand = grouped.length == 1;
+    final entityIds = grouped.keys.toList();
+
+    return BlocBuilder<OrderChatBadgeCubit, OrderChatBadgeState>(
+      builder: (context, badgeState) {
+        return Builder(
+          builder: (ctx) => RefreshIndicator(
+            onRefresh: () => context.read<OrdersCubit>().loadOrders(),
+            child: CollapsingInnerScrollBody(
+              slivers: [
+                SliverToBoxAdapter(
+                  child: OrderSortFilterBar(
+                    searchQuery: searchQuery,
+                    onSearchChanged: onSearchChanged,
+                    sortMode: sortMode,
+                    onSortModeChanged: onSortModeChanged,
+                    directionFilter: directionFilter,
+                    onDirectionFilterChanged: onDirectionFilterChanged,
+                    groupByEntity: groupByEntity,
+                    onGroupByEntityChanged: onGroupByChanged,
+                    searchHint: 'بحث بالجهة أو المندوب...',
+                  ),
+                ),
+                if (filtered.isEmpty)
+                  const SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: Text('لا توجد طلبات مكتملة')),
+                  )
+                else
+                  SliverList(
+                    delegate: SliverChildBuilderDelegate(
+                      (context, i) {
+                        final entityId = entityIds[i];
+                        final entityOrders = grouped[entityId]!;
+                        final entityName =
+                            entityOrders.first.entity?.name ?? '—';
+                        final count = entityOrders.length;
+
+                        return Card(
+                          margin: const EdgeInsets.symmetric(
+                              horizontal: 12, vertical: 6),
+                          child: ExpansionTile(
+                            initiallyExpanded: autoExpand,
+                            title: Text(
+                              entityName,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                            trailing: Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 10, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: AppColors.primary.withAlpha(20),
+                                border: Border.all(color: AppColors.primary),
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                              child: Text(
+                                '$count ${count == 1 ? 'طلب' : 'طلبات'}',
+                                style: TextStyle(
+                                  color: AppColors.primary,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ),
+                            children: entityOrders.map((order) {
+                              return OrderCard(
+                                order: order,
+                                onTap: () async {
+                                  final deleted = await Navigator.push<bool>(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) => TaskDetailScreen(
+                                        orderId: order.id,
+                                        showDeleteButton: true,
+                                        useVerifierRepository: true,
+                                      ),
+                                    ),
+                                  );
+                                  if ((deleted ?? false) && context.mounted) {
+                                    context.read<OrdersCubit>().loadOrders();
+                                  }
+                                },
+                              );
+                            }).toList(),
+                          ),
+                        );
+                      },
+                      childCount: entityIds.length,
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+// ── Settings tab ──────────────────────────────────────────────────────────────
+
 class _SettingsTab extends StatelessWidget {
   final VoidCallback onInventoryTap;
   final VoidCallback onLogout;
@@ -398,52 +676,73 @@ class _SettingsTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ListView(
-      padding: AppSpacing.allLarge,
-      children: [
-        AppListTile(
-          leading: const Icon(Icons.person_outline),
-          title: const Text('ملفي الشخصي'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () {
-            final state = context.read<AuthCubit>().state;
-            if (state is AuthAuthenticated) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ProfileScreen(profile: state.profile),
-                ),
-              );
-            }
-          },
-          showDivider: true,
-        ),
-        AppListTile(
-          leading: const Icon(Icons.inventory_2_outlined),
-          title: const Text('المخزون'),
-          onTap: onInventoryTap,
-          showDivider: true,
-        ),
-        AppListTile(
-          leading: const Icon(Icons.business_outlined),
-          title: const Text('إدارة الجهات'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.push('/entities'),
-          showDivider: true,
-        ),
-        AppListTile(
-          leading: const Icon(Icons.settings),
-          title: const Text('الإعدادات'),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => context.push('/settings'),
-          showDivider: true,
-        ),
-        AppListTile(
-          leading: const Icon(Icons.logout),
-          title: const Text('تسجيل الخروج'),
-          onTap: onLogout,
+    return CollapsingHeaderWrapper(
+      title: const Text('الإعدادات'),
+      actions: [
+        BlocBuilder<NotificationsBadgeCubit, int>(
+          builder: (context, count) => NotificationDot(
+            isVisible: count > 0,
+            child: IconButton(
+              icon: const Icon(Icons.notifications_outlined),
+              tooltip: 'الإشعارات',
+              onPressed: () => context.push('/notifications'),
+            ),
+          ),
         ),
       ],
+      body: Builder(
+        builder: (ctx) => CollapsingInnerScrollBody(
+          slivers: [
+            SliverList(
+              delegate: SliverChildListDelegate([
+                AppListTile(
+                  leading: const Icon(Icons.person_outline),
+                  title: const Text('ملفي الشخصي'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () {
+                    final state = context.read<AuthCubit>().state;
+                    if (state is AuthAuthenticated) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (_) =>
+                              ProfileScreen(profile: state.profile),
+                        ),
+                      );
+                    }
+                  },
+                  showDivider: true,
+                ),
+                AppListTile(
+                  leading: const Icon(Icons.inventory_2_outlined),
+                  title: const Text('المخزون'),
+                  onTap: onInventoryTap,
+                  showDivider: true,
+                ),
+                AppListTile(
+                  leading: const Icon(Icons.business_outlined),
+                  title: const Text('إدارة الجهات'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/entities'),
+                  showDivider: true,
+                ),
+                AppListTile(
+                  leading: const Icon(Icons.settings),
+                  title: const Text('الإعدادات'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/settings'),
+                  showDivider: true,
+                ),
+                AppListTile(
+                  leading: const Icon(Icons.logout),
+                  title: const Text('تسجيل الخروج'),
+                  onTap: onLogout,
+                ),
+              ]),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }

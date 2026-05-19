@@ -181,14 +181,11 @@ class CreateOrderScreen extends StatelessWidget {
 
   void _showAddItemDialog(BuildContext context, CreateOrderReady state) {
     final cubit = context.read<CreateOrderCubit>();
-    final inventory = state.direction == OrderDirection.outbound
-        ? _applyDraftReservations(state.inventory, state.items)
-        : state.inventory;
     Navigator.push(
       context,
       MaterialPageRoute(
         builder: (_) => AddItemSheet(
-          inventory: inventory,
+          inventory: state.inventory,
           orderDirection: state.direction,
           onAddInventoryItems: (items) => cubit.addMultipleItems(items),
           onAddCustomItem: (desc, qty, {sourceInventoryId}) =>
@@ -196,33 +193,6 @@ class CreateOrderScreen extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  List<InventoryItem> _applyDraftReservations(
-    List<InventoryItem> inventory,
-    List<DraftOrderItem> draftItems,
-  ) {
-    final Map<String, int> reserved = {};
-    for (final item in draftItems) {
-      if (item.inventoryId != null) {
-        reserved[item.inventoryId!] = (reserved[item.inventoryId!] ?? 0) + item.quantity;
-      }
-    }
-    if (reserved.isEmpty) return inventory;
-    return inventory.map((inv) {
-      final r = reserved[inv.id] ?? 0;
-      if (r == 0) return inv;
-      return InventoryItem(
-        id: inv.id,
-        itemName: inv.itemName,
-        sku: inv.sku,
-        quantity: (inv.quantity - r).clamp(0, inv.quantity),
-        unit: inv.unit,
-        category: inv.category,
-        minQuantity: inv.minQuantity,
-        description: inv.description,
-      );
-    }).toList();
   }
 
   void _showTemplatesSheet(BuildContext context, CreateOrderReady state) {

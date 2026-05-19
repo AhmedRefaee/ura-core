@@ -378,7 +378,7 @@ class ChatRepository {
       logger.d('ChatRepository → getOrderCommunicationHistory: $orderId');
       final data = await _supabase
           .from('chat_messages')
-          .select('id, thread_id, sender_id, sender_name, content, order_mention_id, order_mention_text, user_mention_id, user_mention_text, is_urgent, is_acknowledged, acknowledged_by, acknowledged_at, created_at, message_type, reply_to_id, reply_to_content, reply_to_sender, attachment_url, attachment_type, attachment_name, attachment_size_bytes, reactions, thread:chat_threads(title)')
+          .select('id, thread_id, sender_id, sender_name, content, order_mention_id, order_mention_text, user_mention_id, user_mention_text, is_urgent, is_acknowledged, acknowledged_by, acknowledged_at, created_at, message_type, reply_to_id, reply_to_content, reply_to_sender, attachment_url, attachment_type, attachment_name, attachment_size_bytes, thread:chat_threads(title)')
           .eq('order_mention_id', orderId)
           .order('created_at', ascending: false);
       final messages = data.map(ChatMessage.fromMap).toList();

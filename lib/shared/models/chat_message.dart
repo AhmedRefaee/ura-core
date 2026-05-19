@@ -21,7 +21,7 @@ class ChatMessageReaction extends Equatable {
 class ChatMessage extends Equatable {
   final String id;
   final String threadId;
-  final String senderId;
+  final String? senderId;
   final String senderName;
   final String content;
   final String? orderMentionId;
@@ -48,7 +48,7 @@ class ChatMessage extends Equatable {
   const ChatMessage({
     required this.id,
     required this.threadId,
-    required this.senderId,
+    this.senderId,
     required this.senderName,
     required this.content,
     this.orderMentionId,
@@ -78,7 +78,7 @@ class ChatMessage extends Equatable {
     return ChatMessage(
       id: map['id'] as String,
       threadId: map['thread_id'] as String,
-      senderId: map['sender_id'] as String,
+      senderId: map['sender_id'] as String?,
       senderName: map['sender_name'] as String? ?? '',
       content: map['content'] as String,
       orderMentionId: map['order_mention_id'] as String?,

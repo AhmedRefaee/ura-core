@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/di/injection.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../features/auth/logic/auth_cubit.dart';
 import '../../../features/auth/logic/auth_state.dart';
 import '../../../shared/models/chat_message.dart';
@@ -104,17 +105,17 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
   Future<void> _loadMentionData() async {
     final repo = sl<ChatRepository>();
     try {
-      final results = await Future.wait([
-        repo.getThreadParticipants(widget.threadId),
-        repo.getActiveOrders(),
-      ]);
-      if (mounted) {
-        // Using setState here is fine — this only runs once after initState
-        setState(() {
-          _threadMembers = results[0] as List<Profile>;
-          _activeOrders = results[1] as List<({String id, String displayName})>;
-        });
-      }
+      final membersResult = await repo.getThreadParticipants(widget.threadId);
+      final ordersResult  = await repo.getActiveOrders();
+      if (!mounted) return;
+      setState(() {
+        if (membersResult is AppSuccess<List<Profile>>) {
+          _threadMembers = membersResult.data;
+        }
+        if (ordersResult is AppSuccess<List<({String id, String displayName})>>) {
+          _activeOrders = ordersResult.data;
+        }
+      });
     } catch (_) {
       // Mention data is best-effort; silently ignore failures
     }
@@ -341,6 +342,7 @@ class _ChatThreadViewState extends State<_ChatThreadView> {
                 initialText:
                     state is ChatThreadLoaded ? state.pendingInitialText : null,
                 isUrgentEntry: widget.isUrgentEntry,
+                isDirect: widget.isDirect,
               ),
             ],
           ),
@@ -359,6 +361,7 @@ class _ChatInputBar extends StatefulWidget {
   final ValueNotifier<ChatMessage?> replyNotifier;
   final String? initialText;
   final bool isUrgentEntry;
+  final bool isDirect;
 
   const _ChatInputBar({
     required this.threadId,
@@ -367,6 +370,7 @@ class _ChatInputBar extends StatefulWidget {
     required this.replyNotifier,
     this.initialText,
     this.isUrgentEntry = false,
+    this.isDirect = false,
   });
 
   @override
@@ -507,8 +511,7 @@ class _ChatInputBarState extends State<_ChatInputBar> {
   Future<void> _openWhatsApp(BuildContext context) async {
     if (widget.threadMembers.isEmpty) return;
     final myId = Supabase.instance.client.auth.currentUser?.id;
-    final isDirect = widget.threadMembers.length <= 2;
-    if (isDirect) {
+    if (widget.isDirect) {
       Profile? other;
       try {
         other = widget.threadMembers.firstWhere((m) => m.id != myId);

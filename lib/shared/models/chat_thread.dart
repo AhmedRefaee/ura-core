@@ -11,6 +11,9 @@ class ChatThread extends Equatable {
   final String? lastMessageSenderName;
   final DateTime? lastMessageAt;
   final bool systemMessagesEnabled;
+  // Set only for direct (1-to-1) threads; null for group threads.
+  final String? otherParticipantId;
+  final String? otherParticipantName;
 
   const ChatThread({
     required this.id,
@@ -23,6 +26,8 @@ class ChatThread extends Equatable {
     this.lastMessageSenderName,
     this.lastMessageAt,
     this.systemMessagesEnabled = true,
+    this.otherParticipantId,
+    this.otherParticipantName,
   });
 
   factory ChatThread.fromMap(Map<String, dynamic> map) {
@@ -38,6 +43,8 @@ class ChatThread extends Equatable {
           ? DateTime.parse(map['last_message_at'] as String)
           : null,
       systemMessagesEnabled: map['system_messages_enabled'] as bool? ?? true,
+      otherParticipantId: map['other_participant_id'] as String?,
+      otherParticipantName: map['other_participant_name'] as String?,
     );
   }
 
@@ -47,6 +54,8 @@ class ChatThread extends Equatable {
     String? lastMessageSenderName,
     DateTime? lastMessageAt,
     bool? systemMessagesEnabled,
+    String? otherParticipantId,
+    String? otherParticipantName,
   }) =>
       ChatThread(
         id: id,
@@ -59,7 +68,10 @@ class ChatThread extends Equatable {
         lastMessageSenderName:
             lastMessageSenderName ?? this.lastMessageSenderName,
         lastMessageAt: lastMessageAt ?? this.lastMessageAt,
-        systemMessagesEnabled: systemMessagesEnabled ?? this.systemMessagesEnabled,
+        systemMessagesEnabled:
+            systemMessagesEnabled ?? this.systemMessagesEnabled,
+        otherParticipantId: otherParticipantId ?? this.otherParticipantId,
+        otherParticipantName: otherParticipantName ?? this.otherParticipantName,
       );
 
   @override
@@ -71,5 +83,7 @@ class ChatThread extends Equatable {
         isDirect,
         unreadCount,
         lastMessageAt,
+        otherParticipantId,
+        otherParticipantName,
       ];
 }

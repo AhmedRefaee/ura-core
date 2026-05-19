@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/di/injection.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../shared/models/chat_thread.dart';
 import '../data/chat_repository.dart';
 
@@ -37,23 +38,29 @@ class _ChatThreadPickerSheetState extends State<ChatThreadPickerSheet> {
 
   Future<void> _load() async {
     setState(() { _loading = true; _error = null; });
-    try {
-      final results = await Future.wait([
-        _repo.getOrCreateDirectThread(widget.verifierId),
-        _repo.getThreads(),
-      ]);
-      final directId = results[0] as String;
-      final allThreads = results[1] as List<ChatThread>;
-      if (mounted) {
-        setState(() {
-          _directThreadId = directId;
-          _otherThreads = allThreads.where((t) => t.id != directId).toList();
-          _loading = false;
-        });
-      }
-    } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+
+    final directResult = await _repo.getOrCreateDirectThread(widget.verifierId);
+    final threadsResult = await _repo.getThreads();
+
+    if (!mounted) return;
+
+    if (directResult is AppFailure<String>) {
+      setState(() { _error = directResult.error.message; _loading = false; });
+      return;
     }
+    if (threadsResult is AppFailure<List<ChatThread>>) {
+      setState(() { _error = threadsResult.error.message; _loading = false; });
+      return;
+    }
+
+    final directId = (directResult as AppSuccess<String>).data;
+    final allThreads = (threadsResult as AppSuccess<List<ChatThread>>).data;
+
+    setState(() {
+      _directThreadId = directId;
+      _otherThreads = allThreads.where((t) => t.id != directId).toList();
+      _loading = false;
+    });
   }
 
   void _select(String threadId, String threadTitle) {
@@ -144,23 +151,28 @@ class _ChatThreadPickerSheetState extends State<ChatThreadPickerSheet> {
             ),
           ),
           ..._otherThreads.map(
-            (t) => ListTile(
-              leading: CircleAvatar(
-                backgroundColor: Theme.of(context).colorScheme.primaryContainer,
-                child: Text(
-                  t.title.isNotEmpty ? t.title[0].toUpperCase() : '?',
-                  style: TextStyle(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.bold,
+            (t) {
+              final resolvedTitle = t.isDirect
+                  ? (t.otherParticipantName ?? t.title)
+                  : t.title;
+              return ListTile(
+                leading: CircleAvatar(
+                  backgroundColor: Theme.of(context).colorScheme.primaryContainer,
+                  child: Text(
+                    resolvedTitle.isNotEmpty ? resolvedTitle[0].toUpperCase() : '?',
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
-              title: Text(t.title),
-              trailing: t.isDirect
-                  ? const Icon(Icons.lock_outline, size: 16, color: Colors.blueGrey)
-                  : const Icon(Icons.chevron_right, color: Colors.grey),
-              onTap: () => _select(t.id, t.title),
-            ),
+                title: Text(resolvedTitle),
+                trailing: t.isDirect
+                    ? const Icon(Icons.lock_outline, size: 16, color: Colors.blueGrey)
+                    : const Icon(Icons.chevron_right, color: Colors.grey),
+                onTap: () => _select(t.id, resolvedTitle),
+              );
+            },
           ),
         ],
       ],

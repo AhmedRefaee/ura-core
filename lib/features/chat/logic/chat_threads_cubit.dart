@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/chat_thread.dart';
@@ -35,6 +36,7 @@ class ChatThreadsError extends ChatThreadsState {
 
 class ChatThreadsCubit extends Cubit<ChatThreadsState> {
   final ChatRepository _repo;
+  RealtimeChannel? _channel;
 
   ChatThreadsCubit(this._repo) : super(ChatThreadsInitial());
 
@@ -46,10 +48,36 @@ class ChatThreadsCubit extends Cubit<ChatThreadsState> {
       switch (result) {
         case AppSuccess(:final data):
           emit(ChatThreadsLoaded(data));
+          _subscribeToChanges();
         case AppFailure(:final error):
           logger.e('ChatThreadsCubit → loadThreads failed: ${error.message}');
           emit(ChatThreadsError(error.message));
       }
+    }
+  }
+
+  void _subscribeToChanges() {
+    _channel ??= Supabase.instance.client
+        .channel('chat-threads-$hashCode')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_messages',
+          callback: (_) => _silentRefresh(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_threads',
+          callback: (_) => _silentRefresh(),
+        )
+        .subscribe();
+  }
+
+  Future<void> _silentRefresh() async {
+    final result = await _repo.getThreads();
+    if (!isClosed && result is AppSuccess<List<ChatThread>>) {
+      emit(ChatThreadsLoaded(result.data));
     }
   }
 
@@ -65,5 +93,11 @@ class ChatThreadsCubit extends Cubit<ChatThreadsState> {
         if (!isClosed) emit(ChatThreadsError(error.message));
         return null;
     }
+  }
+
+  @override
+  Future<void> close() async {
+    await _channel?.unsubscribe();
+    return super.close();
   }
 }

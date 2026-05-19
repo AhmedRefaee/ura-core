@@ -47,6 +47,7 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
   final String? mentionedOrderTitle;
 
   StreamSubscription<List<ChatMessage>>? _sub;
+  RealtimeChannel? _reactionChannel;
   List<ChatMessage> _messages = [];
   Map<String, List<ChatMessageReaction>> _reactions = {};
 
@@ -72,6 +73,15 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
       },
     );
     _loadReactions();
+    _reactionChannel ??= Supabase.instance.client
+        .channel('chat-reactions-$threadId-$hashCode')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'chat_message_reactions',
+          callback: (_) => _loadReactions(),
+        )
+        .subscribe();
   }
 
   Future<void> _loadReactions() async {
@@ -186,8 +196,9 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
   }
 
   @override
-  Future<void> close() {
-    _sub?.cancel();
+  Future<void> close() async {
+    await _reactionChannel?.unsubscribe();
+    await _sub?.cancel();
     return super.close();
   }
 }

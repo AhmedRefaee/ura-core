@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:go_router/go_router.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../../shared/models/chat_message.dart';
@@ -45,32 +46,45 @@ class _ChatMessageBubbleState extends State<ChatMessageBubble> {
         final isDark = theme.brightness == Brightness.dark;
         final bgColor = isDark ? theme.colorScheme.surface : Colors.grey.shade200;
         final textColor = isDark ? theme.hintColor : Colors.grey.shade600;
-        return Center(
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 40),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-            decoration: BoxDecoration(
-              color: bgColor,
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.info_outline, size: 12, color: textColor),
-                const SizedBox(width: 6),
-                Flexible(
-                  child: Text(
-                    widget.message.content,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: textColor,
-                      fontStyle: FontStyle.italic,
-                      height: 1.4,
-                    ),
+        final orderId = widget.message.orderMentionId;
+
+        final pill = Container(
+          margin: const EdgeInsets.symmetric(vertical: 6, horizontal: 40),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: bgColor,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.info_outline, size: 12, color: textColor),
+              const SizedBox(width: 6),
+              Flexible(
+                child: Text(
+                  widget.message.content,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: textColor,
+                    fontStyle: FontStyle.italic,
+                    height: 1.4,
                   ),
                 ),
+              ),
+              if (orderId != null) ...[
+                const SizedBox(width: 6),
+                Icon(Icons.open_in_new, size: 11, color: textColor),
               ],
-            ),
+            ],
+          ),
+        );
+
+        if (orderId == null) return Center(child: pill);
+
+        return Center(
+          child: GestureDetector(
+            onTap: () => GoRouter.of(context).push('/orders/$orderId'),
+            child: pill,
           ),
         );
       },
@@ -542,12 +556,12 @@ class _ChatMessageBubbleState extends State<ChatMessageBubble> {
                   // Sender name (others only)
                   if (!_isMe)
                     GestureDetector(
-                      onTap: () => Navigator.push(
+                      onTap: msg.senderId == null ? null : () => Navigator.push(
                         context,
                         MaterialPageRoute(
                           builder: (_) => ProfileScreen(
                             profile: Profile(
-                              id: msg.senderId,
+                              id: msg.senderId!,
                               fullName: msg.senderName,
                               isApproved: true,
                             ),

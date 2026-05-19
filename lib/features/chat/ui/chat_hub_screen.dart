@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
+import '../../../shared/widgets/notification_dot.dart';
 import '../../../features/auth/logic/auth_cubit.dart';
 import '../../../features/auth/logic/auth_state.dart';
 import '../../../features/notifications/data/notifications_repository.dart';
@@ -128,14 +129,15 @@ class ChatHubBody extends StatelessWidget {
           final threads = filterQuery.isEmpty
               ? state.threads
               : state.threads
-                  .where((t) =>
-                      t.title
-                          .toLowerCase()
-                          .contains(filterQuery.toLowerCase()) ||
-                      (t.lastMessageContent
-                              ?.toLowerCase()
-                              .contains(filterQuery.toLowerCase()) ??
-                          false))
+                  .where((t) {
+                    final q = filterQuery.toLowerCase();
+                    final resolvedTitle = t.isDirect
+                        ? (t.otherParticipantName ?? t.title)
+                        : t.title;
+                    return resolvedTitle.toLowerCase().contains(q) ||
+                        (t.lastMessageContent?.toLowerCase().contains(q) ??
+                            false);
+                  })
                   .toList();
 
           if (threads.isEmpty) {
@@ -171,25 +173,16 @@ class ChatHubBody extends StatelessWidget {
               separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
               itemBuilder: (_, i) {
                 final thread = threads[i];
-                final authState = context.read<AuthCubit>().state;
-                final myName = authState is AuthAuthenticated
-                    ? authState.profile.fullName
-                    : '';
                 final displayTitle = thread.isDirect
-                    ? _resolveDirectTitle(thread.title, myName)
+                    ? (thread.otherParticipantName ?? thread.title)
                     : thread.title;
                 final hasUnread = thread.unreadCount > 0;
                 final dateLabel =
                     _formatDate(thread.lastMessageAt ?? thread.createdAt);
 
                 return ListTile(
-                  leading: Badge(
-                    isLabelVisible: hasUnread,
-                    backgroundColor: Colors.red,
-                    label: Text(
-                      thread.unreadCount > 9 ? '9+' : '${thread.unreadCount}',
-                      style: const TextStyle(fontSize: 10),
-                    ),
+                  leading: NotificationDot(
+                    isVisible: hasUnread,
                     child: CircleAvatar(
                       backgroundColor:
                           Theme.of(context).colorScheme.primaryContainer,
@@ -310,13 +303,6 @@ void chatHubOpenThread(
       context.read<ChatThreadsCubit>().loadThreads();
     }
   });
-}
-
-String _resolveDirectTitle(String title, String myName) {
-  final parts = title.split(' — ');
-  if (parts.length != 2) return title;
-  final a = parts[0].trim(), b = parts[1].trim();
-  return a == myName ? b : (b == myName ? a : title);
 }
 
 String _formatDate(DateTime dt) {

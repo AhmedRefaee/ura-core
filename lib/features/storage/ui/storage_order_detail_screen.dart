@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
 import '../../inventory/ui/inventory_form_screen.dart';
-import '../../inventory/ui/inventory_item_detail_screen.dart';
+import '../../../shared/widgets/invalid_order_view.dart';
+import '../../../shared/widgets/order_status_timeline.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
 import '../logic/storage_order_detail_cubit.dart';
@@ -56,6 +56,15 @@ class StorageOrderDetailScreen extends StatelessWidget {
         }
 
         final order = state.order;
+
+        // 0-item guard: refuse to render any action UI for a corrupt order.
+        if (order.items.isEmpty) {
+          return Scaffold(
+            appBar: AppBar(title: Text(order.entity?.name ?? 'تفاصيل الطلب')),
+            body: const InvalidOrderView(),
+          );
+        }
+
         return Scaffold(
           appBar: AppBar(
             title: Text(order.entity?.name ?? 'تفاصيل الطلب'),
@@ -72,6 +81,8 @@ class StorageOrderDetailScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             children: [
               _InfoCard(order: order),
+              const SizedBox(height: 16),
+              OrderStatusTimeline(order: order, auditLog: state.auditLog),
               const SizedBox(height: 16),
               _ItemsSection(state: state),
               const SizedBox(height: 24),
@@ -253,9 +264,6 @@ class _ItemsSection extends StatelessWidget {
             state: state,
             showCheckControls: showCheckControls,
             showQtyEdit: storageTurn && item.inventoryId != null,
-            invItem: state.order.direction == OrderDirection.outbound
-                ? state.stockItems[item.inventoryId]
-                : null,
             isFinished: state.order.status == OrderStatus.delivered ||
                 state.order.status == OrderStatus.deliveredToStorage,
           ),
@@ -270,7 +278,6 @@ class _ItemTile extends StatelessWidget {
   final StorageOrderDetailLoaded state;
   final bool showCheckControls;
   final bool showQtyEdit;
-  final InventoryItem? invItem;
   final bool isFinished;
 
   const _ItemTile({
@@ -278,7 +285,6 @@ class _ItemTile extends StatelessWidget {
     required this.state,
     required this.showCheckControls,
     required this.showQtyEdit,
-    this.invItem,
     this.isFinished = false,
   });
 
@@ -286,10 +292,7 @@ class _ItemTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveQty = state.effectiveQuantity(item);
     final effectiveStatus = state.effectiveStatus(item);
-    final showWarning = !item.isCustom &&
-        !isFinished &&
-        invItem != null &&
-        invItem!.quantity < effectiveQty;
+    final showWarning = !item.isCustom && item.wasUnavailableAtCreation;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -338,24 +341,17 @@ class _ItemTile extends StatelessWidget {
               Text('الكمية: $effectiveQty',
                   style: const TextStyle(fontSize: 13, color: Colors.grey)),
             if (showWarning)
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => InventoryItemDetailScreen(item: invItem!),
-                  ),
+              Chip(
+                avatar: const Icon(Icons.warning_amber_rounded,
+                    color: Colors.orange, size: 16),
+                label: const Text(
+                  'غير متوفر',
+                  style: TextStyle(fontSize: 11, color: Colors.orange),
                 ),
-                child: Chip(
-                  avatar: const Icon(Icons.warning_amber_rounded,
-                      color: Colors.orange, size: 16),
-                  label: Text('المتوفر فقط: ${invItem!.quantity}',
-                      style: const TextStyle(
-                          fontSize: 11, color: Colors.orange)),
-                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                  side: BorderSide(
-                      color: Colors.orange.withValues(alpha: 0.4)),
-                  visualDensity: VisualDensity.compact,
-                ),
+                backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                side: BorderSide(
+                    color: Colors.orange.withValues(alpha: 0.4)),
+                visualDensity: VisualDensity.compact,
               ),
             if (item.isCustom)
               Align(

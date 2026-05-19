@@ -3,12 +3,11 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
+import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/chat_message.dart';
-import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../data/rep_orders_repository.dart';
 import '../../chat/data/chat_repository.dart';
-import '../../verifier/data/inventory_repository.dart';
 
 abstract class RepOrderDetailState extends Equatable {
   const RepOrderDetailState();
@@ -23,16 +22,16 @@ class RepOrderDetailLoading extends RepOrderDetailState {}
 class RepOrderDetailLoaded extends RepOrderDetailState {
   final Order order;
   final Map<String, String> receipts;
+  final List<AuditLogEntry> auditLog;
   final bool isActing;
   final List<ChatMessage> communicationHistory;
-  final Map<String, InventoryItem> stockItems;
 
   const RepOrderDetailLoaded({
     required this.order,
     required this.receipts,
+    this.auditLog = const [],
     this.isActing = false,
     this.communicationHistory = const [],
-    this.stockItems = const {},
   });
 
   bool get allCustomItemsHaveReceipts {
@@ -44,21 +43,21 @@ class RepOrderDetailLoaded extends RepOrderDetailState {
   RepOrderDetailLoaded copyWith({
     Order? order,
     Map<String, String>? receipts,
+    List<AuditLogEntry>? auditLog,
     bool? isActing,
     List<ChatMessage>? communicationHistory,
-    Map<String, InventoryItem>? stockItems,
   }) {
     return RepOrderDetailLoaded(
       order: order ?? this.order,
       receipts: receipts ?? this.receipts,
+      auditLog: auditLog ?? this.auditLog,
       isActing: isActing ?? this.isActing,
       communicationHistory: communicationHistory ?? this.communicationHistory,
-      stockItems: stockItems ?? this.stockItems,
     );
   }
 
   @override
-  List<Object?> get props => [order, receipts, isActing, communicationHistory, stockItems];
+  List<Object?> get props => [order, receipts, auditLog, isActing, communicationHistory];
 }
 
 class RepOrderDetailError extends RepOrderDetailState {
@@ -71,10 +70,9 @@ class RepOrderDetailError extends RepOrderDetailState {
 class RepOrderDetailCubit extends Cubit<RepOrderDetailState> {
   final RepOrdersRepository _repo;
   final ChatRepository _chatRepo;
-  final InventoryRepository _inventoryRepo;
   final String orderId;
 
-  RepOrderDetailCubit(this._repo, this.orderId, this._chatRepo, this._inventoryRepo)
+  RepOrderDetailCubit(this._repo, this.orderId, this._chatRepo)
       : super(RepOrderDetailInitial());
 
   Future<void> load() async {
@@ -84,8 +82,11 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState> {
     final results = await Future.wait([
       _repo.fetchOrderDetail(orderId),
       _repo.fetchReceipts(orderId),
+      _repo.fetchAuditLog(orderId),
       _chatRepo.getOrderCommunicationHistory(orderId),
     ]);
+
+    if (isClosed) return;
 
     final orderError = results[0].failureOrNull;
     if (orderError != null) {
@@ -99,7 +100,11 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState> {
       emit(RepOrderDetailError(receiptsError.message));
       return;
     }
-    final historyError = results[2].failureOrNull;
+    // Audit log failure is non-fatal — show empty timeline rather than error screen
+    final auditLog = results[2] is AppSuccess<List<AuditLogEntry>>
+        ? (results[2] as AppSuccess<List<AuditLogEntry>>).data
+        : <AuditLogEntry>[];
+    final historyError = results[3].failureOrNull;
     if (historyError != null) {
       logger.e('RepOrderDetailCubit → load failed: ${historyError.message}');
       emit(RepOrderDetailError(historyError.message));
@@ -107,23 +112,12 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState> {
     }
 
     final order = (results[0] as AppSuccess<Order>).data;
-    final invIds = order.items
-        .where((i) => !i.isCustom && i.inventoryId != null)
-        .map((i) => i.inventoryId!)
-        .toList();
-    final stockResult = await _inventoryRepo.fetchItemsByIds(invIds);
-    final stockError = stockResult.failureOrNull;
-    if (stockError != null) {
-      logger.e('RepOrderDetailCubit → fetchItemsByIds failed: ${stockError.message}');
-      emit(RepOrderDetailError(stockError.message));
-      return;
-    }
 
     emit(RepOrderDetailLoaded(
       order: order,
       receipts: (results[1] as AppSuccess<Map<String, String>>).data,
-      communicationHistory: (results[2] as AppSuccess<List<ChatMessage>>).data,
-      stockItems: (stockResult as AppSuccess<Map<String, InventoryItem>>).data,
+      auditLog: auditLog,
+      communicationHistory: (results[3] as AppSuccess<List<ChatMessage>>).data,
     ));
   }
 
@@ -196,7 +190,6 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState> {
               order: data,
               receipts: updatedReceipts,
               communicationHistory: s.communicationHistory,
-              stockItems: s.stockItems,
             ));
           case AppFailure(:final error):
             logger.e('RepOrderDetailCubit → reload after upload failed: ${error.message}');

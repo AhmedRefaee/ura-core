@@ -112,7 +112,6 @@ Future<void> setupDependencies() async {
       sl<RepOrdersRepository>(),
       orderId,
       sl<ChatRepository>(),
-      sl<InventoryRepository>(),
     ),
   );
 
@@ -122,7 +121,7 @@ Future<void> setupDependencies() async {
     () => StorageOrdersCubit(sl<StorageRepository>()),
   );
   sl.registerFactoryParam<StorageOrderDetailCubit, String, void>(
-    (orderId, _) => StorageOrderDetailCubit(sl<StorageRepository>(), orderId, sl<InventoryRepository>()),
+    (orderId, _) => StorageOrderDetailCubit(sl<StorageRepository>(), orderId),
   );
 
   // Inventory
@@ -166,8 +165,13 @@ Future<void> setupDependencies() async {
   sl.registerFactory<UserOrdersCubit>(
     () => UserOrdersCubit(sl<ManagerRepository>()),
   );
-  sl.registerFactoryParam<TaskDetailCubit, String, void>(
-    (orderId, _) => TaskDetailCubit(sl<ManagerRepository>(), orderId, sl<InventoryRepository>()),
+  sl.registerFactoryParam<TaskDetailCubit, String, bool>(
+    (orderId, useVerifierRepository) => TaskDetailCubit(
+      sl<ManagerRepository>(),
+      orderId,
+      sl<OrderRepository>(),
+      useVerifierRepository: useVerifierRepository,
+    ),
   );
   sl.registerFactory<StatsCubit>(
     () => StatsCubit(sl<StatsRepository>()),

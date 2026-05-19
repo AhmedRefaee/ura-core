@@ -2,15 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
-import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/chat_message.dart';
-import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_edit_log_entry.dart';
 import '../../../shared/models/order_item.dart';
-import '../../inventory/ui/inventory_item_detail_screen.dart';
-import '../../../shared/models/profile.dart';
-import '../../../shared/order_status_theme.dart';
+import '../../../shared/widgets/invalid_order_view.dart';
+import '../../../shared/widgets/order_status_timeline.dart';
 import '../../../shared/widgets/receipt_viewer_screen.dart';
 import '../../../features/chat/data/chat_repository.dart';
 import '../../../features/chat/ui/chat_thread_screen.dart';
@@ -23,12 +20,21 @@ import '../../profile/ui/profile_screen.dart';
 class TaskDetailScreen extends StatelessWidget {
   final String orderId;
   final bool showDeleteButton;
-  const TaskDetailScreen({super.key, required this.orderId, this.showDeleteButton = false});
+  final bool useVerifierRepository;
+  const TaskDetailScreen({
+    super.key,
+    required this.orderId,
+    this.showDeleteButton = false,
+    this.useVerifierRepository = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) => sl.get<TaskDetailCubit>(param1: orderId)..load(),
+      create: (_) => sl.get<TaskDetailCubit>(
+        param1: orderId,
+        param2: useVerifierRepository,
+      )..load(),
       child: _TaskDetailView(showDeleteButton: showDeleteButton),
     );
   }
@@ -110,6 +116,29 @@ class _TaskDetailView extends StatelessWidget {
         final receipts = state.receipts;
         final canDelete = showDeleteButton && order.status != OrderStatus.delivered;
 
+        // 0-item guard: manager can still delete, but no order processing UI.
+        if (order.items.isEmpty) {
+          return Scaffold(
+            appBar: AppBar(
+              title: Text(order.entity?.name ?? 'تفاصيل المهمة'),
+              actions: [
+                if (canDelete)
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, color: Colors.red),
+                    tooltip: 'حذف الطلب',
+                    onPressed: () async {
+                      final confirmed = await _confirmDelete(context);
+                      if (confirmed && context.mounted) {
+                        context.read<TaskDetailCubit>().deleteOrder();
+                      }
+                    },
+                  ),
+              ],
+            ),
+            body: const InvalidOrderView(),
+          );
+        }
+
         return Scaffold(
           appBar: AppBar(
             title: Text(order.entity?.name ?? 'تفاصيل المهمة'),
@@ -141,13 +170,13 @@ class _TaskDetailView extends StatelessWidget {
             children: [
               _OrderInfoCard(order: order),
               const SizedBox(height: 16),
-              _CommunicationHistorySection(orderId: order.id),
+              OrderStatusTimeline(order: order, auditLog: auditLog),
               const SizedBox(height: 16),
-              _StatusTimeline(order: order, auditLog: auditLog),
-              const SizedBox(height: 16),
-              _ItemsCard(items: order.items, orderStatus: order.status, receipts: receipts, stockItems: state.stockItems, orderDirection: order.direction),
+              _ItemsCard(items: order.items, orderStatus: order.status, receipts: receipts, orderDirection: order.direction),
               const SizedBox(height: 16),
               _EditHistorySection(orderId: order.id),
+              const SizedBox(height: 16),
+              _CommunicationHistorySection(orderId: order.id),
             ],
           ),
         );
@@ -235,267 +264,6 @@ class _Row extends StatelessWidget {
   }
 }
 
-// ── Status Timeline ───────────────────────────────────────────────────────────
-
-class _StatusTimeline extends StatelessWidget {
-  final Order order;
-  final List<AuditLogEntry> auditLog;
-  const _StatusTimeline({required this.order, required this.auditLog});
-
-  AuditLogEntry? _entryFor(OrderStatus status) {
-    try {
-      return auditLog.firstWhere((e) => e.newStatus == status);
-    } catch (_) {
-      return null;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final pickedUpEntry = _entryFor(OrderStatus.pickedUp);
-    final onTheMoveEntry = _entryFor(OrderStatus.onTheMove);
-    final deliveredEntry = _entryFor(OrderStatus.delivered);
-
-    final steps = [
-      _TimelineStep(
-        label: 'تم الإنشاء',
-        icon: OrderStatus.assigned.icon,
-        color: OrderStatus.assigned.color,
-        timestamp: order.assignedAt,
-        performer: order.creator,
-        reached: true,
-      ),
-      _TimelineStep(
-        label: 'تم الاستلام',
-        icon: OrderStatus.pickedUp.icon,
-        color: OrderStatus.pickedUp.color,
-        timestamp: order.pickedUpAt,
-        performer: pickedUpEntry?.performer,
-        notes: pickedUpEntry?.notes,
-        reached: order.status != OrderStatus.assigned,
-      ),
-      _TimelineStep(
-        label: 'في الطريق',
-        icon: OrderStatus.onTheMove.icon,
-        color: OrderStatus.onTheMove.color,
-        timestamp: order.moveStartedAt ?? onTheMoveEntry?.serverTimestamp,
-        performer: onTheMoveEntry?.performer,
-        notes: onTheMoveEntry?.notes,
-        reached: order.status == OrderStatus.onTheMove ||
-            order.status == OrderStatus.delivered,
-      ),
-      _TimelineStep(
-        label: 'تم التسليم',
-        icon: OrderStatus.delivered.icon,
-        color: OrderStatus.delivered.color,
-        timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
-        performer: deliveredEntry?.performer,
-        notes: deliveredEntry?.notes,
-        reached: order.status == OrderStatus.delivered,
-      ),
-    ];
-
-    final List<Widget> tiles = [];
-    for (int i = 0; i < steps.length; i++) {
-      tiles.add(_StepTile(step: steps[i]));
-      if (i < steps.length - 1) {
-        final from = steps[i];
-        final to = steps[i + 1];
-        if (from.reached && to.reached &&
-            from.timestamp != null && to.timestamp != null) {
-          tiles.add(_DurationBadge(from: from.timestamp!, to: to.timestamp!));
-        }
-      }
-    }
-
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('مسار الحالة',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-            const SizedBox(height: 12),
-            ...tiles,
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _TimelineStep {
-  final String label;
-  final IconData icon;
-  final Color color;
-  final DateTime? timestamp;
-  final Profile? performer;
-  final String? notes;
-  final bool reached;
-
-  const _TimelineStep({
-    required this.label,
-    required this.icon,
-    required this.color,
-    required this.timestamp,
-    required this.performer,
-    this.notes,
-    required this.reached,
-  });
-}
-
-class _StepTile extends StatelessWidget {
-  final _TimelineStep step;
-  const _StepTile({required this.step});
-
-  String _fmt(DateTime? dt) {
-    if (dt == null) return '—';
-    final l = dt.toLocal();
-    final h = l.hour.toString().padLeft(2, '0');
-    final m = l.minute.toString().padLeft(2, '0');
-    final s = l.second.toString().padLeft(2, '0');
-    return '${l.day}/${l.month}/${l.year}  $h:$m:$s';
-  }
-
-  String _roleLabel(UserRole? role) {
-    switch (role) {
-      case UserRole.rep:
-        return 'مندوب';
-      case UserRole.storageActor:
-        return 'أمين مخزن';
-      case UserRole.verifier:
-        return 'مشرف';
-      case UserRole.manager:
-        return 'مدير';
-      default:
-        return '';
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final active = step.reached;
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Column(
-            children: [
-              CircleAvatar(
-                radius: 16,
-                backgroundColor:
-                    active ? step.color : Colors.grey.shade300,
-                child: Icon(step.icon,
-                    size: 16,
-                    color: active ? Colors.white : Colors.grey),
-              ),
-            ],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(step.label,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: active ? null : Colors.grey,
-                    )),
-                if (active) ...[
-                  const SizedBox(height: 2),
-                  Text(
-                    _fmt(step.timestamp),
-                    style: const TextStyle(fontSize: 12, color: Colors.grey),
-                  ),
-                  if (step.performer != null)
-                    Text(
-                      '${step.performer!.fullName}  ·  ${_roleLabel(step.performer!.role)}',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  if (step.notes != null && step.notes!.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 2),
-                      child: Text(
-                        'ملاحظة: ${step.notes!}',
-                        style: const TextStyle(fontSize: 12, color: Colors.blueGrey),
-                      ),
-                    ),
-                ] else
-                  Text('لم يتم بعد',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DurationBadge extends StatelessWidget {
-  final DateTime from;
-  final DateTime to;
-  const _DurationBadge({required this.from, required this.to});
-
-  String _fmtDuration(Duration d) {
-    if (d.inSeconds < 60) return '${d.inSeconds} ثانية';
-    if (d.inMinutes < 60) {
-      final mins = d.inMinutes;
-      final secs = d.inSeconds % 60;
-      return secs == 0 ? '$mins دقيقة' : '$mins دقيقة $secs ثانية';
-    }
-    if (d.inHours < 24) {
-      final h = d.inHours;
-      final m = d.inMinutes % 60;
-      return m == 0 ? '$h ساعة' : '$h ساعة $m دقيقة';
-    }
-    final days = d.inDays;
-    final h = d.inHours % 24;
-    return h == 0 ? '$days يوم' : '$days يوم $h ساعة';
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final label = _fmtDuration(to.difference(from).abs());
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          // Vertical connector aligned with the circle centre (radius 16 → width 32)
-          SizedBox(
-            width: 32,
-            child: Center(
-              child: Container(width: 2, height: 24, color: Colors.grey.shade300),
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
-            decoration: BoxDecoration(
-              color: Colors.grey.shade100,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(Icons.timer_outlined, size: 12, color: Colors.grey.shade600),
-                const SizedBox(width: 4),
-                Text(
-                  label,
-                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 // ── Items Card ────────────────────────────────────────────────────────────────
 
 class _ItemsCard extends StatelessWidget {
@@ -503,13 +271,11 @@ class _ItemsCard extends StatelessWidget {
   final OrderStatus orderStatus;
   final OrderDirection orderDirection;
   final Map<String, String> receipts;
-  final Map<String, InventoryItem> stockItems;
   const _ItemsCard({
     required this.items,
     required this.orderStatus,
     required this.orderDirection,
     required this.receipts,
-    this.stockItems = const {},
   });
 
   String _fmt(DateTime? dt) {
@@ -538,9 +304,6 @@ class _ItemsCard extends StatelessWidget {
               fmt: _fmt,
               orderStatus: orderStatus,
               receipts: receipts,
-              invItem: orderDirection == OrderDirection.outbound
-                  ? stockItems[item.inventoryId]
-                  : null,
             )),
           ],
         ),
@@ -554,13 +317,11 @@ class _ItemRow extends StatelessWidget {
   final String Function(DateTime?) fmt;
   final OrderStatus orderStatus;
   final Map<String, String> receipts;
-  final InventoryItem? invItem;
   const _ItemRow({
     required this.item,
     required this.fmt,
     required this.orderStatus,
     required this.receipts,
-    this.invItem,
   });
 
   @override
@@ -606,31 +367,19 @@ class _ItemRow extends StatelessWidget {
                       : 'الكمية: ${item.quantity}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-                if (!item.isCustom &&
-                    orderStatus != OrderStatus.delivered &&
-                    orderStatus != OrderStatus.deliveredToStorage &&
-                    invItem != null &&
-                    invItem!.quantity < item.effectiveQuantity)
-                  GestureDetector(
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) =>
-                            InventoryItemDetailScreen(item: invItem!),
-                      ),
+                if (!item.isCustom && item.wasUnavailableAtCreation)
+                  Chip(
+                    avatar: const Icon(Icons.warning_amber_rounded,
+                        color: Colors.orange, size: 16),
+                    label: const Text(
+                      'غير متوفر',
+                      style: TextStyle(fontSize: 11, color: Colors.orange),
                     ),
-                    child: Chip(
-                      avatar: const Icon(Icons.warning_amber_rounded,
-                          color: Colors.orange, size: 16),
-                      label: Text('المتوفر فقط: ${invItem!.quantity}',
-                          style: const TextStyle(
-                              fontSize: 11, color: Colors.orange)),
-                      backgroundColor:
-                          Colors.orange.withValues(alpha: 0.1),
-                      side: BorderSide(
-                          color: Colors.orange.withValues(alpha: 0.4)),
-                      visualDensity: VisualDensity.compact,
-                    ),
+                    backgroundColor:
+                        Colors.orange.withValues(alpha: 0.1),
+                    side: BorderSide(
+                        color: Colors.orange.withValues(alpha: 0.4)),
+                    visualDensity: VisualDensity.compact,
                   ),
                 if (!item.isCustom &&
                     !(item.checkStatus == ItemCheckStatus.pending &&

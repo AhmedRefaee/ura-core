@@ -3,11 +3,10 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
-import '../../../shared/models/inventory_item.dart';
+import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
 import '../data/storage_repository.dart';
-import '../../verifier/data/inventory_repository.dart';
 
 // ─── States ──────────────────────────────────────────────────────────────────
 
@@ -24,7 +23,7 @@ class StorageOrderDetailLoading extends StorageOrderDetailState {}
 class StorageOrderDetailLoaded extends StorageOrderDetailState {
   final Order order;
   final Map<String, String> receipts;
-  final Map<String, InventoryItem> stockItems;
+  final List<AuditLogEntry> auditLog;
   final Map<String, ItemCheckStatus> pendingStatuses;
   final Map<String, int> editedQuantities;
   final bool isActing;
@@ -32,7 +31,7 @@ class StorageOrderDetailLoaded extends StorageOrderDetailState {
   const StorageOrderDetailLoaded({
     required this.order,
     this.receipts = const {},
-    this.stockItems = const {},
+    this.auditLog = const [],
     this.pendingStatuses = const {},
     this.editedQuantities = const {},
     this.isActing = false,
@@ -55,7 +54,7 @@ class StorageOrderDetailLoaded extends StorageOrderDetailState {
   StorageOrderDetailLoaded copyWith({
     Order? order,
     Map<String, String>? receipts,
-    Map<String, InventoryItem>? stockItems,
+    List<AuditLogEntry>? auditLog,
     Map<String, ItemCheckStatus>? pendingStatuses,
     Map<String, int>? editedQuantities,
     bool? isActing,
@@ -63,7 +62,7 @@ class StorageOrderDetailLoaded extends StorageOrderDetailState {
     return StorageOrderDetailLoaded(
       order: order ?? this.order,
       receipts: receipts ?? this.receipts,
-      stockItems: stockItems ?? this.stockItems,
+      auditLog: auditLog ?? this.auditLog,
       pendingStatuses: pendingStatuses ?? this.pendingStatuses,
       editedQuantities: editedQuantities ?? this.editedQuantities,
       isActing: isActing ?? this.isActing,
@@ -72,7 +71,7 @@ class StorageOrderDetailLoaded extends StorageOrderDetailState {
 
   @override
   List<Object?> get props =>
-      [order, receipts, stockItems, pendingStatuses, editedQuantities, isActing];
+      [order, receipts, auditLog, pendingStatuses, editedQuantities, isActing];
 }
 
 class StorageOrderDetailError extends StorageOrderDetailState {
@@ -93,10 +92,9 @@ class StorageOrderDetailSuccess extends StorageOrderDetailState {
 
 class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState> {
   final StorageRepository _repo;
-  final InventoryRepository _inventoryRepo;
   final String orderId;
 
-  StorageOrderDetailCubit(this._repo, this.orderId, this._inventoryRepo)
+  StorageOrderDetailCubit(this._repo, this.orderId)
       : super(StorageOrderDetailInitial());
 
   Future<void> load() async {
@@ -106,6 +104,7 @@ class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState> {
     final results = await Future.wait([
       _repo.fetchOrderDetail(orderId),
       _repo.fetchReceipts(orderId),
+      _repo.fetchAuditLog(orderId),
     ]);
 
     final orderError = results[0].failureOrNull;
@@ -120,24 +119,16 @@ class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState> {
       emit(StorageOrderDetailError(receiptsError.message));
       return;
     }
+    // Audit log failure is non-fatal — show empty timeline rather than error screen
+    final auditLog = results[2] is AppSuccess<List<AuditLogEntry>>
+        ? (results[2] as AppSuccess<List<AuditLogEntry>>).data
+        : <AuditLogEntry>[];
 
     final order = (results[0] as AppSuccess<Order>).data;
-    final invIds = order.items
-        .where((i) => !i.isCustom && i.inventoryId != null)
-        .map((i) => i.inventoryId!)
-        .toList();
-    final stockResult = await _inventoryRepo.fetchItemsByIds(invIds);
-    final stockError = stockResult.failureOrNull;
-    if (stockError != null) {
-      logger.e('StorageOrderDetailCubit → fetchItemsByIds failed: ${stockError.message}');
-      emit(StorageOrderDetailError(stockError.message));
-      return;
-    }
-
     emit(StorageOrderDetailLoaded(
       order: order,
       receipts: (results[1] as AppSuccess<Map<String, String>>).data,
-      stockItems: (stockResult as AppSuccess<Map<String, InventoryItem>>).data,
+      auditLog: auditLog,
     ));
   }
 
@@ -214,7 +205,7 @@ class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState> {
             emit(StorageOrderDetailLoaded(
               order: data,
               receipts: updatedReceipts,
-              stockItems: s.stockItems,
+              auditLog: s.auditLog,
               pendingStatuses: s.pendingStatuses,
               editedQuantities: s.editedQuantities,
             ));

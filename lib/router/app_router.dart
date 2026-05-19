@@ -11,8 +11,14 @@ import '../features/auth/ui/forgot_password_screen.dart';
 import '../features/auth/ui/reset_password_screen.dart';
 import '../features/verifier/ui/verifier_home_screen.dart';
 import '../features/rep/ui/rep_home_screen.dart';
+import '../features/rep/ui/rep_order_detail_screen.dart';
+import '../features/rep/logic/rep_order_detail_cubit.dart';
 import '../features/storage/ui/storage_home_screen.dart';
+import '../features/storage/ui/storage_order_detail_screen.dart';
+import '../features/storage/logic/storage_order_detail_cubit.dart';
 import '../features/manager/ui/manager_home_screen.dart';
+import '../features/manager/ui/task_detail_screen.dart';
+import '../core/di/injection.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/chat/ui/chat_hub_screen.dart';
 import '../features/chat/ui/chat_thread_screen.dart';
@@ -21,7 +27,6 @@ import '../features/notifications/ui/notifications_screen.dart';
 import '../features/entities/logic/entities_cubit.dart';
 import '../features/entities/ui/entities_screen.dart';
 import '../features/settings/ui/settings_screen.dart';
-import '../core/di/injection.dart';
 import '../shared/models/profile.dart';
 
 class AppRoutes {
@@ -140,14 +145,15 @@ GoRouter createRouter(AuthCubit authCubit) {
         },
       ),
       GoRoute(
+        path: '/orders/:orderId',
+        builder: (_, state) => _OrderDeepLinkLoader(
+          orderId: state.pathParameters['orderId']!,
+          authCubit: authCubit,
+        ),
+      ),
+      GoRoute(
         path: '/order/:orderId',
-        redirect: (_, _) {
-          final authState = authCubit.state;
-          if (authState is AuthAuthenticated) {
-            return _roleRoute(authState.profile.role);
-          }
-          return AppRoutes.login;
-        },
+        redirect: (_, state) => '/orders/${state.pathParameters['orderId']}',
       ),
       GoRoute(
         path: '/pending-user/:userId',
@@ -180,6 +186,41 @@ GoRouter createRouter(AuthCubit authCubit) {
       ),
     ],
   );
+}
+
+// ── Order deep-link loader ────────────────────────────────────────────────────
+// Opened when a push notification with route /orders/:id is tapped.
+// Works for any order status including delivered.
+
+class _OrderDeepLinkLoader extends StatelessWidget {
+  final String orderId;
+  final AuthCubit authCubit;
+  const _OrderDeepLinkLoader({required this.orderId, required this.authCubit});
+
+  @override
+  Widget build(BuildContext context) {
+    final authState = authCubit.state;
+    if (authState is! AuthAuthenticated) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    final role = authState.profile.role;
+
+    switch (role) {
+      case UserRole.rep:
+        return BlocProvider(
+          create: (_) => sl.get<RepOrderDetailCubit>(param1: orderId)..load(),
+          child: const RepOrderDetailScreen(),
+        );
+      case UserRole.storageActor:
+        return BlocProvider(
+          create: (_) =>
+              sl.get<StorageOrderDetailCubit>(param1: orderId)..load(),
+          child: const StorageOrderDetailScreen(),
+        );
+      default:
+        return TaskDetailScreen(orderId: orderId);
+    }
+  }
 }
 
 class _ChatThreadLoader extends StatefulWidget {

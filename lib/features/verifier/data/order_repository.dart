@@ -3,6 +3,7 @@ import '../../../core/errors/app_result.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../core/notifications/notification_dispatcher.dart';
+import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_edit_log_entry.dart';
 import '../../../shared/models/profile.dart';
@@ -16,6 +17,9 @@ class OrderRepository {
       'rep:profiles!orders_rep_id_fkey(id, full_name, role, is_approved, phone, created_at), '
       'creator:profiles!orders_created_by_fkey(id, full_name, role, is_approved, phone, created_at), '
       'order_items(*, inventory:inventory!order_items_inventory_id_fkey(id, item_name))';
+
+  static const _orderDetailSelect =
+      'id, direction, entity_id, rep_id, created_by, storage_actor_id, status, notes, created_at, assigned_at, picked_up_at, move_started_at, delivered_at, entity:entities(id, name, category, contact_name, contact_phone, address), rep:profiles!orders_rep_id_fkey(id, full_name, phone, role, is_approved, created_at), creator:profiles!orders_created_by_fkey(id, full_name, phone, role, is_approved, created_at), order_items(id, order_id, inventory_id, quantity, final_quantity, is_custom, custom_description, source_inventory_id, check_status, checked_by, checked_at, inventory:inventory!order_items_inventory_id_fkey(id, item_name), checker:profiles!order_items_checked_by_fkey(id, full_name, phone, role, is_approved, created_at))';
 
   Future<AppResult<List<Order>>> fetchAllOrders() async {
     try {
@@ -106,28 +110,32 @@ class OrderRepository {
     required List<Map<String, dynamic>> items,
   }) async {
     try {
-      logger.d('OrderRepository → createOrder | direction: $direction | entity: $entityId');
-      final orderData = await _supabase
-          .from('orders')
-          .insert({
-            'direction': direction,
-            'entity_id': entityId,
-            'rep_id': ?repId,
-            'status': 'assigned',
-            'notes': notes?.isNotEmpty == true ? notes : null,
-            'created_by': _supabase.auth.currentUser!.id,
-            'assigned_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .select('id')
-          .single();
+      logger.d('OrderRepository → createOrder | direction: $direction | entity: $entityId | ${items.length} items');
 
-      final orderId = orderData['id'] as String;
-      logger.d('OrderRepository → order created: $orderId, inserting ${items.length} items');
+      // Client-side guard: reject empty orders before any network call.
+      if (items.isEmpty) {
+        return AppFailure(ErrorHandler.fromRpcResult({
+          'success': false,
+          'error': 'يجب إضافة عنصر واحد على الأقل للطلب',
+        }));
+      }
 
-      final itemRows = items.map((item) => {'order_id': orderId, ...item}).toList();
-      await _supabase.from('order_items').insert(itemRows);
-      logger.i('OrderRepository → createOrder complete: $orderId');
-      return AppSuccess(orderId);
+      // Atomic RPC: inserts order + items + sets was_unavailable_at_creation
+      // in a single transaction. Either everything commits or nothing does.
+      final result = await _supabase.rpc('create_order_with_items', params: {
+        'p_direction': direction,
+        'p_entity_id': entityId,
+        'p_rep_id': repId,
+        'p_notes': notes,
+        'p_items': items,
+      });
+
+      if (result['success'] as bool? ?? false) {
+        final orderId = result['order_id'] as String;
+        logger.i('OrderRepository → createOrder complete: $orderId');
+        return AppSuccess(orderId);
+      }
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
     } catch (e, st) {
       logger.e('OrderRepository → createOrder failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
@@ -147,6 +155,40 @@ class OrderRepository {
       return AppSuccess(order);
     } catch (e, st) {
       logger.e('OrderRepository → fetchOrderForEdit failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<Order>> fetchOrderDetail(String orderId) async {
+    try {
+      logger.d('OrderRepository → fetchOrderDetail: $orderId');
+      final data = await _supabase
+          .from('orders')
+          .select(_orderDetailSelect)
+          .eq('id', orderId)
+          .single();
+      return AppSuccess(Order.fromMap(data));
+    } catch (e, st) {
+      logger.e('OrderRepository → fetchOrderDetail failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<List<AuditLogEntry>>> fetchAuditLog(String orderId) async {
+    try {
+      logger.d('OrderRepository → fetchAuditLog: $orderId');
+      final data = await _supabase
+          .from('audit_log')
+          .select(
+              'id, order_id, action, old_status, new_status, performed_by, details, notes, server_timestamp, '
+              'performer:profiles!audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)')
+          .eq('order_id', orderId)
+          .order('server_timestamp');
+      return AppSuccess((data as List)
+          .map((e) => AuditLogEntry.fromMap(e as Map<String, dynamic>))
+          .toList());
+    } catch (e, st) {
+      logger.e('OrderRepository → fetchAuditLog failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

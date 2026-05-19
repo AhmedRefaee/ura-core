@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/logging/app_logger.dart';
+import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/order.dart';
 
 class RepOrdersRepository {
@@ -133,6 +134,25 @@ class RepOrdersRepository {
       return AppSuccess(url);
     } catch (e, st) {
       logger.e('RepOrdersRepository → uploadReceipt failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<List<AuditLogEntry>>> fetchAuditLog(String orderId) async {
+    try {
+      logger.d('RepOrdersRepository → fetchAuditLog: $orderId');
+      final data = await _supabase
+          .from('audit_log')
+          .select(
+              'id, order_id, action, old_status, new_status, performed_by, details, notes, server_timestamp, '
+              'performer:profiles!audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)')
+          .eq('order_id', orderId)
+          .order('server_timestamp');
+      return AppSuccess((data as List)
+          .map((e) => AuditLogEntry.fromMap(e as Map<String, dynamic>))
+          .toList());
+    } catch (e, st) {
+      logger.e('RepOrdersRepository → fetchAuditLog failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

@@ -4,11 +4,11 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
-import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/order_status_theme.dart';
+import '../../../shared/widgets/invalid_order_view.dart';
+import '../../../shared/widgets/order_status_timeline.dart';
 import '../../../shared/widgets/receipt_viewer_screen.dart';
-import '../../inventory/ui/inventory_item_detail_screen.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
 import '../logic/rep_order_detail_cubit.dart';
@@ -50,6 +50,15 @@ class RepOrderDetailScreen extends StatelessWidget {
         }
 
         final order = state.order;
+
+        // 0-item guard: refuse to render any action UI for a corrupt order.
+        if (order.items.isEmpty) {
+          return Scaffold(
+            appBar: AppBar(title: Text(order.entity?.name ?? 'تفاصيل الطلب')),
+            body: const InvalidOrderView(),
+          );
+        }
+
         return Scaffold(
           appBar: AppBar(
             title: Text(order.entity?.name ?? 'تفاصيل الطلب'),
@@ -65,10 +74,12 @@ class RepOrderDetailScreen extends StatelessWidget {
             padding: const EdgeInsets.all(16),
             children: [
               _StatusStepper(order.status, order.direction, order.involvesStorage),
-              const SizedBox(height: 20),
+              const SizedBox(height: 16),
+              OrderStatusTimeline(order: order, auditLog: state.auditLog),
+              const SizedBox(height: 4),
               _InfoCard(order: order),
               const SizedBox(height: 16),
-              _ItemsSection(order: order, receipts: state.receipts, isActing: state.isActing, stockItems: state.stockItems),
+              _ItemsSection(order: order, receipts: state.receipts, isActing: state.isActing),
               const SizedBox(height: 24),
               _ActionSection(state: state),
               const SizedBox(height: 24),
@@ -366,13 +377,11 @@ class _ItemsSection extends StatelessWidget {
   final Order order;
   final Map<String, String> receipts;
   final bool isActing;
-  final Map<String, InventoryItem> stockItems;
 
   const _ItemsSection({
     required this.order,
     required this.receipts,
     required this.isActing,
-    required this.stockItems,
   });
 
   @override
@@ -397,9 +406,6 @@ class _ItemsSection extends StatelessWidget {
               receiptUrl: receipts[item.id],
               isActing: isActing,
               canUpload: canUpload,
-              invItem: order.direction == OrderDirection.outbound
-                  ? stockItems[item.inventoryId]
-                  : null,
               isFinished: isFinished,
             )),
       ],
@@ -412,7 +418,6 @@ class _ItemTile extends StatelessWidget {
   final String? receiptUrl;
   final bool isActing;
   final bool canUpload;
-  final InventoryItem? invItem;
   final bool isFinished;
 
   const _ItemTile({
@@ -420,17 +425,13 @@ class _ItemTile extends StatelessWidget {
     required this.receiptUrl,
     required this.isActing,
     required this.canUpload,
-    this.invItem,
     this.isFinished = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final hasReceipt = receiptUrl != null;
-    final showWarning = !item.isCustom &&
-        !isFinished &&
-        invItem != null &&
-        invItem!.quantity < item.effectiveQuantity;
+    final showWarning = !item.isCustom && item.wasUnavailableAtCreation;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -446,24 +447,17 @@ class _ItemTile extends StatelessWidget {
           children: [
             Text('الكمية: ${item.effectiveQuantity}'),
             if (showWarning)
-              GestureDetector(
-                onTap: () => Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => InventoryItemDetailScreen(item: invItem!),
-                  ),
+              Chip(
+                avatar: const Icon(Icons.warning_amber_rounded,
+                    color: Colors.orange, size: 16),
+                label: const Text(
+                  'غير متوفر',
+                  style: TextStyle(fontSize: 11, color: Colors.orange),
                 ),
-                child: Chip(
-                  avatar: const Icon(Icons.warning_amber_rounded,
-                      color: Colors.orange, size: 16),
-                  label: Text('المتوفر فقط: ${invItem!.quantity}',
-                      style: const TextStyle(
-                          fontSize: 11, color: Colors.orange)),
-                  backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                  side: BorderSide(
-                      color: Colors.orange.withValues(alpha: 0.4)),
-                  visualDensity: VisualDensity.compact,
-                ),
+                backgroundColor: Colors.orange.withValues(alpha: 0.1),
+                side: BorderSide(
+                    color: Colors.orange.withValues(alpha: 0.4)),
+                visualDensity: VisualDensity.compact,
               ),
           ],
         ),

@@ -22,6 +22,7 @@ export 'layout/app_sliver_app_bar.dart';
 export 'layout/app_section.dart';
 export 'layout/app_empty_state.dart';
 export 'layout/app_loading_state.dart';
+export 'layout/collapsing_header_wrapper.dart';
 
 // Feedback components
 export 'feedback/app_loading_indicator.dart';

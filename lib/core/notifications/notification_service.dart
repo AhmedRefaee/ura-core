@@ -66,35 +66,41 @@ class NotificationService {
   Future<void> registerForUser(String userId) async {
     logger.d('NotificationService → registerForUser: $userId');
 
-    final settings = await _fcm.requestPermission(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-    if (settings.authorizationStatus == AuthorizationStatus.denied) {
-      logger.w('NotificationService → permission denied by user');
-      return;
+    try {
+      final settings = await _fcm.requestPermission(
+        alert: true,
+        badge: true,
+        sound: true,
+      );
+      if (settings.authorizationStatus == AuthorizationStatus.denied) {
+        logger.w('NotificationService → permission denied by user');
+        return;
+      }
+
+      final token = await _fcm.getToken(vapidKey: kIsWeb ? _kVapidKey : null);
+      if (token == null) {
+        logger.w('NotificationService → FCM token is null');
+        return;
+      }
+
+      await _saveToken(userId, token);
+
+      if (!_isRegistered) {
+        _tokenRefreshSub = _fcm.onTokenRefresh
+            .listen((newToken) => _saveToken(userId, newToken));
+        _foregroundSub =
+            FirebaseMessaging.onMessage.listen(_handleForeground);
+        _tapSub =
+            FirebaseMessaging.onMessageOpenedApp.listen(_handleTap);
+        _isRegistered = true;
+      }
+
+      logger.i('NotificationService → registered for $userId');
+    } catch (e) {
+      // FCM unavailable (no GMS, no network) — push notifications won't work
+      // but the rest of the app should continue normally.
+      logger.e('NotificationService → FCM registration failed (non-critical)', error: e);
     }
-
-    final token = await _fcm.getToken(vapidKey: kIsWeb ? _kVapidKey : null);
-    if (token == null) {
-      logger.w('NotificationService → FCM token is null');
-      return;
-    }
-
-    await _saveToken(userId, token);
-
-    if (!_isRegistered) {
-      _tokenRefreshSub = _fcm.onTokenRefresh
-          .listen((newToken) => _saveToken(userId, newToken));
-      _foregroundSub =
-          FirebaseMessaging.onMessage.listen(_handleForeground);
-      _tapSub =
-          FirebaseMessaging.onMessageOpenedApp.listen(_handleTap);
-      _isRegistered = true;
-    }
-
-    logger.i('NotificationService → registered for $userId');
   }
 
   /// Called in AuthCubit.signOut() BEFORE the Supabase sign-out so RLS
@@ -123,16 +129,22 @@ class NotificationService {
   }
 
   Future<void> _saveToken(String userId, String token) async {
+    // Guard: skip if the Supabase session no longer belongs to this user
+    // (can happen if a token-refresh callback fires after sign-out).
+    final currentId = _supabase.auth.currentUser?.id;
+    if (currentId == null || currentId != userId) {
+      logger.w('NotificationService → session mismatch, skipping token save');
+      return;
+    }
     logger.d('NotificationService → saving token');
-    await _supabase.from('user_devices').upsert(
-      {
-        'user_id': userId,
-        'fcm_token': token,
-        'platform': kIsWeb ? 'web' : 'android',
-        'last_seen_at': DateTime.now().toIso8601String(),
-      },
-      onConflict: 'fcm_token',
-    );
+    // Use the RPC so the server can safely reassign a token that was
+    // previously registered to a different account on the same device,
+    // bypassing the RLS conflict that a raw upsert would hit.
+    await _supabase.rpc('save_device_token', params: {
+      'p_user_id': userId,
+      'p_token': token,
+      'p_platform': kIsWeb ? 'web' : 'android',
+    });
     logger.i('NotificationService → token saved');
   }
 
@@ -148,8 +160,8 @@ class NotificationService {
     if (route.startsWith('/chat/')) {
       groupId = route.replaceFirst('/chat/', '');
       groupKey = 'chat_$groupId';
-    } else if (route.startsWith('/order/')) {
-      groupId = route.replaceFirst('/order/', '');
+    } else if (route.startsWith('/orders/') || route.startsWith('/order/')) {
+      groupId = route.replaceFirst(RegExp(r'^/orders?/'), '');
       groupKey = 'order_$groupId';
     } else {
       groupId = null;

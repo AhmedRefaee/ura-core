@@ -519,6 +519,10 @@ class _EditPhoneDialogState extends State<_EditPhoneDialog> {
       setState(() => _error = 'رقم الواتساب مطلوب ولا يمكن حذفه');
       return;
     }
+    if (!RegExp(r'^05\d{8}$').hasMatch(value)) {
+      setState(() => _error = 'الرقم يجب أن يبدأ بـ 05 ويتكون من 10 أرقام');
+      return;
+    }
     Navigator.pop(context, value);
   }
 
@@ -535,7 +539,7 @@ class _EditPhoneDialogState extends State<_EditPhoneDialog> {
             autofocus: true,
             decoration: InputDecoration(
               labelText: 'رقم الواتساب',
-              hintText: '9665XXXXXXXX',
+              hintText: '05XXXXXXXX',
               border: const OutlineInputBorder(),
               prefixIcon: const Icon(Icons.phone),
               errorText: _error,

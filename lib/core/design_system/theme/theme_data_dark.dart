@@ -173,7 +173,7 @@ class ThemeDataDark {
   static InputDecorationTheme _buildInputDecorationThemeData() {
     return InputDecorationTheme(
       filled: true,
-      fillColor: AppColors.grey700,
+      fillColor: AppColors.primaryLight.withValues(alpha: 0.09),
       contentPadding: AppSpacing.horizontalLargePadding +
           AppSpacing.verticalMediumPadding,
       border: OutlineInputBorder(

@@ -57,7 +57,7 @@ class _UraAppState extends State<UraApp> {
           create: (_) => sl<AuthCubit>()..checkSession(),
         ),
         BlocProvider(
-          create: (_) => sl<ThemeCubit>()..initializeTheme(),
+          create: (_) => sl<ThemeCubit>(),
         ),
       ],
       child: BlocBuilder<ThemeCubit, ThemeState>(
@@ -80,6 +80,11 @@ class _UraAppState extends State<UraApp> {
             darkTheme: AppTheme.dark,
             themeMode: themeState.isDarkMode ? ThemeMode.dark : ThemeMode.light,
             routerConfig: _router!,
+            builder: (context, child) => GestureDetector(
+              onTap: () => FocusManager.instance.primaryFocus?.unfocus(),
+              behavior: HitTestBehavior.translucent,
+              child: child!,
+            ),
           );
         },
       ),

@@ -44,6 +44,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
       setState(() => _errorMessage = 'رقم الواتساب مطلوب');
       return;
     }
+    if (!RegExp(r'^05\d{8}$').hasMatch(phone)) {
+      setState(() => _errorMessage = 'الرقم يجب أن يبدأ بـ 05 ويتكون من 10 أرقام');
+      return;
+    }
     setState(() => _errorMessage = null);
     context.read<AuthCubit>().signUp(
           _emailController.text.trim(),
@@ -107,7 +111,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         enabled: !isLoading,
                         keyboardType: TextInputType.phone,
                         label: 'رقم الواتساب *',
-                        hintText: '9665XXXXXXXX',
+                        hintText: '05XXXXXXXX',
                         prefixIcon: Icons.phone,
                         focusNode: _phoneFocusNode,
                       ),

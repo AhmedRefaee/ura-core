@@ -52,31 +52,8 @@ class _StorageHomeViewState extends State<_StorageHomeView> {
       body: switch (_navIndex) {
         0 => const _OrdersTab(),
         1 => const InventoryManagementScreen(),
-        2 => CollapsingHeaderWrapper(
-            title: const Text('المحادثات'),
-            actions: [
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                tooltip: 'تحديث',
-                onPressed: () =>
-                    context.read<ChatThreadsCubit>().loadThreads(),
-              ),
-              BlocBuilder<NotificationsBadgeCubit, int>(
-                builder: (context, count) => NotificationDot(
-                  isVisible: count > 0,
-                  child: IconButton(
-                    icon: const Icon(Icons.notifications_outlined),
-                    tooltip: 'الإشعارات',
-                    onPressed: () => context.push('/notifications'),
-                  ),
-                ),
-              ),
-            ],
-            body: const ChatHubBody(),
-          ),
-        3 => _SettingsTab(
-            onLogout: () => context.read<AuthCubit>().signOut(),
-          ),
+        2 => const ChatHubSection(),
+        3 => _SettingsTab(onLogout: () => context.read<AuthCubit>().signOut()),
         _ => const SizedBox.shrink(),
       },
       bottomNavigationBar: NavigationBar(
@@ -84,8 +61,8 @@ class _StorageHomeViewState extends State<_StorageHomeView> {
         onDestinationSelected: (i) => setState(() => _navIndex = i),
         destinations: [
           const NavigationDestination(
-            icon: Icon(Icons.inbox_outlined),
-            selectedIcon: Icon(Icons.inbox),
+            icon: Icon(Icons.list_alt_outlined),
+            selectedIcon: Icon(Icons.list_alt),
             label: 'الطلبات',
           ),
           const NavigationDestination(
@@ -134,6 +111,9 @@ class _OrdersTabState extends State<_OrdersTab>
   String _searchQuery = '';
   OrderSortMode _sortMode = OrderSortMode.mostRecent;
   OrderDirectionFilter _directionFilter = OrderDirectionFilter.all;
+  OrderViewMode _viewMode = OrderViewMode.list;
+  bool _groupByEntity = false;
+  bool _groupByRep = false;
 
   @override
   void initState() {
@@ -179,35 +159,41 @@ class _OrdersTabState extends State<_OrdersTab>
         builder: (context, state) {
           if (state is StorageOrdersLoading || state is StorageOrdersInitial) {
             return Builder(
-              builder: (ctx) => const CollapsingInnerScrollBody(slivers: [
-                SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              ]),
+              builder: (ctx) => const CollapsingInnerScrollBody(
+                slivers: [
+                  SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ],
+              ),
             );
           }
           if (state is StorageOrdersError) {
             return Builder(
-              builder: (ctx) => CollapsingInnerScrollBody(slivers: [
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(state.message,
-                            style: const TextStyle(color: Colors.red)),
-                        const SizedBox(height: 12),
-                        FilledButton(
-                          onPressed: () =>
-                              context.read<StorageOrdersCubit>().loadOrders(),
-                          child: const Text('إعادة المحاولة'),
-                        ),
-                      ],
+              builder: (ctx) => CollapsingInnerScrollBody(
+                slivers: [
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            state.message,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: () =>
+                                context.read<StorageOrdersCubit>().loadOrders(),
+                            child: const Text('إعادة المحاولة'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             );
           }
           if (state is StorageOrdersLoaded) {
@@ -220,11 +206,18 @@ class _OrdersTabState extends State<_OrdersTab>
                   searchQuery: _searchQuery,
                   sortMode: _sortMode,
                   onSearchChanged: (q) => setState(() => _searchQuery = q),
-                  onSortModeChanged: (mode) =>
-                      setState(() => _sortMode = mode),
+                  onSortModeChanged: (mode) => setState(() => _sortMode = mode),
                   directionFilter: _directionFilter,
                   onDirectionFilterChanged: (filter) =>
                       setState(() => _directionFilter = filter),
+                  viewMode: _viewMode,
+                  onViewModeChanged: (mode) => setState(() => _viewMode = mode),
+                  groupByEntity: _groupByEntity,
+                  onGroupByEntityChanged: (value) =>
+                      setState(() => _groupByEntity = value),
+                  groupByRep: _groupByRep,
+                  onGroupByRepChanged: (value) =>
+                      setState(() => _groupByRep = value),
                   onRefresh: () =>
                       context.read<StorageOrdersCubit>().loadOrders(),
                   onTap: (id) => _openDetail(context, id),
@@ -235,11 +228,18 @@ class _OrdersTabState extends State<_OrdersTab>
                   searchQuery: _searchQuery,
                   sortMode: _sortMode,
                   onSearchChanged: (q) => setState(() => _searchQuery = q),
-                  onSortModeChanged: (mode) =>
-                      setState(() => _sortMode = mode),
+                  onSortModeChanged: (mode) => setState(() => _sortMode = mode),
                   directionFilter: _directionFilter,
                   onDirectionFilterChanged: (filter) =>
                       setState(() => _directionFilter = filter),
+                  viewMode: _viewMode,
+                  onViewModeChanged: (mode) => setState(() => _viewMode = mode),
+                  groupByEntity: _groupByEntity,
+                  onGroupByEntityChanged: (value) =>
+                      setState(() => _groupByEntity = value),
+                  groupByRep: _groupByRep,
+                  onGroupByRepChanged: (value) =>
+                      setState(() => _groupByRep = value),
                   onRefresh: () =>
                       context.read<StorageOrdersCubit>().loadOrders(),
                   onTap: (id) => _openDetail(context, id),
@@ -248,9 +248,9 @@ class _OrdersTabState extends State<_OrdersTab>
             );
           }
           return Builder(
-            builder: (ctx) => const CollapsingInnerScrollBody(slivers: [
-              SliverFillRemaining(child: SizedBox.shrink()),
-            ]),
+            builder: (ctx) => const CollapsingInnerScrollBody(
+              slivers: [SliverFillRemaining(child: SizedBox.shrink())],
+            ),
           );
         },
       ),
@@ -285,6 +285,12 @@ class _OrderList extends StatelessWidget {
   final ValueChanged<OrderSortMode> onSortModeChanged;
   final OrderDirectionFilter directionFilter;
   final ValueChanged<OrderDirectionFilter> onDirectionFilterChanged;
+  final OrderViewMode viewMode;
+  final ValueChanged<OrderViewMode> onViewModeChanged;
+  final bool groupByEntity;
+  final ValueChanged<bool> onGroupByEntityChanged;
+  final bool groupByRep;
+  final ValueChanged<bool> onGroupByRepChanged;
   final Future<void> Function() onRefresh;
   final void Function(String orderId) onTap;
 
@@ -297,19 +303,33 @@ class _OrderList extends StatelessWidget {
     required this.onSortModeChanged,
     required this.directionFilter,
     required this.onDirectionFilterChanged,
+    required this.viewMode,
+    required this.onViewModeChanged,
+    required this.groupByEntity,
+    required this.onGroupByEntityChanged,
+    required this.groupByRep,
+    required this.onGroupByRepChanged,
     required this.onRefresh,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    final visible = sortOrders(
-      filterOrdersByDirection(
-        filterOrdersByQuery(orders, searchQuery),
-        directionFilter,
-      ),
-      sortMode,
+    final filtered = prepareOrders(
+      orders,
+      searchQuery: searchQuery,
+      directionFilter: directionFilter,
     );
+    final groupModes = [
+      if (groupByEntity) OrderGroupMode.entity,
+      if (groupByRep) OrderGroupMode.rep,
+    ];
+    final visible = groupModes.isEmpty
+        ? sortOrders(filtered, sortMode)
+        : <Order>[];
+    final groups = groupModes.isEmpty
+        ? const <OrderGroup>[]
+        : groupOrders(filtered, groupModes: groupModes, sortMode: sortMode);
 
     return Builder(
       builder: (ctx) => RefreshIndicator(
@@ -324,13 +344,33 @@ class _OrderList extends StatelessWidget {
                 onSortModeChanged: onSortModeChanged,
                 directionFilter: directionFilter,
                 onDirectionFilterChanged: onDirectionFilterChanged,
+                viewMode: viewMode,
+                onViewModeChanged: onViewModeChanged,
+                groupByEntity: groupByEntity,
+                onGroupByEntityChanged: onGroupByEntityChanged,
+                groupByRep: groupByRep,
+                onGroupByRepChanged: onGroupByRepChanged,
                 searchHint: 'بحث بالجهة أو المندوب...',
               ),
             ),
-            if (visible.isEmpty)
+            if (filtered.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(child: Text(emptyMessage)),
+              )
+            else if (groupModes.isNotEmpty)
+              GroupedOrdersSliver(
+                groups: groups,
+                viewMode: viewMode,
+                orderBuilder: (_, order) => viewMode == OrderViewMode.grid
+                    ? OrderGridCard(order: order, onTap: () => onTap(order.id))
+                    : OrderListTile(order: order, onTap: () => onTap(order.id)),
+              )
+            else if (viewMode == OrderViewMode.grid)
+              OrdersGridSliver(
+                orders: visible,
+                orderBuilder: (_, order) =>
+                    OrderGridCard(order: order, onTap: () => onTap(order.id)),
               )
             else
               SliverList(
@@ -387,8 +427,7 @@ class _SettingsTab extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              ProfileScreen(profile: state.profile),
+                          builder: (_) => ProfileScreen(profile: state.profile),
                         ),
                       );
                     }

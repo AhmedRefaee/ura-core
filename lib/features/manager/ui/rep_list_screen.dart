@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/order_status_theme.dart';
 import '../../profile/ui/profile_screen.dart';
 import '../logic/rep_list_cubit.dart';
 
-/// Shared screen showing all reps with cards colored by their latest task status.
-/// Used by both Verifier and Manager.
+/// Shows all reps with cards colored by their latest task status.
 class RepListScreen extends StatelessWidget {
   const RepListScreen({super.key});
 
@@ -25,32 +26,57 @@ class _RepListView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('المناديب'),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
+    return CollapsingHeaderWrapper(
+      title: const Text('المناديب'),
+      actions: [
+        BlocBuilder<RepListCubit, RepListState>(
+          builder: (context, state) => AppIconButton(
+            icon: Icons.refresh,
+            variant: AppIconButtonVariant.text,
             onPressed: () => context.read<RepListCubit>().load(),
             tooltip: 'تحديث',
           ),
-        ],
-      ),
+        ),
+      ],
       body: BlocBuilder<RepListCubit, RepListState>(
         builder: (context, state) {
           if (state is RepListLoading || state is RepListInitial) {
-            return const Center(child: CircularProgressIndicator());
+            return Builder(
+              builder: (ctx) => const CollapsingInnerScrollBody(
+                slivers: [
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(child: AppLoadingIndicator()),
+                  ),
+                ],
+              ),
+            );
           }
           if (state is RepListError) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(state.message, style: const TextStyle(color: Colors.red)),
-                  const SizedBox(height: 12),
-                  FilledButton(
-                    onPressed: () => context.read<RepListCubit>().load(),
-                    child: const Text('إعادة المحاولة'),
+            return Builder(
+              builder: (ctx) => CollapsingInnerScrollBody(
+                slivers: [
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            state.message,
+                            style: AppTextStyles.bodyMedium.copyWith(
+                              color: AppColors.error,
+                            ),
+                          ),
+                          SizedBox(height: AppSpacing.verticalMedium),
+                          AppButton(
+                            text: 'إعادة المحاولة',
+                            onPressed: () => context.read<RepListCubit>().load(),
+                            variant: AppButtonVariant.elevated,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -58,23 +84,48 @@ class _RepListView extends StatelessWidget {
           }
           if (state is RepListLoaded) {
             if (state.reps.isEmpty) {
-              return const Center(child: Text('لا يوجد مندوبون مسجلون'));
+              return Builder(
+                builder: (ctx) => const CollapsingInnerScrollBody(
+                  slivers: [
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: Text('لا يوجد مندوبون مسجلون')),
+                    ),
+                  ],
+                ),
+              );
             }
-            return RefreshIndicator(
-              onRefresh: () => context.read<RepListCubit>().load(),
-              child: ListView.builder(
-                padding: const EdgeInsets.all(12),
-                itemCount: state.reps.length,
-                itemBuilder: (_, i) => _RepCard(rep: state.reps[i]),
+            return Builder(
+              builder: (ctx) => RefreshIndicator(
+                onRefresh: () => context.read<RepListCubit>().load(),
+                child: CollapsingInnerScrollBody(
+                  slivers: [
+                    SliverPadding(
+                      padding: AppSpacing.allMedium,
+                      sliver: SliverList(
+                        delegate: SliverChildBuilderDelegate(
+                          (_, i) => _RepCard(rep: state.reps[i]),
+                          childCount: state.reps.length,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
             );
           }
-          return const SizedBox.shrink();
+          return Builder(
+            builder: (ctx) => const CollapsingInnerScrollBody(
+              slivers: [SliverFillRemaining(child: SizedBox.shrink())],
+            ),
+          );
         },
       ),
     );
   }
 }
+
+// ── Rep card ──────────────────────────────────────────────────────────────────
 
 class _RepCard extends StatelessWidget {
   final RepWithStatus rep;
@@ -83,16 +134,16 @@ class _RepCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = rep.latestStatus;
-    final cardColor = status?.color ?? Colors.grey;
+    final cardColor = status?.color ?? AppColors.textTertiary;
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 10),
+      margin: EdgeInsets.only(bottom: AppSpacing.verticalSmall),
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppConstants.borderRadiusMediumRadius,
         side: BorderSide(color: cardColor.withAlpha(80), width: 1.5),
       ),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppConstants.borderRadiusMediumRadius,
         onTap: () => Navigator.push(
           context,
           MaterialPageRoute(
@@ -100,7 +151,7 @@ class _RepCard extends StatelessWidget {
           ),
         ),
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: AppSpacing.allLarge,
           child: Row(
             children: [
               CircleAvatar(
@@ -108,37 +159,40 @@ class _RepCard extends StatelessWidget {
                 backgroundColor: cardColor.withAlpha(30),
                 child: Icon(Icons.delivery_dining, color: cardColor, size: 24),
               ),
-              const SizedBox(width: 14),
+              SizedBox(width: AppSpacing.horizontalMedium),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       rep.profile.fullName,
-                      style: const TextStyle(
+                      style: AppTextStyles.titleSmall.copyWith(
                         fontWeight: FontWeight.bold,
-                        fontSize: 15,
                       ),
                     ),
                     if (rep.profile.phone != null) ...[
                       const SizedBox(height: 2),
                       Text(
                         rep.profile.phone!,
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        style: AppTextStyles.bodySmall.copyWith(
+                          color: AppColors.textTertiary,
+                        ),
                       ),
                     ],
                   ],
                 ),
               ),
               if (status != null)
-                _StatusDot(status: status)
+                _StatusBadge(status: status)
               else
-                const Text(
+                Text(
                   'لا توجد مهام',
-                  style: TextStyle(fontSize: 11, color: Colors.grey),
+                  style: AppTextStyles.labelSmall.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
                 ),
-              const SizedBox(width: 4),
-              const Icon(Icons.chevron_right, color: Colors.grey),
+              SizedBox(width: AppSpacing.horizontalXSmall),
+              Icon(Icons.chevron_right, color: AppColors.textTertiary),
             ],
           ),
         ),
@@ -147,9 +201,11 @@ class _RepCard extends StatelessWidget {
   }
 }
 
-class _StatusDot extends StatelessWidget {
+// ── Status badge ──────────────────────────────────────────────────────────────
+
+class _StatusBadge extends StatelessWidget {
   final OrderStatus status;
-  const _StatusDot({required this.status});
+  const _StatusBadge({required this.status});
 
   String get _label => switch (status) {
         OrderStatus.assigned || OrderStatus.pickedUp => 'قبل التنقل',
@@ -161,11 +217,14 @@ class _StatusDot extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = status.color;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      padding: AppSpacing.symmetric(
+        horizontal: AppSpacing.horizontalSmall,
+        vertical: AppSpacing.verticalXSmall,
+      ),
       decoration: BoxDecoration(
         color: color.withAlpha(30),
         border: Border.all(color: color),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(AppConstants.borderRadiusXLarge),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -178,9 +237,8 @@ class _StatusDot extends StatelessWidget {
           const SizedBox(width: 6),
           Text(
             _label,
-            style: TextStyle(
+            style: AppTextStyles.labelSmall.copyWith(
               color: color,
-              fontSize: 11,
               fontWeight: FontWeight.bold,
             ),
           ),

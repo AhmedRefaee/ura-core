@@ -5,10 +5,11 @@ import '../../../../shared/widgets/order_list_tile.dart';
 class OrderCard extends StatelessWidget {
   final Order order;
   final VoidCallback? onTap;
-  const OrderCard({super.key, required this.order, this.onTap});
+  final ValueChanged<Order>? onCopy;
+  const OrderCard({super.key, required this.order, this.onTap, this.onCopy});
 
   @override
   Widget build(BuildContext context) {
-    return OrderListTile(order: order, onTap: onTap);
+    return OrderListTile(order: order, onTap: onTap, onCopy: onCopy);
   }
 }

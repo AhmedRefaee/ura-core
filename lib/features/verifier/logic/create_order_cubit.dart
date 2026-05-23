@@ -28,6 +28,7 @@ class CreateOrderLoadingLookups extends CreateOrderState {}
 class CreateOrderReady extends CreateOrderState {
   final List<Entity> entities;
   final List<Profile> reps;
+  final Map<String, OrderStatus> repLatestStatuses;
   final List<InventoryItem> inventory;
   final OrderDirection direction;
   final Entity? selectedEntity;
@@ -39,6 +40,7 @@ class CreateOrderReady extends CreateOrderState {
   const CreateOrderReady({
     required this.entities,
     required this.reps,
+    this.repLatestStatuses = const {},
     required this.inventory,
     required this.direction,
     this.selectedEntity,
@@ -62,10 +64,12 @@ class CreateOrderReady extends CreateOrderState {
     return CreateOrderReady(
       entities: entities,
       reps: reps,
+      repLatestStatuses: repLatestStatuses,
       inventory: inventory,
       direction: direction ?? this.direction,
-      selectedEntity:
-          clearEntity ? null : (selectedEntity ?? this.selectedEntity),
+      selectedEntity: clearEntity
+          ? null
+          : (selectedEntity ?? this.selectedEntity),
       selectedRep: clearRep ? null : (selectedRep ?? this.selectedRep),
       items: items ?? this.items,
       notes: clearNotes ? null : (notes ?? this.notes),
@@ -80,13 +84,14 @@ class CreateOrderReady extends CreateOrderState {
 
   @override
   List<Object?> get props => [
-        direction,
-        selectedEntity,
-        selectedRep,
-        items,
-        notes,
-        templateSaveSucceeded,
-      ];
+    direction,
+    selectedEntity,
+    selectedRep,
+    items,
+    notes,
+    templateSaveSucceeded,
+    repLatestStatuses,
+  ];
 }
 
 class CreateOrderSubmitting extends CreateOrderState {}
@@ -125,16 +130,20 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
     final results = await Future.wait([
       _entityRepo.fetchEntities(),
       _orderRepo.fetchReps(),
+      _orderRepo.fetchLatestOrderStatusByRep(),
       _inventoryRepo.fetchInventory(),
     ]);
 
     final entitiesResult = results[0] as AppResult<List<Entity>>;
     final repsResult = results[1] as AppResult<List<Profile>>;
-    final inventoryResult = results[2] as AppResult<List<InventoryItem>>;
+    final repStatusesResult = results[2] as AppResult<Map<String, OrderStatus>>;
+    final inventoryResult = results[3] as AppResult<List<InventoryItem>>;
 
     final entitiesError = entitiesResult.failureOrNull;
     if (entitiesError != null) {
-      logger.e('CreateOrderCubit → loadLookups failed: ${entitiesError.message}');
+      logger.e(
+        'CreateOrderCubit → loadLookups failed: ${entitiesError.message}',
+      );
       emit(CreateOrderError(entitiesError.message));
       return;
     }
@@ -144,29 +153,45 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
       emit(CreateOrderError(repsError.message));
       return;
     }
+    final repStatusesError = repStatusesResult.failureOrNull;
+    if (repStatusesError != null) {
+      logger.e(
+        'CreateOrderCubit → rep status lookup skipped: ${repStatusesError.message}',
+      );
+    }
     final inventoryError = inventoryResult.failureOrNull;
     if (inventoryError != null) {
-      logger.e('CreateOrderCubit → loadLookups failed: ${inventoryError.message}');
+      logger.e(
+        'CreateOrderCubit → loadLookups failed: ${inventoryError.message}',
+      );
       emit(CreateOrderError(inventoryError.message));
       return;
     }
 
-    emit(CreateOrderReady(
-      entities: (entitiesResult as AppSuccess<List<Entity>>).data,
-      reps: (repsResult as AppSuccess<List<Profile>>).data,
-      inventory: (inventoryResult as AppSuccess<List<InventoryItem>>).data,
-      direction: OrderDirection.outbound,
-    ));
+    emit(
+      CreateOrderReady(
+        entities: (entitiesResult as AppSuccess<List<Entity>>).data,
+        reps: (repsResult as AppSuccess<List<Profile>>).data,
+        repLatestStatuses:
+            repStatusesResult is AppSuccess<Map<String, OrderStatus>>
+            ? repStatusesResult.data
+            : const {},
+        inventory: (inventoryResult as AppSuccess<List<InventoryItem>>).data,
+        direction: OrderDirection.outbound,
+      ),
+    );
     logger.i('CreateOrderCubit → lookups loaded');
   }
 
   void setDirection(OrderDirection direction) {
     final s = state;
     if (s is! CreateOrderReady) return;
-    emit(s.copyWith(
-      direction: direction,
-      clearRep: direction == OrderDirection.inboundExternal,
-    ));
+    emit(
+      s.copyWith(
+        direction: direction,
+        clearRep: direction == OrderDirection.inboundExternal,
+      ),
+    );
   }
 
   void selectEntity(Entity entity) {
@@ -185,41 +210,51 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
     final s = state;
     if (s is! CreateOrderReady) return;
     final updated = List<DraftOrderItem>.from(s.items)
-      ..add(DraftOrderItem(
-        inventoryId: item.id,
-        inventoryName: item.itemName,
-        quantity: quantity,
-        isCustom: false,
-      ));
+      ..add(
+        DraftOrderItem(
+          inventoryId: item.id,
+          inventoryName: item.itemName,
+          quantity: quantity,
+          isCustom: false,
+        ),
+      );
     emit(s.copyWith(items: updated));
   }
 
-  void addCustomItem(String description, int quantity,
-      {String? sourceInventoryId}) {
+  void addCustomItem(
+    String description,
+    int quantity, {
+    String? sourceInventoryId,
+  }) {
     final s = state;
     if (s is! CreateOrderReady) return;
     final updated = List<DraftOrderItem>.from(s.items)
-      ..add(DraftOrderItem(
-        quantity: quantity,
-        isCustom: true,
-        customDescription: description,
-        sourceInventoryId: sourceInventoryId,
-      ));
+      ..add(
+        DraftOrderItem(
+          quantity: quantity,
+          isCustom: true,
+          customDescription: description,
+          sourceInventoryId: sourceInventoryId,
+        ),
+      );
     emit(s.copyWith(items: updated));
   }
 
   void addMultipleItems(
-      List<({InventoryItem item, int quantity})> itemsWithQuantities) {
+    List<({InventoryItem item, int quantity})> itemsWithQuantities,
+  ) {
     final s = state;
     if (s is! CreateOrderReady) return;
     final updated = List<DraftOrderItem>.from(s.items);
     for (final entry in itemsWithQuantities) {
-      updated.add(DraftOrderItem(
-        inventoryId: entry.item.id,
-        inventoryName: entry.item.itemName,
-        quantity: entry.quantity,
-        isCustom: false,
-      ));
+      updated.add(
+        DraftOrderItem(
+          inventoryId: entry.item.id,
+          inventoryName: entry.item.itemName,
+          quantity: entry.quantity,
+          isCustom: false,
+        ),
+      );
     }
     emit(s.copyWith(items: updated));
   }
@@ -237,34 +272,76 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
     emit(s.copyWith(notes: notes));
   }
 
+  void applyCopyFromOrder(Order order) {
+    final s = state;
+    if (s is! CreateOrderReady) return;
+    final draftItems = order.items
+        .map(
+          (i) => DraftOrderItem(
+            inventoryId: i.inventoryId,
+            inventoryName: i.inventoryName,
+            quantity: i.quantity,
+            isCustom: i.isCustom,
+            customDescription: i.customDescription,
+            sourceInventoryId: i.sourceInventoryId,
+          ),
+        )
+        .toList();
+    final entityMatches = s.entities.where((e) => e.id == order.entityId);
+    final entity = entityMatches.isEmpty ? null : entityMatches.first;
+    final repMatches = order.repId == null
+        ? const <Profile>[]
+        : s.reps.where((r) => r.id == order.repId);
+    final rep = repMatches.isEmpty ? null : repMatches.first;
+    emit(
+      s.copyWith(
+        direction: order.direction,
+        selectedEntity: entity,
+        clearEntity: entity == null,
+        selectedRep: rep,
+        clearRep: rep == null,
+        items: draftItems,
+        notes: order.notes,
+        clearNotes: order.notes == null,
+      ),
+    );
+    logger.i('CreateOrderCubit → applied copy from order ${order.id}');
+  }
+
   void applyTemplate(OrderTemplate template) {
     final s = state;
     if (s is! CreateOrderReady) return;
     final draftItems = template.items
-        .map((i) => DraftOrderItem(
-              inventoryId: i.inventoryId,
-              inventoryName: i.inventoryName,
-              quantity: i.quantity,
-              isCustom: i.isCustom,
-              customDescription: i.customDescription,
-              sourceInventoryId: i.sourceInventoryId,
-            ))
+        .map(
+          (i) => DraftOrderItem(
+            inventoryId: i.inventoryId,
+            inventoryName: i.inventoryName,
+            quantity: i.quantity,
+            isCustom: i.isCustom,
+            customDescription: i.customDescription,
+            sourceInventoryId: i.sourceInventoryId,
+          ),
+        )
         .toList();
     final repsWithId = s.reps.where((r) => r.id == template.repId);
     final rep = repsWithId.isEmpty ? null : repsWithId.first;
-    emit(s.copyWith(
-      direction: template.direction,
-      selectedRep: rep,
-      clearRep: rep == null,
-      items: draftItems,
-      notes: template.notes,
-      clearNotes: template.notes == null,
-    ));
+    emit(
+      s.copyWith(
+        direction: template.direction,
+        selectedRep: rep,
+        clearRep: rep == null,
+        items: draftItems,
+        notes: template.notes,
+        clearNotes: template.notes == null,
+      ),
+    );
   }
 
   Future<void> saveAsTemplate() async {
     final s = state;
-    if (s is! CreateOrderReady || s.selectedEntity == null || s.items.isEmpty) return;
+    if (s is! CreateOrderReady || s.selectedEntity == null || s.items.isEmpty) {
+      return;
+    }
     final result = await _templateRepo.saveManual(
       entityId: s.selectedEntity!.id,
       direction: s.direction,
@@ -310,17 +387,21 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
       case AppSuccess(:final data):
         emit(CreateOrderSuccess(data));
         // Track usage (non-critical — failure is only logged)
-        _templateRepo.trackUsage(
-          entityId: s.selectedEntity!.id,
-          direction: s.direction,
-          repId: s.selectedRep?.id,
-          notes: s.notes,
-          items: s.items,
-        ).then((r) {
-          if (r is AppFailure) {
-            logger.e('CreateOrderCubit → trackUsage failed (non-critical): ${r.error.message}');
-          }
-        });
+        _templateRepo
+            .trackUsage(
+              entityId: s.selectedEntity!.id,
+              direction: s.direction,
+              repId: s.selectedRep?.id,
+              notes: s.notes,
+              items: s.items,
+            )
+            .then((r) {
+              if (r is AppFailure) {
+                logger.e(
+                  'CreateOrderCubit → trackUsage failed (non-critical): ${r.error.message}',
+                );
+              }
+            });
       case AppFailure(:final error):
         logger.e('CreateOrderCubit → submit failed: ${error.message}');
         emit(CreateOrderError(error.message));

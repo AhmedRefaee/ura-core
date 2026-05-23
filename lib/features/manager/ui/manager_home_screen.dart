@@ -31,7 +31,6 @@ class ManagerHomeScreen extends StatelessWidget {
         BlocProvider(create: (_) => sl<ManagerPendingUsersCubit>()..load()),
         BlocProvider.value(value: sl<NotificationsBadgeCubit>()),
         BlocProvider.value(value: sl<ChatBadgeCubit>()),
-        BlocProvider(create: (_) => sl<StatsCubit>()),
         BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
       ],
       child: const _ManagerHomeView(),
@@ -52,53 +51,17 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: _navIndex == 4
-          ? _SettingsTab(
-              onInventoryTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => const InventoryAvailabilityScreen(),
-                ),
-              ),
-              onLogout: () => context.read<AuthCubit>().signOut(),
-            )
-          : _navIndex == 2
-              ? CollapsingHeaderWrapper(
-                  title: const Text('المحادثات'),
-                  actions: [
-                    if (chatHubCanCreate(context))
-                      IconButton(
-                        icon: const Icon(Icons.add_comment_outlined),
-                        tooltip: 'محادثة جديدة',
-                        onPressed: () => chatHubCreateThread(context),
-                      ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh),
-                      tooltip: 'تحديث',
-                      onPressed: () =>
-                          context.read<ChatThreadsCubit>().loadThreads(),
-                    ),
-                    BlocBuilder<NotificationsBadgeCubit, int>(
-                      builder: (context, count) => NotificationDot(
-                        isVisible: count > 0,
-                        child: IconButton(
-                          icon: const Icon(Icons.notifications_outlined),
-                          tooltip: 'الإشعارات',
-                          onPressed: () => context.push('/notifications'),
-                        ),
-                      ),
-                    ),
-                  ],
-                  body: const ChatHubBody(),
-                )
-              : IndexedStack(
-                  index: _navIndex < 2 ? _navIndex : _navIndex - 1,
-                  children: const [
-                    MonitorTasksScreen(),
-                    _UsersTab(),
-                    StatsScreen(),
-                  ],
-                ),
+      body: switch (_navIndex) {
+        0 || 1 => IndexedStack(
+          index: _navIndex,
+          children: const [MonitorTasksScreen(), InventoryAvailabilityScreen()],
+        ),
+        2 => const ChatHubSection(),
+        3 => const _UsersTab(),
+        _ => _SettingsTab(
+          onLogout: () => context.read<AuthCubit>().signOut(),
+        ),
+      },
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navIndex,
         onDestinationSelected: (i) => setState(() => _navIndex = i),
@@ -109,9 +72,9 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
             label: 'الطلبات',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.people_outline),
-            selectedIcon: Icon(Icons.people),
-            label: 'المستخدمون',
+            icon: Icon(Icons.inventory_2_outlined),
+            selectedIcon: Icon(Icons.inventory_2),
+            label: 'المخزون',
           ),
           NavigationDestination(
             icon: BlocBuilder<ChatBadgeCubit, int>(
@@ -129,9 +92,9 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
             label: 'المحادثات',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart),
-            label: 'الإحصائيات',
+            icon: Icon(Icons.people_outline),
+            selectedIcon: Icon(Icons.people),
+            label: 'المستخدمون',
           ),
           const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -330,13 +293,9 @@ class _AllUsersTabState extends State<_AllUsersTab> {
 // ── Settings Tab ──────────────────────────────────────────────────────────────
 
 class _SettingsTab extends StatelessWidget {
-  final VoidCallback onInventoryTap;
   final VoidCallback onLogout;
 
-  const _SettingsTab({
-    required this.onInventoryTap,
-    required this.onLogout,
-  });
+  const _SettingsTab({required this.onLogout});
 
   @override
   Widget build(BuildContext context) {
@@ -378,9 +337,18 @@ class _SettingsTab extends StatelessWidget {
                 ),
                 const Divider(),
                 ListTile(
-                  leading: const Icon(Icons.inventory_2_outlined),
-                  title: const Text('المخزون'),
-                  onTap: onInventoryTap,
+                  leading: const Icon(Icons.bar_chart_outlined),
+                  title: const Text('الإحصائيات'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BlocProvider(
+                        create: (_) => sl<StatsCubit>(),
+                        child: const StatsScreen(),
+                      ),
+                    ),
+                  ),
                 ),
                 const Divider(),
                 ListTile(

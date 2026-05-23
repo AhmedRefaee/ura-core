@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../shared/models/order.dart';
@@ -57,33 +59,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-
     return BlocProvider(
       create: (_) => sl<UserOrdersCubit>()..loadForUser(widget.profile),
-      child: Scaffold(
-        appBar: AppBar(
-          title: Text(widget.isSelf ? 'ملفي الشخصي' : widget.profile.fullName),
-        ),
-        body: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _ProfileHeader(profile: widget.profile, colorScheme: colorScheme),
-              const SizedBox(height: 16),
-              _InfoSection(
+      child: CollapsingHeaderWrapper(
+        title: Text(widget.isSelf ? 'ملفي الشخصي' : widget.profile.fullName),
+        body: BlocBuilder<UserOrdersCubit, UserOrdersState>(
+          builder: (context, state) => Builder(
+            builder: (ctx) {
+              if (state is UserOrdersLoading || state is UserOrdersInitial) {
+                return const CollapsingInnerScrollBody(
+                  slivers: [
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(child: AppLoadingIndicator()),
+                    ),
+                  ],
+                );
+              }
+              if (state is UserOrdersError) {
+                return CollapsingInnerScrollBody(
+                  slivers: [
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Text(
+                          state.message,
+                          style: AppTextStyles.bodyMedium.copyWith(
+                            color: AppColors.error,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              final active =
+                  state is UserOrdersLoaded ? state.orders : <Order>[];
+              final done =
+                  state is UserOrdersLoaded ? state.doneOrders : <Order>[];
+              return _ProfileBody(
                 profile: widget.profile,
                 phone: _phone,
-                theme: theme,
                 onEditPhone: widget.isSelf ? _editPhone : null,
-              ),
-              const SizedBox(height: 16),
-              _UserStatsSection(profile: widget.profile, theme: theme),
-              const SizedBox(height: 16),
-              _OrdersSection(theme: theme),
-            ],
+                active: active,
+                done: done,
+              );
+            },
           ),
         ),
       ),
@@ -91,11 +113,237 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
+// ── Profile body (owns pagination state) ──────────────────────────────────────
+
+class _ProfileBody extends StatefulWidget {
+  final Profile profile;
+  final String? phone;
+  final VoidCallback? onEditPhone;
+  final List<Order> active;
+  final List<Order> done;
+
+  const _ProfileBody({
+    required this.profile,
+    required this.phone,
+    required this.onEditPhone,
+    required this.active,
+    required this.done,
+  });
+
+  @override
+  State<_ProfileBody> createState() => _ProfileBodyState();
+}
+
+class _ProfileBodyState extends State<_ProfileBody> {
+  static const _pageSize = 20;
+  int _doneLimit = _pageSize;
+
+  @override
+  void didUpdateWidget(_ProfileBody old) {
+    super.didUpdateWidget(old);
+    if (old.done != widget.done) _doneLimit = _pageSize;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    const doneStatuses = {
+      OrderStatus.delivered,
+      OrderStatus.deliveredToStorage,
+    };
+    final allOrders = [...widget.active, ...widget.done];
+    final delivered =
+        allOrders.where((o) => doneStatuses.contains(o.status)).toList();
+
+    double? avgPickup, avgTransit, avgTotal;
+    if (widget.profile.role == UserRole.rep) {
+      final pickups = allOrders
+          .where((o) => o.assignedAt != null && o.pickedUpAt != null)
+          .map((o) =>
+              o.pickedUpAt!.difference(o.assignedAt!).inMinutes / 60.0)
+          .toList();
+      if (pickups.isNotEmpty) {
+        avgPickup = pickups.reduce((a, b) => a + b) / pickups.length;
+      }
+      final transits = delivered
+          .where((o) => o.pickedUpAt != null && o.deliveredAt != null)
+          .map((o) =>
+              o.deliveredAt!.difference(o.pickedUpAt!).inMinutes / 60.0)
+          .toList();
+      if (transits.isNotEmpty) {
+        avgTransit = transits.reduce((a, b) => a + b) / transits.length;
+      }
+      final totals = delivered
+          .where((o) => o.createdAt != null && o.deliveredAt != null)
+          .map((o) =>
+              o.deliveredAt!.difference(o.createdAt!).inMinutes / 60.0)
+          .toList();
+      if (totals.isNotEmpty) {
+        avgTotal = totals.reduce((a, b) => a + b) / totals.length;
+      }
+    }
+
+    final visibleDone = widget.done.take(_doneLimit).toList();
+    final hasMore = widget.done.length > _doneLimit;
+
+    return Builder(
+      builder: (ctx) => CollapsingInnerScrollBody(
+        slivers: [
+          // ── Fixed info sections ──────────────────────────────────────────
+          SliverPadding(
+            padding: AppSpacing.allMedium,
+            sliver: SliverList(
+              delegate: SliverChildListDelegate([
+                _ProfileHeader(profile: widget.profile),
+                SizedBox(height: AppSpacing.verticalMedium),
+                _InfoSection(
+                  profile: widget.profile,
+                  phone: widget.phone,
+                  onEditPhone: widget.onEditPhone,
+                ),
+                if (allOrders.isNotEmpty) ...[
+                  SizedBox(height: AppSpacing.verticalMedium),
+                  _StatsCard(
+                    profile: widget.profile,
+                    allOrders: allOrders,
+                    delivered: delivered,
+                    avgPickup: avgPickup,
+                    avgTransit: avgTransit,
+                    avgTotal: avgTotal,
+                  ),
+                ],
+              ]),
+            ),
+          ),
+
+          // ── Active orders ────────────────────────────────────────────────
+          if (widget.active.isNotEmpty) ...[
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.horizontalMedium,
+                AppSpacing.verticalSmall,
+                AppSpacing.horizontalMedium,
+                AppSpacing.verticalXSmall,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: Text(
+                  'الطلبات الحالية',
+                  style: AppTextStyles.titleMedium.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: EdgeInsets.symmetric(
+                horizontal: AppSpacing.horizontalMedium,
+              ),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (_, i) => OrderListTile(
+                    order: widget.active[i],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            TaskDetailScreen(orderId: widget.active[i].id),
+                      ),
+                    ),
+                  ),
+                  childCount: widget.active.length,
+                ),
+              ),
+            ),
+          ],
+
+          // ── Done orders (paginated) ──────────────────────────────────────
+          if (widget.done.isNotEmpty) ...[
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(
+                AppSpacing.horizontalMedium,
+                AppSpacing.verticalMedium,
+                AppSpacing.horizontalMedium,
+                AppSpacing.verticalXSmall,
+              ),
+              sliver: SliverToBoxAdapter(
+                child: Text(
+                  'المكتملة (${widget.done.length})',
+                  style: AppTextStyles.titleMedium.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ),
+            SliverPadding(
+              padding: EdgeInsets.symmetric(
+                horizontal: AppSpacing.horizontalMedium,
+              ),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (_, i) => OrderListTile(
+                    order: visibleDone[i],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            TaskDetailScreen(orderId: visibleDone[i].id),
+                      ),
+                    ),
+                  ),
+                  childCount: visibleDone.length,
+                ),
+              ),
+            ),
+            if (hasMore)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: AppSpacing.horizontalMedium,
+                    vertical: AppSpacing.verticalSmall,
+                  ),
+                  child: OutlinedButton.icon(
+                    onPressed: () =>
+                        setState(() => _doneLimit += _pageSize),
+                    icon: const Icon(Icons.expand_more),
+                    label: Text(
+                      'عرض المزيد — ${widget.done.length - _doneLimit} متبقية',
+                    ),
+                  ),
+                ),
+              ),
+          ],
+
+          // ── No orders at all ─────────────────────────────────────────────
+          if (widget.active.isEmpty && widget.done.isEmpty)
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: EdgeInsets.only(top: AppSpacing.verticalXLarge),
+                  child: Text(
+                    'لا توجد طلبات',
+                    style: AppTextStyles.bodyMedium.copyWith(
+                      color: AppColors.textTertiary,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+          SliverToBoxAdapter(
+            child: SizedBox(height: AppSpacing.verticalXXLarge),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ── Profile header ────────────────────────────────────────────────────────────
+
 class _ProfileHeader extends StatelessWidget {
   final Profile profile;
-  final ColorScheme colorScheme;
 
-  const _ProfileHeader({required this.profile, required this.colorScheme});
+  const _ProfileHeader({required this.profile});
 
   @override
   Widget build(BuildContext context) {
@@ -104,7 +352,10 @@ class _ProfileHeader extends StatelessWidget {
 
     return Card(
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 28, horizontal: 16),
+        padding: AppSpacing.symmetric(
+          horizontal: AppSpacing.horizontalMedium,
+          vertical: AppSpacing.verticalXLarge,
+        ),
         child: Column(
           children: [
             CircleAvatar(
@@ -112,26 +363,25 @@ class _ProfileHeader extends StatelessWidget {
               backgroundColor: avatarColor,
               child: Text(
                 initials,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 28,
+                style: AppTextStyles.headlineMedium.copyWith(
+                  color: AppColors.white,
                   fontWeight: FontWeight.bold,
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            SizedBox(height: AppSpacing.verticalSmall),
             Text(
               profile.fullName,
-              style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
+              style: AppTextStyles.headlineSmall.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 8),
+            SizedBox(height: AppSpacing.verticalXSmall),
             Chip(
               label: Text(_roleLabel(profile.role)),
               backgroundColor: avatarColor.withValues(alpha: 0.12),
-              labelStyle: TextStyle(
+              labelStyle: AppTextStyles.labelMedium.copyWith(
                 color: avatarColor,
                 fontWeight: FontWeight.w600,
               ),
@@ -144,77 +394,82 @@ class _ProfileHeader extends StatelessWidget {
   }
 }
 
+// ── Info section ──────────────────────────────────────────────────────────────
+
 class _InfoSection extends StatelessWidget {
   final Profile profile;
   final String? phone;
-  final ThemeData theme;
   final VoidCallback? onEditPhone;
 
   const _InfoSection({
     required this.profile,
     required this.phone,
-    required this.theme,
     this.onEditPhone,
   });
 
   @override
   Widget build(BuildContext context) {
+    final approvedColor = SemanticColors.success;
+    final pendingColor = SemanticColors.warning;
+    final statusColor = profile.isApproved ? approvedColor : pendingColor;
+
     return Card(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+            padding: AppSpacing.symmetric(
+              horizontal: AppSpacing.horizontalMedium,
+              vertical: AppSpacing.verticalMedium,
+            ),
             child: Text(
               'معلومات الحساب',
-              style: theme.textTheme.titleMedium?.copyWith(
+              style: AppTextStyles.titleMedium.copyWith(
                 fontWeight: FontWeight.bold,
               ),
             ),
           ),
-          ListTile(
+          AppListTile(
             leading: const Icon(Icons.phone_outlined),
             title: const Text('رقم الواتساب'),
             subtitle: Text(
               phone ?? 'غير محدد',
-              style: theme.textTheme.bodyMedium?.copyWith(
-                color: phone != null ? null : theme.disabledColor,
+              style: AppTextStyles.bodyMedium.copyWith(
+                color: phone != null ? null : AppColors.textTertiary,
               ),
             ),
             trailing: onEditPhone != null
-                ? IconButton(
-                    icon: const Icon(Icons.edit_outlined, size: 20),
-                    onPressed: onEditPhone,
+                ? AppIconButton(
+                    icon: Icons.edit_outlined,
+                    variant: AppIconButtonVariant.text,
+                    onPressed: onEditPhone!,
                     tooltip: 'تعديل الرقم',
                   )
                 : null,
+            showDivider: true,
           ),
-          const Divider(height: 1, indent: 16, endIndent: 16),
-          ListTile(
+          AppListTile(
             leading: const Icon(Icons.calendar_today_outlined),
             title: const Text('تاريخ الانضمام'),
             trailing: Text(
               _formatDate(profile.createdAt),
-              style: theme.textTheme.bodyMedium,
+              style: AppTextStyles.bodyMedium,
             ),
+            showDivider: true,
           ),
-          const Divider(height: 1, indent: 16, endIndent: 16),
-          ListTile(
+          AppListTile(
             leading: Icon(
               profile.isApproved
                   ? Icons.verified_outlined
                   : Icons.pending_outlined,
-              color: profile.isApproved ? Colors.green : Colors.orange,
+              color: statusColor,
             ),
             title: const Text('حالة الحساب'),
             trailing: Chip(
               label: Text(profile.isApproved ? 'موافق عليه' : 'قيد المراجعة'),
-              backgroundColor: profile.isApproved
-                  ? Colors.green.withValues(alpha: 0.12)
-                  : Colors.orange.withValues(alpha: 0.12),
-              labelStyle: TextStyle(
-                color: profile.isApproved ? Colors.green : Colors.orange,
-                fontSize: 12,
+              backgroundColor: statusColor.withValues(alpha: 0.12),
+              labelStyle: AppTextStyles.bodySmall.copyWith(
+                color: statusColor,
                 fontWeight: FontWeight.w600,
               ),
               side: BorderSide.none,
@@ -227,113 +482,88 @@ class _InfoSection extends StatelessWidget {
   }
 }
 
-class _UserStatsSection extends StatelessWidget {
-  final Profile profile;
-  final ThemeData theme;
+// ── Stats card (data passed in — no BlocBuilder needed) ───────────────────────
 
-  const _UserStatsSection({required this.profile, required this.theme});
+class _StatsCard extends StatelessWidget {
+  final Profile profile;
+  final List<Order> allOrders;
+  final List<Order> delivered;
+  final double? avgPickup;
+  final double? avgTransit;
+  final double? avgTotal;
+
+  const _StatsCard({
+    required this.profile,
+    required this.allOrders,
+    required this.delivered,
+    this.avgPickup,
+    this.avgTransit,
+    this.avgTotal,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return BlocBuilder<UserOrdersCubit, UserOrdersState>(
-      builder: (context, state) {
-        if (state is! UserOrdersLoaded) return const SizedBox.shrink();
-
-        final allOrders = [...state.orders, ...state.doneOrders];
-        if (allOrders.isEmpty) return const SizedBox.shrink();
-
-        final doneStatuses = {OrderStatus.delivered, OrderStatus.deliveredToStorage};
-        final delivered = allOrders.where((o) => doneStatuses.contains(o.status)).toList();
-
-        double? avgPickup, avgTransit, avgTotal;
-
-        if (profile.role == UserRole.rep) {
-          final pickups = allOrders
-              .where((o) => o.assignedAt != null && o.pickedUpAt != null)
-              .map((o) => o.pickedUpAt!.difference(o.assignedAt!).inMinutes / 60.0)
-              .toList();
-          if (pickups.isNotEmpty) {
-            avgPickup = pickups.reduce((a, b) => a + b) / pickups.length;
-          }
-
-          final transits = delivered
-              .where((o) => o.pickedUpAt != null && o.deliveredAt != null)
-              .map((o) => o.deliveredAt!.difference(o.pickedUpAt!).inMinutes / 60.0)
-              .toList();
-          if (transits.isNotEmpty) {
-            avgTransit = transits.reduce((a, b) => a + b) / transits.length;
-          }
-
-          final totals = delivered
-              .where((o) => o.createdAt != null && o.deliveredAt != null)
-              .map((o) => o.deliveredAt!.difference(o.createdAt!).inMinutes / 60.0)
-              .toList();
-          if (totals.isNotEmpty) {
-            avgTotal = totals.reduce((a, b) => a + b) / totals.length;
-          }
-        }
-
-        return Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    return Card(
+      child: Padding(
+        padding: AppSpacing.allMedium,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'الإحصائيات',
+              style: AppTextStyles.titleMedium.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: AppSpacing.verticalSmall),
+            // Wrap prevents overflow on small screens
+            Wrap(
+              spacing: AppSpacing.horizontalXSmall,
+              runSpacing: AppSpacing.verticalXSmall,
               children: [
-                Text(
-                  'الإحصائيات',
-                  style: theme.textTheme.titleMedium
-                      ?.copyWith(fontWeight: FontWeight.bold),
+                _StatPill(
+                  label: 'إجمالي',
+                  value: '${allOrders.length}',
+                  color: Colors.blue,
                 ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    _StatPill(
-                      label: 'إجمالي',
-                      value: '${allOrders.length}',
-                      color: Colors.blue,
-                    ),
-                    const SizedBox(width: 8),
-                    _StatPill(
-                      label: 'مكتمل',
-                      value: '${delivered.length}',
-                      color: Colors.green,
-                    ),
-                    if (avgTotal != null) ...[
-                      const SizedBox(width: 8),
-                      _StatPill(
-                        label: 'متوسط الوقت',
-                        value: '${avgTotal.toStringAsFixed(1)} س',
-                        color: Colors.purple,
-                      ),
-                    ],
-                  ],
+                _StatPill(
+                  label: 'مكتمل',
+                  value: '${delivered.length}',
+                  color: SemanticColors.success,
                 ),
-                if (profile.role == UserRole.rep && (avgPickup != null || avgTransit != null)) ...[
-                  const SizedBox(height: 14),
-                  const Divider(height: 1),
-                  const SizedBox(height: 12),
-                  if (avgPickup != null)
-                    _StatRow(
-                      label: 'متوسط وقت الاستلام من المخزن',
-                      value: '${avgPickup.toStringAsFixed(1)} ساعة',
-                      icon: Icons.access_time,
-                      color: Colors.blue,
-                    ),
-                  if (avgTransit != null) ...[
-                    const SizedBox(height: 8),
-                    _StatRow(
-                      label: 'متوسط وقت التوصيل للجهة',
-                      value: '${avgTransit.toStringAsFixed(1)} ساعة',
-                      icon: Icons.local_shipping,
-                      color: Colors.orange,
-                    ),
-                  ],
-                ],
+                if (avgTotal != null)
+                  _StatPill(
+                    label: 'متوسط الوقت',
+                    value: '${avgTotal!.toStringAsFixed(1)} س',
+                    color: Colors.purple,
+                  ),
               ],
             ),
-          ),
-        );
-      },
+            if (profile.role == UserRole.rep &&
+                (avgPickup != null || avgTransit != null)) ...[
+              SizedBox(height: AppSpacing.verticalMedium),
+              const Divider(height: 1),
+              SizedBox(height: AppSpacing.verticalSmall),
+              if (avgPickup != null)
+                _StatRow(
+                  label: 'متوسط وقت الاستلام من المخزن',
+                  value: '${avgPickup!.toStringAsFixed(1)} ساعة',
+                  icon: Icons.access_time,
+                  color: Colors.blue,
+                ),
+              if (avgTransit != null) ...[
+                SizedBox(height: AppSpacing.verticalXSmall),
+                _StatRow(
+                  label: 'متوسط وقت التوصيل للجهة',
+                  value: '${avgTransit!.toStringAsFixed(1)} ساعة',
+                  icon: Icons.local_shipping,
+                  color: SemanticColors.warning,
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
     );
   }
 }
@@ -343,30 +573,38 @@ class _StatPill extends StatelessWidget {
   final String value;
   final Color color;
 
-  const _StatPill({required this.label, required this.value, required this.color});
+  const _StatPill({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: AppSpacing.symmetric(
+        horizontal: AppSpacing.horizontalSmall,
+        vertical: AppSpacing.verticalXSmall,
+      ),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(AppConstants.borderRadiusSmall),
       ),
       child: Column(
         children: [
           Text(
             value,
-            style: TextStyle(
+            style: AppTextStyles.titleMedium.copyWith(
               fontWeight: FontWeight.bold,
-              fontSize: 16,
               color: color,
             ),
           ),
-          const SizedBox(height: 2),
+          SizedBox(height: AppSpacing.verticalXSmall / 2),
           Text(
             label,
-            style: TextStyle(fontSize: 11, color: Colors.grey[600]),
+            style: AppTextStyles.bodySmall.copyWith(
+              color: AppColors.textSecondary,
+            ),
           ),
         ],
       ),
@@ -392,12 +630,11 @@ class _StatRow extends StatelessWidget {
     return Row(
       children: [
         Icon(icon, color: color, size: 18),
-        const SizedBox(width: 8),
-        Expanded(child: Text(label, style: const TextStyle(fontSize: 13))),
+        SizedBox(width: AppSpacing.horizontalXSmall),
+        Expanded(child: Text(label, style: AppTextStyles.bodySmall)),
         Text(
           value,
-          style: TextStyle(
-            fontSize: 13,
+          style: AppTextStyles.bodySmall.copyWith(
             fontWeight: FontWeight.bold,
             color: color,
           ),
@@ -407,100 +644,7 @@ class _StatRow extends StatelessWidget {
   }
 }
 
-class _OrdersSection extends StatelessWidget {
-  final ThemeData theme;
-
-  const _OrdersSection({required this.theme});
-
-  @override
-  Widget build(BuildContext context) {
-    return BlocBuilder<UserOrdersCubit, UserOrdersState>(
-      builder: (context, state) {
-        if (state is UserOrdersLoading || state is UserOrdersInitial) {
-          return const Padding(
-            padding: EdgeInsets.symmetric(vertical: 24),
-            child: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (state is UserOrdersError) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Text(state.message,
-                style: const TextStyle(color: Colors.red),
-                textAlign: TextAlign.center),
-          );
-        }
-        if (state is UserOrdersLoaded) {
-          final current = state.orders;
-          final allDone = state.doneOrders;
-
-          if (current.isEmpty && allDone.isEmpty) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 24),
-              child: Center(
-                child: Text(
-                  'لا توجد طلبات',
-                  style: theme.textTheme.bodyMedium
-                      ?.copyWith(color: theme.disabledColor),
-                ),
-              ),
-            );
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (current.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    'الطلبات الحالية',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                ...current.map(
-                  (o) => OrderListTile(
-                    order: o,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TaskDetailScreen(orderId: o.id),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-              ],
-              if (allDone.isNotEmpty) ...[
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    'المكتملة (${allDone.length})',
-                    style: theme.textTheme.titleMedium
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                ),
-                ...allDone.map(
-                  (o) => OrderListTile(
-                    order: o,
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => TaskDetailScreen(orderId: o.id),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-          );
-        }
-        return const SizedBox.shrink();
-      },
-    );
-  }
-}
+// ── Edit phone dialog ─────────────────────────────────────────────────────────
 
 class _EditPhoneDialog extends StatefulWidget {
   final TextEditingController controller;
@@ -562,6 +706,8 @@ class _EditPhoneDialogState extends State<_EditPhoneDialog> {
   }
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 String _initials(String fullName) {
   final parts = fullName.trim().split(RegExp(r'\s+'));
   if (parts.isEmpty) return '؟';
@@ -575,31 +721,21 @@ String _formatDate(DateTime? dt) {
 }
 
 Color _avatarColor(UserRole? role) {
-  switch (role) {
-    case UserRole.manager:
-      return Colors.deepPurple;
-    case UserRole.verifier:
-      return Colors.blue;
-    case UserRole.rep:
-      return Colors.green;
-    case UserRole.storageActor:
-      return Colors.orange;
-    default:
-      return Colors.grey;
-  }
+  return switch (role) {
+    UserRole.manager => Colors.deepPurple,
+    UserRole.verifier => Colors.blue,
+    UserRole.rep => SemanticColors.success,
+    UserRole.storageActor => SemanticColors.warning,
+    _ => AppColors.textTertiary,
+  };
 }
 
 String _roleLabel(UserRole? role) {
-  switch (role) {
-    case UserRole.manager:
-      return 'مدير';
-    case UserRole.verifier:
-      return 'مشرف';
-    case UserRole.rep:
-      return 'مندوب';
-    case UserRole.storageActor:
-      return 'أمين المخزن';
-    default:
-      return 'غير محدد';
-  }
+  return switch (role) {
+    UserRole.manager => 'مدير',
+    UserRole.verifier => 'مشرف',
+    UserRole.rep => 'مندوب',
+    UserRole.storageActor => 'أمين المخزن',
+    _ => 'غير محدد',
+  };
 }

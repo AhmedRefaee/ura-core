@@ -23,6 +23,9 @@ class _MonitorTasksScreenState extends State<MonitorTasksScreen>
   String _searchQuery = '';
   OrderSortMode _sortMode = OrderSortMode.mostRecent;
   OrderDirectionFilter _directionFilter = OrderDirectionFilter.all;
+  OrderViewMode _viewMode = OrderViewMode.list;
+  bool _groupByEntity = false;
+  bool _groupByRep = false;
 
   @override
   void initState() {
@@ -68,35 +71,41 @@ class _MonitorTasksScreenState extends State<MonitorTasksScreen>
         builder: (context, state) {
           if (state is MonitorOrdersLoading || state is MonitorOrdersInitial) {
             return Builder(
-              builder: (ctx) => const CollapsingInnerScrollBody(slivers: [
-                SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              ]),
+              builder: (ctx) => const CollapsingInnerScrollBody(
+                slivers: [
+                  SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ],
+              ),
             );
           }
           if (state is MonitorOrdersError) {
             return Builder(
-              builder: (ctx) => CollapsingInnerScrollBody(slivers: [
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(state.message,
-                            style: const TextStyle(color: Colors.red)),
-                        const SizedBox(height: 12),
-                        FilledButton(
-                          onPressed: () =>
-                              context.read<MonitorOrdersCubit>().load(),
-                          child: const Text('إعادة المحاولة'),
-                        ),
-                      ],
+              builder: (ctx) => CollapsingInnerScrollBody(
+                slivers: [
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            state.message,
+                            style: const TextStyle(color: Colors.red),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton(
+                            onPressed: () =>
+                                context.read<MonitorOrdersCubit>().load(),
+                            child: const Text('إعادة المحاولة'),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             );
           }
           if (state is MonitorOrdersLoaded) {
@@ -109,11 +118,18 @@ class _MonitorTasksScreenState extends State<MonitorTasksScreen>
                   searchQuery: _searchQuery,
                   sortMode: _sortMode,
                   onSearchChanged: (q) => setState(() => _searchQuery = q),
-                  onSortModeChanged: (mode) =>
-                      setState(() => _sortMode = mode),
+                  onSortModeChanged: (mode) => setState(() => _sortMode = mode),
                   directionFilter: _directionFilter,
                   onDirectionFilterChanged: (filter) =>
                       setState(() => _directionFilter = filter),
+                  viewMode: _viewMode,
+                  onViewModeChanged: (mode) => setState(() => _viewMode = mode),
+                  groupByEntity: _groupByEntity,
+                  onGroupByEntityChanged: (value) =>
+                      setState(() => _groupByEntity = value),
+                  groupByRep: _groupByRep,
+                  onGroupByRepChanged: (value) =>
+                      setState(() => _groupByRep = value),
                 ),
                 _FinishedOrderList(
                   orders: state.finishedOrders,
@@ -122,19 +138,26 @@ class _MonitorTasksScreenState extends State<MonitorTasksScreen>
                   searchQuery: _searchQuery,
                   sortMode: _sortMode,
                   onSearchChanged: (q) => setState(() => _searchQuery = q),
-                  onSortModeChanged: (mode) =>
-                      setState(() => _sortMode = mode),
+                  onSortModeChanged: (mode) => setState(() => _sortMode = mode),
                   directionFilter: _directionFilter,
                   onDirectionFilterChanged: (filter) =>
                       setState(() => _directionFilter = filter),
+                  viewMode: _viewMode,
+                  onViewModeChanged: (mode) => setState(() => _viewMode = mode),
+                  groupByEntity: _groupByEntity,
+                  onGroupByEntityChanged: (value) =>
+                      setState(() => _groupByEntity = value),
+                  groupByRep: _groupByRep,
+                  onGroupByRepChanged: (value) =>
+                      setState(() => _groupByRep = value),
                 ),
               ],
             );
           }
           return Builder(
-            builder: (ctx) => const CollapsingInnerScrollBody(slivers: [
-              SliverFillRemaining(child: SizedBox.shrink()),
-            ]),
+            builder: (ctx) => const CollapsingInnerScrollBody(
+              slivers: [SliverFillRemaining(child: SizedBox.shrink())],
+            ),
           );
         },
       ),
@@ -151,6 +174,12 @@ class _OrderList extends StatelessWidget {
   final ValueChanged<OrderSortMode> onSortModeChanged;
   final OrderDirectionFilter directionFilter;
   final ValueChanged<OrderDirectionFilter> onDirectionFilterChanged;
+  final OrderViewMode viewMode;
+  final ValueChanged<OrderViewMode> onViewModeChanged;
+  final bool groupByEntity;
+  final ValueChanged<bool> onGroupByEntityChanged;
+  final bool groupByRep;
+  final ValueChanged<bool> onGroupByRepChanged;
   const _OrderList({
     required this.orders,
     required this.emptyMessage,
@@ -160,17 +189,31 @@ class _OrderList extends StatelessWidget {
     required this.onSortModeChanged,
     required this.directionFilter,
     required this.onDirectionFilterChanged,
+    required this.viewMode,
+    required this.onViewModeChanged,
+    required this.groupByEntity,
+    required this.onGroupByEntityChanged,
+    required this.groupByRep,
+    required this.onGroupByRepChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    final visible = sortOrders(
-      filterOrdersByDirection(
-        filterOrdersByQuery(orders, searchQuery),
-        directionFilter,
-      ),
-      sortMode,
+    final filtered = prepareOrders(
+      orders,
+      searchQuery: searchQuery,
+      directionFilter: directionFilter,
     );
+    final groupModes = [
+      if (groupByEntity) OrderGroupMode.entity,
+      if (groupByRep) OrderGroupMode.rep,
+    ];
+    final visible = groupModes.isEmpty
+        ? sortOrders(filtered, sortMode)
+        : <Order>[];
+    final groups = groupModes.isEmpty
+        ? const <OrderGroup>[]
+        : groupOrders(filtered, groupModes: groupModes, sortMode: sortMode);
 
     return Builder(
       builder: (ctx) => RefreshIndicator(
@@ -185,13 +228,56 @@ class _OrderList extends StatelessWidget {
                 onSortModeChanged: onSortModeChanged,
                 directionFilter: directionFilter,
                 onDirectionFilterChanged: onDirectionFilterChanged,
+                viewMode: viewMode,
+                onViewModeChanged: onViewModeChanged,
+                groupByEntity: groupByEntity,
+                onGroupByEntityChanged: onGroupByEntityChanged,
+                groupByRep: groupByRep,
+                onGroupByRepChanged: onGroupByRepChanged,
                 searchHint: 'بحث بالجهة أو المندوب...',
               ),
             ),
-            if (visible.isEmpty)
+            if (filtered.isEmpty)
               SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(child: Text(emptyMessage)),
+              )
+            else if (groupModes.isNotEmpty)
+              GroupedOrdersSliver(
+                groups: groups,
+                viewMode: viewMode,
+                orderBuilder: (context, order) => viewMode == OrderViewMode.grid
+                    ? OrderGridCard(
+                        order: order,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TaskDetailScreen(orderId: order.id),
+                          ),
+                        ),
+                      )
+                    : OrderListTile(
+                        order: order,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TaskDetailScreen(orderId: order.id),
+                          ),
+                        ),
+                      ),
+              )
+            else if (viewMode == OrderViewMode.grid)
+              OrdersGridSliver(
+                orders: visible,
+                orderBuilder: (context, order) => OrderGridCard(
+                  order: order,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TaskDetailScreen(orderId: order.id),
+                    ),
+                  ),
+                ),
               )
             else
               SliverList(
@@ -201,7 +287,8 @@ class _OrderList extends StatelessWidget {
                     onTap: () => Navigator.push(
                       context,
                       MaterialPageRoute(
-                        builder: (_) => TaskDetailScreen(orderId: visible[i].id),
+                        builder: (_) =>
+                            TaskDetailScreen(orderId: visible[i].id),
                       ),
                     ),
                   ),
@@ -225,6 +312,12 @@ class _FinishedOrderList extends StatefulWidget {
   final ValueChanged<OrderSortMode> onSortModeChanged;
   final OrderDirectionFilter directionFilter;
   final ValueChanged<OrderDirectionFilter> onDirectionFilterChanged;
+  final OrderViewMode viewMode;
+  final ValueChanged<OrderViewMode> onViewModeChanged;
+  final bool groupByEntity;
+  final ValueChanged<bool> onGroupByEntityChanged;
+  final bool groupByRep;
+  final ValueChanged<bool> onGroupByRepChanged;
 
   const _FinishedOrderList({
     required this.orders,
@@ -236,6 +329,12 @@ class _FinishedOrderList extends StatefulWidget {
     required this.onSortModeChanged,
     required this.directionFilter,
     required this.onDirectionFilterChanged,
+    required this.viewMode,
+    required this.onViewModeChanged,
+    required this.groupByEntity,
+    required this.onGroupByEntityChanged,
+    required this.groupByRep,
+    required this.onGroupByRepChanged,
   });
 
   @override
@@ -266,15 +365,28 @@ class _FinishedOrderListState extends State<_FinishedOrderList> {
 
   @override
   Widget build(BuildContext context) {
-    final orders = sortOrders(
-      filterOrdersByDirection(
-        filterOrdersByQuery(widget.orders, widget.searchQuery),
-        widget.directionFilter,
-      ),
-      widget.sortMode,
+    final filtered = prepareOrders(
+      widget.orders,
+      searchQuery: widget.searchQuery,
+      directionFilter: widget.directionFilter,
     );
-    final itemCount =
-        orders.isEmpty ? 1 : orders.length + (widget.hasMore ? 1 : 0);
+    final groupModes = [
+      if (widget.groupByEntity) OrderGroupMode.entity,
+      if (widget.groupByRep) OrderGroupMode.rep,
+    ];
+    final orders = groupModes.isEmpty
+        ? sortOrders(filtered, widget.sortMode)
+        : <Order>[];
+    final groups = groupModes.isEmpty
+        ? const <OrderGroup>[]
+        : groupOrders(
+            filtered,
+            groupModes: groupModes,
+            sortMode: widget.sortMode,
+          );
+    final itemCount = orders.isEmpty
+        ? 1
+        : orders.length + (widget.hasMore ? 1 : 0);
 
     return Builder(
       builder: (ctx) => RefreshIndicator(
@@ -290,41 +402,81 @@ class _FinishedOrderListState extends State<_FinishedOrderList> {
                 onSortModeChanged: widget.onSortModeChanged,
                 directionFilter: widget.directionFilter,
                 onDirectionFilterChanged: widget.onDirectionFilterChanged,
+                viewMode: widget.viewMode,
+                onViewModeChanged: widget.onViewModeChanged,
+                groupByEntity: widget.groupByEntity,
+                onGroupByEntityChanged: widget.onGroupByEntityChanged,
+                groupByRep: widget.groupByRep,
+                onGroupByRepChanged: widget.onGroupByRepChanged,
                 searchHint: 'بحث بالجهة أو المندوب...',
               ),
             ),
-            if (orders.isEmpty)
+            if (filtered.isEmpty)
               const SliverFillRemaining(
                 hasScrollBody: false,
                 child: Center(child: Text('لا توجد مهام مكتملة')),
               )
-            else
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, i) {
-                    if (i == orders.length) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        child: widget.isLoadingMore
-                            ? const Center(
-                                child: CircularProgressIndicator(
-                                    strokeWidth: 2))
-                            : const SizedBox.shrink(),
-                      );
-                    }
-                    return OrderListTile(
-                      order: orders[i],
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) =>
-                              TaskDetailScreen(orderId: orders[i].id),
+            else if (groupModes.isNotEmpty)
+              GroupedOrdersSliver(
+                groups: groups,
+                viewMode: widget.viewMode,
+                orderBuilder: (context, order) =>
+                    widget.viewMode == OrderViewMode.grid
+                    ? OrderGridCard(
+                        order: order,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TaskDetailScreen(orderId: order.id),
+                          ),
+                        ),
+                      )
+                    : OrderListTile(
+                        order: order,
+                        onTap: () => Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => TaskDetailScreen(orderId: order.id),
+                          ),
                         ),
                       ),
-                    );
-                  },
-                  childCount: itemCount,
+              )
+            else if (widget.viewMode == OrderViewMode.grid)
+              OrdersGridSliver(
+                orders: orders,
+                orderBuilder: (context, order) => OrderGridCard(
+                  order: order,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => TaskDetailScreen(orderId: order.id),
+                    ),
+                  ),
                 ),
+              )
+            else
+              SliverList(
+                delegate: SliverChildBuilderDelegate((context, i) {
+                  if (i == orders.length) {
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: widget.isLoadingMore
+                          ? const Center(
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const SizedBox.shrink(),
+                    );
+                  }
+                  return OrderListTile(
+                    order: orders[i],
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => TaskDetailScreen(orderId: orders[i].id),
+                      ),
+                    ),
+                  );
+                }, childCount: itemCount),
               ),
           ],
         ),

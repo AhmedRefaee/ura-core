@@ -4,23 +4,40 @@ import '../../../shared/models/entity.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/profile.dart';
+import '../../../shared/order_status_theme.dart';
 import '../logic/create_order_cubit.dart';
 import '../../inventory/ui/inventory_item_detail_screen.dart';
 import 'widgets/add_item_sheet.dart';
 import 'widgets/templates_sheet.dart';
 import '../../../core/design_system/theme/theme.dart';
 
-class CreateOrderScreen extends StatelessWidget {
-  const CreateOrderScreen({super.key});
+class CreateOrderScreen extends StatefulWidget {
+  final Order? prefillFrom;
+  const CreateOrderScreen({super.key, this.prefillFrom});
+
+  @override
+  State<CreateOrderScreen> createState() => _CreateOrderScreenState();
+}
+
+class _CreateOrderScreenState extends State<CreateOrderScreen> {
+  bool _prefilled = false;
 
   @override
   Widget build(BuildContext context) {
     return BlocConsumer<CreateOrderCubit, CreateOrderState>(
       listener: (context, state) {
-        if (state is CreateOrderSuccess) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('تم إنشاء الطلب بنجاح')),
+        if (state is CreateOrderReady &&
+            !_prefilled &&
+            widget.prefillFrom != null) {
+          _prefilled = true;
+          context.read<CreateOrderCubit>().applyCopyFromOrder(
+            widget.prefillFrom!,
           );
+        }
+        if (state is CreateOrderSuccess) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('تم إنشاء الطلب بنجاح')));
           Navigator.pop(context, true);
         }
         if (state is CreateOrderError) {
@@ -32,9 +49,9 @@ class CreateOrderScreen extends StatelessWidget {
           );
         }
         if (state is CreateOrderReady && state.templateSaveSucceeded) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('تم حفظ القالب بنجاح')),
-          );
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('تم حفظ القالب بنجاح')));
         }
       },
       builder: (context, state) {
@@ -96,9 +113,11 @@ class CreateOrderScreen extends StatelessWidget {
                       SizedBox(height: AppSpacing.verticalXLarge),
 
                       // Entity
-                      _SectionTitle(ready.direction == OrderDirection.outbound
-                          ? 'العميل'
-                          : 'المورد'),
+                      _SectionTitle(
+                        ready.direction == OrderDirection.outbound
+                            ? 'العميل'
+                            : 'المورد',
+                      ),
                       _EntityPicker(
                         entities: ready.entities,
                         selected: ready.selectedEntity,
@@ -109,10 +128,12 @@ class CreateOrderScreen extends StatelessWidget {
                       SizedBox(height: AppSpacing.verticalXLarge),
 
                       // Rep (not for inbound_external)
-                      if (ready.direction != OrderDirection.inboundExternal) ...[
+                      if (ready.direction !=
+                          OrderDirection.inboundExternal) ...[
                         _SectionTitle('المندوب'),
                         _RepPicker(
                           reps: ready.reps,
+                          repLatestStatuses: ready.repLatestStatuses,
                           selected: ready.selectedRep,
                           onChanged: (r) =>
                               context.read<CreateOrderCubit>().selectRep(r),
@@ -127,7 +148,8 @@ class CreateOrderScreen extends StatelessWidget {
                           const Spacer(),
                           if (ready.selectedEntity != null)
                             TextButton.icon(
-                              onPressed: () => _showTemplatesSheet(context, ready),
+                              onPressed: () =>
+                                  _showTemplatesSheet(context, ready),
                               icon: const Icon(Icons.flash_on, size: 18),
                               label: const Text('قالب'),
                             ),
@@ -167,7 +189,9 @@ class CreateOrderScreen extends StatelessWidget {
                                 height: 20,
                                 width: 20,
                                 child: CircularProgressIndicator(
-                                    strokeWidth: 2, color: Colors.white),
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
                               )
                             : const Text('إنشاء الطلب'),
                       ),
@@ -188,8 +212,8 @@ class CreateOrderScreen extends StatelessWidget {
           inventory: state.inventory,
           orderDirection: state.direction,
           onAddInventoryItems: (items) => cubit.addMultipleItems(items),
-          onAddCustomItem: (desc, qty, {sourceInventoryId}) =>
-              cubit.addCustomItem(desc, qty, sourceInventoryId: sourceInventoryId),
+          onAddCustomItem: (desc, qty, {sourceInventoryId}) => cubit
+              .addCustomItem(desc, qty, sourceInventoryId: sourceInventoryId),
         ),
       ),
     );
@@ -222,7 +246,10 @@ class _OrderItemsList extends StatelessWidget {
     if (items.isEmpty) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 8),
-        child: Text('لم يتم إضافة أصناف بعد', style: TextStyle(color: Colors.grey)),
+        child: Text(
+          'لم يتم إضافة أصناف بعد',
+          style: TextStyle(color: Colors.grey),
+        ),
       );
     }
     return Column(
@@ -234,7 +261,8 @@ class _OrderItemsList extends StatelessWidget {
   }
 
   Widget _buildItemTile(BuildContext context, int index, DraftOrderItem item) {
-    final invItem = direction == OrderDirection.outbound && item.inventoryId != null
+    final invItem =
+        direction == OrderDirection.outbound && item.inventoryId != null
         ? inventory.where((inv) => inv.id == item.inventoryId).firstOrNull
         : null;
     final isOverStock = invItem != null && item.quantity > invItem.quantity;
@@ -256,7 +284,11 @@ class _OrderItemsList extends StatelessWidget {
                 ),
               ),
               child: Chip(
-                avatar: const Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 16),
+                avatar: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange,
+                  size: 16,
+                ),
                 label: Text(
                   'المتوفر فقط: ${invItem.quantity}',
                   style: const TextStyle(fontSize: 11, color: Colors.orange),
@@ -284,8 +316,10 @@ class _SectionTitle extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: EdgeInsets.only(bottom: AppSpacing.verticalSmall),
-      child: Text(text,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+      child: Text(
+        text,
+        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+      ),
     );
   }
 }
@@ -300,9 +334,14 @@ class _DirectionSelector extends StatelessWidget {
     return SegmentedButton<OrderDirection>(
       segments: const [
         ButtonSegment(value: OrderDirection.outbound, label: Text('صادر')),
-        ButtonSegment(value: OrderDirection.inboundRep, label: Text('وارد (مندوب)')),
         ButtonSegment(
-            value: OrderDirection.inboundExternal, label: Text('وارد (خارجي)')),
+          value: OrderDirection.inboundRep,
+          label: Text('وارد (مندوب)'),
+        ),
+        ButtonSegment(
+          value: OrderDirection.inboundExternal,
+          label: Text('وارد (خارجي)'),
+        ),
       ],
       selected: {selected},
       onSelectionChanged: (s) => onChanged(s.first),
@@ -331,7 +370,10 @@ class _EntityPicker extends StatelessWidget {
       child: InputDecorator(
         decoration: const InputDecoration(
           border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalMedium, vertical: AppSpacing.verticalLarge),
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: AppSpacing.horizontalMedium,
+            vertical: AppSpacing.verticalLarge,
+          ),
         ),
         child: Row(
           children: [
@@ -476,7 +518,9 @@ class _EntitySheetState extends State<_EntitySheet> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   filled: true,
-                  fillColor: theme.inputDecorationTheme.fillColor ?? theme.scaffoldBackgroundColor,
+                  fillColor:
+                      theme.inputDecorationTheme.fillColor ??
+                      theme.scaffoldBackgroundColor,
                 ),
               ),
             ),
@@ -501,7 +545,9 @@ class _EntitySheetState extends State<_EntitySheet> {
                               ? const Icon(Icons.check, color: Colors.green)
                               : null,
                           selected: isSelected,
-                          selectedTileColor: Colors.green.withValues(alpha: 0.1),
+                          selectedTileColor: Colors.green.withValues(
+                            alpha: 0.1,
+                          ),
                           onTap: () => widget.onSelected(entity),
                         );
                       },
@@ -518,10 +564,7 @@ class _FilterChips extends StatelessWidget {
   final EntityCategory? selectedFilter;
   final ValueChanged<EntityCategory?> onChanged;
 
-  const _FilterChips({
-    required this.selectedFilter,
-    required this.onChanged,
-  });
+  const _FilterChips({required this.selectedFilter, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -568,7 +611,7 @@ class _FilterChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return FilterChip(
       label: Text(label),
       selected: isSelected,
@@ -581,18 +624,23 @@ class _FilterChip extends StatelessWidget {
             ? theme.colorScheme.onPrimaryContainer
             : theme.colorScheme.onSurface,
       ),
-      padding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalMedium, vertical: AppSpacing.verticalSmall),
+      padding: EdgeInsets.symmetric(
+        horizontal: AppSpacing.horizontalMedium,
+        vertical: AppSpacing.verticalSmall,
+      ),
     );
   }
 }
 
 class _RepPicker extends StatelessWidget {
   final List<Profile> reps;
+  final Map<String, OrderStatus> repLatestStatuses;
   final Profile? selected;
   final ValueChanged<Profile> onChanged;
 
   const _RepPicker({
     required this.reps,
+    required this.repLatestStatuses,
     required this.selected,
     required this.onChanged,
   });
@@ -600,15 +648,25 @@ class _RepPicker extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final selectedStatus = selected == null
+        ? null
+        : repLatestStatuses[selected!.id];
     return InkWell(
       onTap: () => _showRepSheet(context, reps),
       child: InputDecorator(
         decoration: const InputDecoration(
           border: OutlineInputBorder(),
-          contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalMedium, vertical: AppSpacing.verticalLarge),
+          contentPadding: EdgeInsets.symmetric(
+            horizontal: AppSpacing.horizontalMedium,
+            vertical: AppSpacing.verticalLarge,
+          ),
         ),
         child: Row(
           children: [
+            if (selectedStatus != null) ...[
+              _RepStatusAvatar(status: selectedStatus, compact: true),
+              SizedBox(width: AppSpacing.horizontalSmall),
+            ],
             Expanded(
               child: Text(
                 selected?.fullName ?? 'اختر مندوباً...',
@@ -630,6 +688,7 @@ class _RepPicker extends StatelessWidget {
       isScrollControlled: true,
       builder: (sheetContext) => _RepSheet(
         reps: allReps,
+        repLatestStatuses: repLatestStatuses,
         selected: selected,
         onSelected: (rep) {
           onChanged(rep);
@@ -642,11 +701,13 @@ class _RepPicker extends StatelessWidget {
 
 class _RepSheet extends StatefulWidget {
   final List<Profile> reps;
+  final Map<String, OrderStatus> repLatestStatuses;
   final Profile? selected;
   final ValueChanged<Profile> onSelected;
 
   const _RepSheet({
     required this.reps,
+    required this.repLatestStatuses,
     required this.selected,
     required this.onSelected,
   });
@@ -730,7 +791,9 @@ class _RepSheetState extends State<_RepSheet> {
                     borderRadius: BorderRadius.circular(12),
                   ),
                   filled: true,
-                  fillColor: theme.inputDecorationTheme.fillColor ?? theme.scaffoldBackgroundColor,
+                  fillColor:
+                      theme.inputDecorationTheme.fillColor ??
+                      theme.scaffoldBackgroundColor,
                 ),
               ),
             ),
@@ -744,13 +807,22 @@ class _RepSheetState extends State<_RepSheet> {
                       itemBuilder: (context, index) {
                         final rep = _filtered[index];
                         final isSelected = widget.selected?.id == rep.id;
+                        final latestStatus = widget.repLatestStatuses[rep.id];
                         return ListTile(
+                          leading: _RepStatusAvatar(status: latestStatus),
                           title: Text(rep.fullName),
+                          subtitle: Text(
+                            latestStatus == null
+                                ? 'لا يوجد طلب سابق'
+                                : 'آخر طلب: ${_repStatusLabel(latestStatus)}',
+                          ),
                           trailing: isSelected
                               ? const Icon(Icons.check, color: Colors.green)
                               : null,
                           selected: isSelected,
-                          selectedTileColor: Colors.green.withValues(alpha: 0.1),
+                          selectedTileColor: Colors.green.withValues(
+                            alpha: 0.1,
+                          ),
                           onTap: () => widget.onSelected(rep),
                         );
                       },
@@ -760,5 +832,49 @@ class _RepSheetState extends State<_RepSheet> {
         ),
       ),
     );
+  }
+}
+
+class _RepStatusAvatar extends StatelessWidget {
+  final OrderStatus? status;
+  final bool compact;
+
+  const _RepStatusAvatar({required this.status, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = status?.color ?? Colors.grey;
+    final size = compact ? 24.0 : 40.0;
+    final iconSize = compact ? 14.0 : 20.0;
+
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        shape: BoxShape.circle,
+        border: Border.all(color: color.withValues(alpha: 0.45)),
+      ),
+      child: Icon(
+        status?.icon ?? Icons.person_outline,
+        color: color,
+        size: iconSize,
+      ),
+    );
+  }
+}
+
+String _repStatusLabel(OrderStatus status) {
+  switch (status) {
+    case OrderStatus.assigned:
+      return 'معين';
+    case OrderStatus.pickedUp:
+      return 'تم الاستلام';
+    case OrderStatus.onTheMove:
+      return 'في الطريق';
+    case OrderStatus.delivered:
+      return 'تم التسليم';
+    case OrderStatus.deliveredToStorage:
+      return 'تم الاستلام في المخزن';
   }
 }

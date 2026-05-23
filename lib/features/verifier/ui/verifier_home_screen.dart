@@ -24,6 +24,7 @@ import '../logic/orders_state.dart';
 import 'create_order_screen.dart';
 import 'widgets/order_card.dart';
 import '../../../shared/models/order.dart';
+import '../../../shared/widgets/order_list_tile.dart';
 import '../../../shared/widgets/order_sort_filter_bar.dart';
 
 class VerifierHomeScreen extends StatelessWidget {
@@ -61,7 +62,6 @@ class _VerifierHomeViewState extends State<_VerifierHomeView> {
         BlocProvider.value(value: sl<OrderChatBadgeCubit>()),
         BlocProvider.value(value: sl<NotificationsBadgeCubit>()),
         BlocProvider.value(value: sl<ChatBadgeCubit>()),
-        BlocProvider(create: (_) => sl<StatsCubit>()),
         BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
       ],
       child: _ScaffoldBody(
@@ -82,47 +82,14 @@ class _ScaffoldBody extends StatelessWidget {
     return Scaffold(
       body: switch (navIndex) {
         0 || 1 => IndexedStack(
-            index: navIndex,
-            children: const [_OrdersTab(), RepListScreen()],
-          ),
-        2 => CollapsingHeaderWrapper(
-            title: const Text('المحادثات'),
-            actions: [
-              if (chatHubCanCreate(context))
-                IconButton(
-                  icon: const Icon(Icons.add_comment_outlined),
-                  tooltip: 'محادثة جديدة',
-                  onPressed: () => chatHubCreateThread(context),
-                ),
-              IconButton(
-                icon: const Icon(Icons.refresh),
-                tooltip: 'تحديث',
-                onPressed: () =>
-                    context.read<ChatThreadsCubit>().loadThreads(),
-              ),
-              BlocBuilder<NotificationsBadgeCubit, int>(
-                builder: (context, count) => NotificationDot(
-                  isVisible: count > 0,
-                  child: IconButton(
-                    icon: const Icon(Icons.notifications_outlined),
-                    tooltip: 'الإشعارات',
-                    onPressed: () => context.push('/notifications'),
-                  ),
-                ),
-              ),
-            ],
-            body: const ChatHubBody(),
-          ),
-        3 => const StatsScreen(),
+          index: navIndex,
+          children: const [_OrdersTab(), InventoryAvailabilityScreen()],
+        ),
+        2 => const ChatHubSection(),
+        3 => const RepListScreen(),
         _ => _SettingsTab(
-            onInventoryTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => const InventoryAvailabilityScreen(),
-              ),
-            ),
-            onLogout: () => context.read<AuthCubit>().signOut(),
-          ),
+          onLogout: () => context.read<AuthCubit>().signOut(),
+        ),
       },
       floatingActionButton: navIndex == 0
           ? FloatingActionButton.extended(
@@ -141,9 +108,9 @@ class _ScaffoldBody extends StatelessWidget {
             label: 'الطلبات',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.delivery_dining_outlined),
-            selectedIcon: Icon(Icons.delivery_dining),
-            label: 'المناديب',
+            icon: Icon(Icons.inventory_2_outlined),
+            selectedIcon: Icon(Icons.inventory_2),
+            label: 'المخزون',
           ),
           NavigationDestination(
             icon: BlocBuilder<ChatBadgeCubit, int>(
@@ -161,9 +128,9 @@ class _ScaffoldBody extends StatelessWidget {
             label: 'المحادثات',
           ),
           const NavigationDestination(
-            icon: Icon(Icons.bar_chart_outlined),
-            selectedIcon: Icon(Icons.bar_chart),
-            label: 'الإحصائيات',
+            icon: Icon(Icons.delivery_dining_outlined),
+            selectedIcon: Icon(Icons.delivery_dining),
+            label: 'المناديب',
           ),
           const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -205,8 +172,10 @@ class _OrdersTabState extends State<_OrdersTab>
   late TabController _tabController;
   String _searchQuery = '';
   bool _groupByEntity = false;
+  bool _groupByRep = false;
   OrderSortMode _sortMode = OrderSortMode.mostRecent;
   OrderDirectionFilter _directionFilter = OrderDirectionFilter.all;
+  OrderViewMode _viewMode = OrderViewMode.list;
 
   @override
   void initState() {
@@ -244,43 +213,47 @@ class _OrdersTabState extends State<_OrdersTab>
           ),
         ),
       ],
-      sliverBottom: _VerifierOrdersTabHeader(
-        tabController: _tabController,
-      ),
+      sliverBottom: _VerifierOrdersTabHeader(tabController: _tabController),
       body: BlocBuilder<OrdersCubit, OrdersState>(
         builder: (context, state) {
           if (state is OrdersLoading || state is OrdersInitial) {
             return Builder(
-              builder: (ctx) => CollapsingInnerScrollBody(slivers: const [
-                SliverFillRemaining(
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-              ]),
+              builder: (ctx) => CollapsingInnerScrollBody(
+                slivers: const [
+                  SliverFillRemaining(
+                    child: Center(child: CircularProgressIndicator()),
+                  ),
+                ],
+              ),
             );
           }
           if (state is OrdersError) {
             return Builder(
-              builder: (ctx) => CollapsingInnerScrollBody(slivers: [
-                SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(state.message,
-                            style: const TextStyle(color: AppColors.error)),
-                        SizedBox(height: AppSpacing.verticalMedium),
-                        AppButton(
-                          text: 'إعادة المحاولة',
-                          onPressed: () =>
-                              context.read<OrdersCubit>().loadOrders(),
-                          variant: AppButtonVariant.elevated,
-                        ),
-                      ],
+              builder: (ctx) => CollapsingInnerScrollBody(
+                slivers: [
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            state.message,
+                            style: const TextStyle(color: AppColors.error),
+                          ),
+                          SizedBox(height: AppSpacing.verticalMedium),
+                          AppButton(
+                            text: 'إعادة المحاولة',
+                            onPressed: () =>
+                                context.read<OrdersCubit>().loadOrders(),
+                            variant: AppButtonVariant.elevated,
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-              ]),
+                ],
+              ),
             );
           }
           if (state is OrdersLoaded) {
@@ -302,52 +275,46 @@ class _OrdersTabState extends State<_OrdersTab>
                   emptyMessage: 'لا توجد طلبات نشطة',
                   searchQuery: _searchQuery,
                   sortMode: _sortMode,
+                  groupByEntity: _groupByEntity,
                   onSearchChanged: (q) => setState(() => _searchQuery = q),
-                  onSortModeChanged: (mode) =>
-                      setState(() => _sortMode = mode),
+                  onSortModeChanged: (mode) => setState(() => _sortMode = mode),
                   directionFilter: _directionFilter,
                   onDirectionFilterChanged: (filter) =>
                       setState(() => _directionFilter = filter),
+                  viewMode: _viewMode,
+                  onViewModeChanged: (mode) => setState(() => _viewMode = mode),
+                  onGroupByEntityChanged: (value) =>
+                      setState(() => _groupByEntity = value),
+                  groupByRep: _groupByRep,
+                  onGroupByRepChanged: (value) =>
+                      setState(() => _groupByRep = value),
                 ),
-                _groupByEntity
-                    ? _GroupedByEntityList(
-                        orders: completed,
-                        searchQuery: _searchQuery,
-                        sortMode: _sortMode,
-                        groupByEntity: _groupByEntity,
-                        onSearchChanged: (q) =>
-                            setState(() => _searchQuery = q),
-                        onSortModeChanged: (mode) =>
-                            setState(() => _sortMode = mode),
-                        directionFilter: _directionFilter,
-                        onDirectionFilterChanged: (filter) =>
-                            setState(() => _directionFilter = filter),
-                        onGroupByChanged: (value) =>
-                            setState(() => _groupByEntity = value),
-                      )
-                    : _OrderList(
-                        orders: completed,
-                        emptyMessage: 'لا توجد طلبات مكتملة',
-                        searchQuery: _searchQuery,
-                        sortMode: _sortMode,
-                        groupByEntity: _groupByEntity,
-                        onSearchChanged: (q) =>
-                            setState(() => _searchQuery = q),
-                        onSortModeChanged: (mode) =>
-                            setState(() => _sortMode = mode),
-                        directionFilter: _directionFilter,
-                        onDirectionFilterChanged: (filter) =>
-                            setState(() => _directionFilter = filter),
-                        onGroupByChanged: (value) =>
-                            setState(() => _groupByEntity = value),
-                      ),
+                _OrderList(
+                  orders: completed,
+                  emptyMessage: 'لا توجد طلبات مكتملة',
+                  searchQuery: _searchQuery,
+                  sortMode: _sortMode,
+                  groupByEntity: _groupByEntity,
+                  onSearchChanged: (q) => setState(() => _searchQuery = q),
+                  onSortModeChanged: (mode) => setState(() => _sortMode = mode),
+                  directionFilter: _directionFilter,
+                  onDirectionFilterChanged: (filter) =>
+                      setState(() => _directionFilter = filter),
+                  viewMode: _viewMode,
+                  onViewModeChanged: (mode) => setState(() => _viewMode = mode),
+                  onGroupByEntityChanged: (value) =>
+                      setState(() => _groupByEntity = value),
+                  groupByRep: _groupByRep,
+                  onGroupByRepChanged: (value) =>
+                      setState(() => _groupByRep = value),
+                ),
               ],
             );
           }
           return Builder(
-            builder: (ctx) => const CollapsingInnerScrollBody(slivers: [
-              SliverFillRemaining(child: SizedBox.shrink()),
-            ]),
+            builder: (ctx) => const CollapsingInnerScrollBody(
+              slivers: [SliverFillRemaining(child: SizedBox.shrink())],
+            ),
           );
         },
       ),
@@ -361,9 +328,7 @@ class _VerifierOrdersTabHeader extends StatelessWidget
     implements PreferredSizeWidget {
   final TabController tabController;
 
-  const _VerifierOrdersTabHeader({
-    required this.tabController,
-  });
+  const _VerifierOrdersTabHeader({required this.tabController});
 
   @override
   Size get preferredSize => const Size.fromHeight(kTextTabBarHeight);
@@ -391,8 +356,12 @@ class _OrderList extends StatelessWidget {
   final ValueChanged<OrderSortMode> onSortModeChanged;
   final OrderDirectionFilter directionFilter;
   final ValueChanged<OrderDirectionFilter> onDirectionFilterChanged;
-  final bool? groupByEntity;
-  final ValueChanged<bool>? onGroupByChanged;
+  final OrderViewMode viewMode;
+  final ValueChanged<OrderViewMode> onViewModeChanged;
+  final bool groupByEntity;
+  final ValueChanged<bool> onGroupByEntityChanged;
+  final bool groupByRep;
+  final ValueChanged<bool> onGroupByRepChanged;
   const _OrderList({
     required this.orders,
     required this.emptyMessage,
@@ -401,29 +370,39 @@ class _OrderList extends StatelessWidget {
     required this.onSortModeChanged,
     required this.directionFilter,
     required this.onDirectionFilterChanged,
+    required this.viewMode,
+    required this.onViewModeChanged,
+    required this.groupByEntity,
+    required this.onGroupByEntityChanged,
+    required this.groupByRep,
+    required this.onGroupByRepChanged,
     this.searchQuery = '',
-    this.groupByEntity,
-    this.onGroupByChanged,
   });
 
   @override
   Widget build(BuildContext context) {
-    final visible = sortOrders(
-      filterOrdersByDirection(
-        filterOrdersByQuery(orders, searchQuery),
-        directionFilter,
-      ),
-      sortMode,
+    final filtered = prepareOrders(
+      orders,
+      searchQuery: searchQuery,
+      directionFilter: directionFilter,
     );
+    final groupModes = [
+      if (groupByEntity) OrderGroupMode.entity,
+      if (groupByRep) OrderGroupMode.rep,
+    ];
+    final visible = groupModes.isEmpty
+        ? sortOrders(filtered, sortMode)
+        : <Order>[];
+    final groups = groupModes.isEmpty
+        ? const <OrderGroup>[]
+        : groupOrders(filtered, groupModes: groupModes, sortMode: sortMode);
 
     return BlocBuilder<OrderChatBadgeCubit, OrderChatBadgeState>(
       builder: (context, badgeState) {
         final sortedOrders = List<Order>.from(visible);
         sortedOrders.sort((a, b) {
-          final aHasUrgent =
-              badgeState.urgentCountByOrderId.containsKey(a.id);
-          final bHasUrgent =
-              badgeState.urgentCountByOrderId.containsKey(b.id);
+          final aHasUrgent = badgeState.urgentCountByOrderId.containsKey(a.id);
+          final bHasUrgent = badgeState.urgentCountByOrderId.containsKey(b.id);
           if (aHasUrgent && !bHasUrgent) return -1;
           if (!aHasUrgent && bHasUrgent) return 1;
           return 0;
@@ -442,56 +421,65 @@ class _OrderList extends StatelessWidget {
                     onSortModeChanged: onSortModeChanged,
                     directionFilter: directionFilter,
                     onDirectionFilterChanged: onDirectionFilterChanged,
+                    viewMode: viewMode,
+                    onViewModeChanged: onViewModeChanged,
                     groupByEntity: groupByEntity,
-                    onGroupByEntityChanged: onGroupByChanged,
+                    onGroupByEntityChanged: onGroupByEntityChanged,
+                    groupByRep: groupByRep,
+                    onGroupByRepChanged: onGroupByRepChanged,
                     searchHint: 'بحث بالجهة أو المندوب...',
                   ),
                 ),
-                if (sortedOrders.isEmpty)
+                if (filtered.isEmpty)
                   SliverFillRemaining(
                     hasScrollBody: false,
                     child: Center(child: Text(emptyMessage)),
                   )
+                else if (groupModes.isNotEmpty)
+                  GroupedOrdersSliver(
+                    groups: groups,
+                    viewMode: viewMode,
+                    orderBuilder: (context, order) =>
+                        viewMode == OrderViewMode.grid
+                        ? OrderGridCard(
+                            order: order,
+                            onTap: () => _openOrder(context, order),
+                            onCopy: (o) => _openCopyOrder(context, o),
+                          )
+                        : OrderCard(
+                            order: order,
+                            onTap: () => _openOrder(context, order),
+                            onCopy: (o) => _openCopyOrder(context, o),
+                          ),
+                  )
+                else if (viewMode == OrderViewMode.grid)
+                  OrdersGridSliver(
+                    orders: sortedOrders,
+                    orderBuilder: (context, order) => OrderGridCard(
+                      order: order,
+                      onTap: () => _openOrder(context, order),
+                      onCopy: (o) => _openCopyOrder(context, o),
+                    ),
+                  )
                 else
                   SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, i) {
-                        final order = sortedOrders[i];
-                        final hasUrgent =
-                            order.status != OrderStatus.delivered &&
-                                badgeState.urgentCountByOrderId
-                                    .containsKey(order.id);
-                        return Stack(
-                          children: [
-                            OrderCard(
-                              order: order,
-                              onTap: () async {
-                                final deleted = await Navigator.push<bool>(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => TaskDetailScreen(
-                                      orderId: order.id,
-                                      showDeleteButton: true,
-                                      useVerifierRepository: true,
-                                    ),
-                                  ),
-                                );
-                                if ((deleted ?? false) && context.mounted) {
-                                  context.read<OrdersCubit>().loadOrders();
-                                }
-                              },
-                            ),
-                            if (hasUrgent)
-                              Positioned(
-                                top: 8,
-                                right: 8,
-                                child: _UrgentBadge(),
-                              ),
-                          ],
-                        );
-                      },
-                      childCount: sortedOrders.length,
-                    ),
+                    delegate: SliverChildBuilderDelegate((context, i) {
+                      final order = sortedOrders[i];
+                      final hasUrgent =
+                          order.status != OrderStatus.delivered &&
+                          badgeState.urgentCountByOrderId.containsKey(order.id);
+                      return Stack(
+                        children: [
+                          OrderCard(
+                            order: order,
+                            onTap: () => _openOrder(context, order),
+                            onCopy: (o) => _openCopyOrder(context, o),
+                          ),
+                          if (hasUrgent)
+                            Positioned(top: 8, right: 8, child: _UrgentBadge()),
+                        ],
+                      );
+                    }, childCount: sortedOrders.length),
                   ),
               ],
             ),
@@ -499,6 +487,38 @@ class _OrderList extends StatelessWidget {
         );
       },
     );
+  }
+
+  void _openCopyOrder(BuildContext context, Order order) {
+    Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<CreateOrderCubit>()..loadLookups(),
+          child: CreateOrderScreen(prefillFrom: order),
+        ),
+      ),
+    ).then((created) {
+      if ((created ?? false) && context.mounted) {
+        context.read<OrdersCubit>().loadOrders();
+      }
+    });
+  }
+
+  Future<void> _openOrder(BuildContext context, Order order) async {
+    final deleted = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TaskDetailScreen(
+          orderId: order.id,
+          showDeleteButton: true,
+          useVerifierRepository: true,
+        ),
+      ),
+    );
+    if ((deleted ?? false) && context.mounted) {
+      context.read<OrdersCubit>().loadOrders();
+    }
   }
 }
 
@@ -509,8 +529,9 @@ class _UrgentBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       padding: AppSpacing.symmetric(
-          horizontal: AppSpacing.horizontalSmall,
-          vertical: AppSpacing.verticalXSmall),
+        horizontal: AppSpacing.horizontalSmall,
+        vertical: AppSpacing.verticalXSmall,
+      ),
       decoration: BoxDecoration(
         color: AppColors.error,
         borderRadius: BorderRadius.circular(AppConstants.borderRadiusSmall),
@@ -526,153 +547,12 @@ class _UrgentBadge extends StatelessWidget {
   }
 }
 
-class _GroupedByEntityList extends StatelessWidget {
-  final List<Order> orders;
-  final String searchQuery;
-  final OrderSortMode sortMode;
-  final bool groupByEntity;
-  final ValueChanged<String> onSearchChanged;
-  final ValueChanged<OrderSortMode> onSortModeChanged;
-  final OrderDirectionFilter directionFilter;
-  final ValueChanged<OrderDirectionFilter> onDirectionFilterChanged;
-  final ValueChanged<bool> onGroupByChanged;
-
-  const _GroupedByEntityList({
-    required this.orders,
-    required this.sortMode,
-    required this.groupByEntity,
-    required this.onSearchChanged,
-    required this.onSortModeChanged,
-    required this.directionFilter,
-    required this.onDirectionFilterChanged,
-    required this.onGroupByChanged,
-    this.searchQuery = '',
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final filtered = sortOrders(
-      filterOrdersByDirection(
-        filterOrdersByQuery(orders, searchQuery),
-        directionFilter,
-      ),
-      sortMode,
-    );
-
-    final grouped = <String, List<Order>>{};
-    for (final order in filtered) {
-      (grouped[order.entityId] ??= []).add(order);
-    }
-    final autoExpand = grouped.length == 1;
-    final entityIds = grouped.keys.toList();
-
-    return BlocBuilder<OrderChatBadgeCubit, OrderChatBadgeState>(
-      builder: (context, badgeState) {
-        return Builder(
-          builder: (ctx) => RefreshIndicator(
-            onRefresh: () => context.read<OrdersCubit>().loadOrders(),
-            child: CollapsingInnerScrollBody(
-              slivers: [
-                SliverToBoxAdapter(
-                  child: OrderSortFilterBar(
-                    searchQuery: searchQuery,
-                    onSearchChanged: onSearchChanged,
-                    sortMode: sortMode,
-                    onSortModeChanged: onSortModeChanged,
-                    directionFilter: directionFilter,
-                    onDirectionFilterChanged: onDirectionFilterChanged,
-                    groupByEntity: groupByEntity,
-                    onGroupByEntityChanged: onGroupByChanged,
-                    searchHint: 'بحث بالجهة أو المندوب...',
-                  ),
-                ),
-                if (filtered.isEmpty)
-                  const SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(child: Text('لا توجد طلبات مكتملة')),
-                  )
-                else
-                  SliverList(
-                    delegate: SliverChildBuilderDelegate(
-                      (context, i) {
-                        final entityId = entityIds[i];
-                        final entityOrders = grouped[entityId]!;
-                        final entityName =
-                            entityOrders.first.entity?.name ?? '—';
-                        final count = entityOrders.length;
-
-                        return Card(
-                          margin: const EdgeInsets.symmetric(
-                              horizontal: 12, vertical: 6),
-                          child: ExpansionTile(
-                            initiallyExpanded: autoExpand,
-                            title: Text(
-                              entityName,
-                              style:
-                                  const TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                            trailing: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withAlpha(20),
-                                border: Border.all(color: AppColors.primary),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              child: Text(
-                                '$count ${count == 1 ? 'طلب' : 'طلبات'}',
-                                style: TextStyle(
-                                  color: AppColors.primary,
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                            children: entityOrders.map((order) {
-                              return OrderCard(
-                                order: order,
-                                onTap: () async {
-                                  final deleted = await Navigator.push<bool>(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => TaskDetailScreen(
-                                        orderId: order.id,
-                                        showDeleteButton: true,
-                                        useVerifierRepository: true,
-                                      ),
-                                    ),
-                                  );
-                                  if ((deleted ?? false) && context.mounted) {
-                                    context.read<OrdersCubit>().loadOrders();
-                                  }
-                                },
-                              );
-                            }).toList(),
-                          ),
-                        );
-                      },
-                      childCount: entityIds.length,
-                    ),
-                  ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
 // ── Settings tab ──────────────────────────────────────────────────────────────
 
 class _SettingsTab extends StatelessWidget {
-  final VoidCallback onInventoryTap;
   final VoidCallback onLogout;
 
-  const _SettingsTab({
-    required this.onInventoryTap,
-    required this.onLogout,
-  });
+  const _SettingsTab({required this.onLogout});
 
   @override
   Widget build(BuildContext context) {
@@ -695,7 +575,7 @@ class _SettingsTab extends StatelessWidget {
           slivers: [
             SliverList(
               delegate: SliverChildListDelegate([
-                AppListTile(
+                ListTile(
                   leading: const Icon(Icons.person_outline),
                   title: const Text('ملفي الشخصي'),
                   trailing: const Icon(Icons.chevron_right),
@@ -705,35 +585,43 @@ class _SettingsTab extends StatelessWidget {
                       Navigator.push(
                         context,
                         MaterialPageRoute(
-                          builder: (_) =>
-                              ProfileScreen(profile: state.profile),
+                          builder: (_) => ProfileScreen(profile: state.profile),
                         ),
                       );
                     }
                   },
-                  showDivider: true,
                 ),
-                AppListTile(
-                  leading: const Icon(Icons.inventory_2_outlined),
-                  title: const Text('المخزون'),
-                  onTap: onInventoryTap,
-                  showDivider: true,
+                const Divider(),
+                ListTile(
+                  leading: const Icon(Icons.bar_chart_outlined),
+                  title: const Text('الإحصائيات'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => BlocProvider(
+                        create: (_) => sl<StatsCubit>(),
+                        child: const StatsScreen(),
+                      ),
+                    ),
+                  ),
                 ),
-                AppListTile(
+                const Divider(),
+                ListTile(
                   leading: const Icon(Icons.business_outlined),
                   title: const Text('إدارة الجهات'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push('/entities'),
-                  showDivider: true,
                 ),
-                AppListTile(
+                const Divider(),
+                ListTile(
                   leading: const Icon(Icons.settings),
                   title: const Text('الإعدادات'),
                   trailing: const Icon(Icons.chevron_right),
                   onTap: () => context.push('/settings'),
-                  showDivider: true,
                 ),
-                AppListTile(
+                const Divider(),
+                ListTile(
                   leading: const Icon(Icons.logout),
                   title: const Text('تسجيل الخروج'),
                   onTap: onLogout,

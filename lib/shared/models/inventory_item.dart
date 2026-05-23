@@ -14,6 +14,8 @@ class InventoryItem extends Equatable {
   final int minQuantity;
   final String? description;
   final String? notes;
+  // Number of distinct orders that include this item; null means not yet loaded.
+  final int? usageCount;
 
   const InventoryItem({
     required this.id,
@@ -25,6 +27,7 @@ class InventoryItem extends Equatable {
     this.minQuantity = 0,
     this.description,
     this.notes,
+    this.usageCount,
   });
 
   AvailabilityStatus get availabilityStatus {
@@ -38,6 +41,19 @@ class InventoryItem extends Equatable {
     if (quantity < requestedQuantity) return StockCheckResult.partial;
     return StockCheckResult.sufficient;
   }
+
+  InventoryItem copyWithUsageCount(int count) => InventoryItem(
+        id: id,
+        itemName: itemName,
+        sku: sku,
+        quantity: quantity,
+        unit: unit,
+        category: category,
+        minQuantity: minQuantity,
+        description: description,
+        notes: notes,
+        usageCount: count,
+      );
 
   factory InventoryItem.fromMap(Map<String, dynamic> map) {
     return InventoryItem(
@@ -54,5 +70,5 @@ class InventoryItem extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, itemName, sku, quantity, unit, category, minQuantity, description, notes];
+  List<Object?> get props => [id, itemName, sku, quantity, unit, category, minQuantity, description, notes, usageCount];
 }

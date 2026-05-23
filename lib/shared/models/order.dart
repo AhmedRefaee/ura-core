@@ -9,6 +9,7 @@ enum OrderStatus { assigned, pickedUp, onTheMove, delivered, deliveredToStorage 
 
 class Order extends Equatable {
   final String id;
+  final String? referenceCode;
   final OrderDirection direction;
   final String entityId;
   final Entity? entity;
@@ -28,6 +29,7 @@ class Order extends Equatable {
 
   const Order({
     required this.id,
+    this.referenceCode,
     required this.direction,
     required this.entityId,
     this.entity,
@@ -82,6 +84,7 @@ class Order extends Equatable {
 
     return Order(
       id: map['id'] as String,
+      referenceCode: map['reference_code'] as String?,
       direction: direction,
       entityId: map['entity_id'] as String,
       entity: entityMap != null ? Entity.fromMap(entityMap) : null,
@@ -149,5 +152,5 @@ class Order extends Equatable {
       };
 
   @override
-  List<Object?> get props => [id, direction, entityId, repId, storageActorId, status, createdAt];
+  List<Object?> get props => [id, referenceCode, direction, entityId, repId, storageActorId, status, createdAt];
 }

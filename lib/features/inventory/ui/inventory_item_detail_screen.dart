@@ -17,8 +17,7 @@ class InventoryItemDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (_) =>
-          sl.get<InventoryDetailCubit>(param1: item.id)..load(),
+      create: (_) => sl.get<InventoryDetailCubit>(param1: item.id)..load(),
       child: _InventoryItemDetailView(initialItem: item),
     );
   }
@@ -49,10 +48,8 @@ class _InventoryItemDetailView extends StatelessWidget {
         }
       },
       builder: (context, state) {
-        final item =
-            state is InventoryDetailLoaded ? state.item : initialItem;
-        final isActing =
-            state is InventoryDetailLoaded && state.isActing;
+        final item = state is InventoryDetailLoaded ? state.item : initialItem;
+        final isActing = state is InventoryDetailLoaded && state.isActing;
 
         return Scaffold(
           appBar: AppBar(
@@ -62,18 +59,14 @@ class _InventoryItemDetailView extends StatelessWidget {
                 icon: Icons.edit_outlined,
                 tooltip: 'تعديل',
                 variant: AppIconButtonVariant.text,
-                onPressed: isActing
-                    ? null
-                    : () => _openEdit(context, item),
+                onPressed: isActing ? null : () => _openEdit(context, item),
               ),
               AppIconButton(
                 icon: Icons.delete_outline,
                 tooltip: 'حذف',
                 variant: AppIconButtonVariant.text,
                 iconColor: AppColors.error,
-                onPressed: isActing
-                    ? null
-                    : () => _confirmDelete(context),
+                onPressed: isActing ? null : () => _confirmDelete(context),
               ),
             ],
           ),
@@ -95,9 +88,7 @@ class _InventoryItemDetailView extends StatelessWidget {
   void _openEdit(BuildContext context, InventoryItem item) async {
     final updated = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => InventoryFormScreen(initialItem: item),
-      ),
+      MaterialPageRoute(builder: (_) => InventoryFormScreen(initialItem: item)),
     );
     if (updated == true && context.mounted) {
       context.read<InventoryDetailCubit>().load();
@@ -109,20 +100,42 @@ class _InventoryItemDetailView extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: Text('تأكيد الحذف', style: AppTextStyles.titleLarge),
-        content: Text('هل أنت متأكد من حذف هذا الصنف؟ لا يمكن التراجع عن هذا الإجراء.',
-            style: AppTextStyles.bodyMedium),
+        content: Text(
+          'هل أنت متأكد من حذف هذا الصنف؟ لا يمكن التراجع عن هذا الإجراء.',
+          style: AppTextStyles.bodyMedium,
+        ),
+        actionsPadding: EdgeInsets.fromLTRB(
+          AppSpacing.horizontalLarge,
+          0,
+          AppSpacing.horizontalLarge,
+          AppSpacing.verticalMedium,
+        ),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: Text('إلغاء', style: AppTextStyles.labelLarge),
-          ),
-          AppButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              context.read<InventoryDetailCubit>().deleteItem();
-            },
-            text: 'حذف',
-            backgroundColor: AppColors.error,
+          SizedBox(
+            width: double.infinity,
+            child: Row(
+              children: [
+                Expanded(
+                  child: AppButton(
+                    onPressed: () => Navigator.pop(ctx),
+                    text: 'إلغاء',
+                    variant: AppButtonVariant.outlined,
+                    backgroundColor: AppColors.textSecondary,
+                  ),
+                ),
+                SizedBox(width: AppSpacing.horizontalSmall),
+                Expanded(
+                  child: AppButton(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      context.read<InventoryDetailCubit>().deleteItem();
+                    },
+                    text: 'حذف',
+                    backgroundColor: AppColors.error,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -159,7 +172,10 @@ class _DetailBody extends StatelessWidget {
                   ],
                 ),
                 Divider(height: AppSpacing.verticalXXLarge),
-                _InfoRow(label: 'الكمية', value: '${item.quantity} ${item.unit}'),
+                _InfoRow(
+                  label: 'الكمية',
+                  value: '${item.quantity} ${item.unit}',
+                ),
                 if (item.sku != null)
                   _InfoRow(label: 'رمز SKU', value: item.sku!),
                 if (item.category != null)
@@ -168,8 +184,7 @@ class _DetailBody extends StatelessWidget {
                   label: 'حد التنبيه',
                   value: '${item.minQuantity} ${item.unit}',
                 ),
-                if (item.description != null &&
-                    item.description!.isNotEmpty)
+                if (item.description != null && item.description!.isNotEmpty)
                   _InfoRow(label: 'الوصف', value: item.description!),
               ],
             ),
@@ -188,10 +203,12 @@ class _DetailBody extends StatelessWidget {
           Center(
             child: Padding(
               padding: AppSpacing.allMedium,
-              child: Text('لا يوجد سجل تغييرات',
-                  style: AppTextStyles.bodyMedium.copyWith(
-                    color: AppColors.textSecondary,
-                  )),
+              child: Text(
+                'لا يوجد سجل تغييرات',
+                style: AppTextStyles.bodyMedium.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+              ),
             ),
           )
         else
@@ -249,10 +266,10 @@ class _AuditLogTile extends StatelessWidget {
       margin: EdgeInsets.symmetric(vertical: AppSpacing.verticalXSmall),
       child: ListTile(
         leading: Icon(Icons.history, color: AppColors.textSecondary),
-        title: Text(entry.actionLabel,
-            style: AppTextStyles.bodyMedium.copyWith(
-                  fontWeight: FontWeight.w600,
-                )),
+        title: Text(
+          entry.actionLabel,
+          style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.w600),
+        ),
         subtitle: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

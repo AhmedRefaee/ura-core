@@ -13,6 +13,7 @@ class InventoryRepository {
       final data = await _supabase
           .from('inventory')
           .select('id, item_name, sku, quantity, unit, category, min_quantity, description')
+          .isFilter('archived_at', null)
           .order('item_name');
       final items = (data as List)
           .map((e) => InventoryItem.fromMap(e as Map<String, dynamic>))

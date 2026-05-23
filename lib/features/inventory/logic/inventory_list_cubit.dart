@@ -146,4 +146,20 @@ class InventoryListCubit extends Cubit<InventoryListState> {
     final current = state;
     if (current is InventoryListLoaded) emit(current.copyWith(statusFilter: status));
   }
+
+  Future<void> loadUsageCounts() async {
+    final current = state;
+    if (current is! InventoryListLoaded) return;
+    final result = await _repo.fetchUsageCounts();
+    if (isClosed) return;
+    switch (result) {
+      case AppSuccess(:final data):
+        final updated = current.allItems
+            .map((item) => item.copyWithUsageCount(data[item.id] ?? 0))
+            .toList();
+        emit(current.copyWith(allItems: updated));
+      case AppFailure(:final error):
+        logger.w('loadUsageCounts failed (non-fatal): ${error.message}');
+    }
+  }
 }

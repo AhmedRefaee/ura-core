@@ -24,7 +24,8 @@ class InventoryManagementRepository {
       
       var query = _supabase
           .from('inventory')
-          .select('id, item_name, sku, quantity, unit, category, min_quantity, description');
+          .select('id, item_name, sku, quantity, unit, category, min_quantity, description')
+          .isFilter('archived_at', null);
       if (search != null && search.isNotEmpty) {
         query = query.ilike('item_name', '%$search%');
       }
@@ -185,7 +186,8 @@ class InventoryManagementRepository {
       final data = await _supabase
           .from('inventory')
           .select('sku')
-          .not('sku', 'is', null);
+          .not('sku', 'is', null)
+          .isFilter('archived_at', null);
       final skus = (data as List)
           .map((row) => (row['sku'] as String).toLowerCase())
           .toSet();
@@ -215,6 +217,7 @@ class InventoryManagementRepository {
       final data = await _supabase
           .from('inventory')
           .select('id, item_name, sku, quantity, unit, category, min_quantity, description, notes')
+          .isFilter('archived_at', null)
           .order('item_name');
       final result = (data as List)
           .map((m) => InventoryItem.fromMap(m as Map<String, dynamic>))
@@ -222,6 +225,26 @@ class InventoryManagementRepository {
       return AppSuccess(result);
     } catch (e, st) {
       logger.e('fetchAllForExport failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<Map<String, int>>> fetchUsageCounts() async {
+    try {
+      final data = await _supabase
+          .from('order_items')
+          .select('inventory_id, order_id');
+      final Map<String, Set<String>> ordersPerItem = {};
+      for (final row in data as List) {
+        final inventoryId = row['inventory_id'] as String?;
+        final orderId = row['order_id'] as String?;
+        if (inventoryId != null && orderId != null) {
+          ordersPerItem.putIfAbsent(inventoryId, () => {}).add(orderId);
+        }
+      }
+      return AppSuccess(ordersPerItem.map((k, v) => MapEntry(k, v.length)));
+    } catch (e, st) {
+      logger.e('fetchUsageCounts failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

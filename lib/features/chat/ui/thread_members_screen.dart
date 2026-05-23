@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 import '../../../features/auth/logic/auth_cubit.dart';
 import '../../../features/auth/logic/auth_state.dart';
 import '../../../shared/models/profile.dart';
@@ -39,17 +41,33 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
   }
 
   Future<void> _loadMembers() async {
-    setState(() { _loading = true; _error = null; });
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
       final membersResult = await _repo.getThreadParticipants(widget.threadId);
       if (membersResult is AppSuccess<List<Profile>>) {
-        if (mounted) setState(() { _members = membersResult.data; _loading = false; });
+        if (mounted) {
+          setState(() {
+            _members = membersResult.data;
+            _loading = false;
+          });
+        }
       } else if (mounted) {
         final error = (membersResult as AppFailure).error;
-        setState(() { _error = error.message; _loading = false; });
+        setState(() {
+          _error = error.message;
+          _loading = false;
+        });
       }
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -133,7 +151,10 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
         final error = (usersResult as AppFailure).error;
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('خطأ: ${error.message}'), backgroundColor: Colors.red),
+            SnackBar(
+              content: Text('خطأ: ${error.message}'),
+              backgroundColor: Colors.red,
+            ),
           );
         }
         return;
@@ -146,7 +167,9 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
       }
       return;
     }
-    final available = allUsers.where((u) => !currentIds.contains(u.id)).toList();
+    final available = allUsers
+        .where((u) => !currentIds.contains(u.id))
+        .toList();
     if (!mounted) return;
     if (available.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -162,7 +185,9 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
     );
     if (toAdd == null || toAdd.isEmpty) return;
     try {
-      await Future.wait(toAdd.map((uid) => _repo.addParticipant(widget.threadId, uid)));
+      await Future.wait(
+        toAdd.map((uid) => _repo.addParticipant(widget.threadId, uid)),
+      );
       await _loadMembers();
     } catch (e) {
       if (mounted) {
@@ -178,15 +203,13 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
     final canManage = _canManage(context);
     final myId = Supabase.instance.client.auth.currentUser?.id;
     final isCreator = myId != null && myId == widget.createdBy;
-    
+
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: Text('أعضاء: ${widget.threadTitle}'),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadMembers,
-          ),
+          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadMembers),
         ],
       ),
       body: Column(
@@ -198,7 +221,9 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               decoration: BoxDecoration(
                 color: Theme.of(context).colorScheme.surface,
-                border: Border(top: BorderSide(color: Colors.grey.shade200)),
+                border: const Border(
+                  top: BorderSide(color: AppColors.borderLight),
+                ),
               ),
               child: SwitchListTile(
                 title: const Text('رسائل النظام التلقائية'),
@@ -224,43 +249,51 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
   }
 
   Widget _buildBody(bool canManage) {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) {
+      return const AppLoadingState(message: 'جاري تحميل الأعضاء...');
+    }
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error!, style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: _loadMembers, child: const Text('إعادة المحاولة')),
-          ],
-        ),
+      return AppErrorView(
+        title: 'تعذر تحميل الأعضاء',
+        message: _error,
+        retryText: 'إعادة المحاولة',
+        onRetry: _loadMembers,
       );
     }
     if (_members.isEmpty) {
-      return const Center(child: Text('لا يوجد أعضاء', style: TextStyle(color: Colors.grey)));
+      return const AppEmptyState(
+        icon: Icons.people_outline,
+        title: 'لا يوجد أعضاء',
+      );
     }
     return ListView.separated(
+      padding: const EdgeInsets.only(bottom: AppSpacing.verticalXXXLarge),
       itemCount: _members.length,
       separatorBuilder: (_, _) => const Divider(height: 1, indent: 72),
       itemBuilder: (_, i) {
         final member = _members[i];
         final isCreator = member.id == widget.createdBy;
-        return ListTile(
+        return AppListTile(
           leading: CircleAvatar(
             child: Text(member.fullName.isNotEmpty ? member.fullName[0] : '?'),
           ),
           title: Text(member.fullName),
           subtitle: Text(_roleLabel(member.role)),
           trailing: isCreator
-              ? const Chip(label: Text('منشئ'), visualDensity: VisualDensity.compact)
+              ? const Chip(
+                  label: Text('منشئ'),
+                  visualDensity: VisualDensity.compact,
+                )
               : canManage
-                  ? IconButton(
-                      icon: const Icon(Icons.remove_circle_outline, color: Colors.red),
-                      tooltip: 'إزالة',
-                      onPressed: () => _removeMember(member),
-                    )
-                  : null,
+              ? IconButton(
+                  icon: const Icon(
+                    Icons.remove_circle_outline,
+                    color: AppColors.error,
+                  ),
+                  tooltip: 'إزالة',
+                  onPressed: () => _removeMember(member),
+                )
+              : null,
         );
       },
     );
@@ -268,11 +301,16 @@ class _ThreadMembersScreenState extends State<ThreadMembersScreen> {
 
   String _roleLabel(UserRole? role) {
     switch (role) {
-      case UserRole.verifier: return 'موظف تحقق';
-      case UserRole.rep: return 'مندوب';
-      case UserRole.storageActor: return 'مخزن';
-      case UserRole.manager: return 'مدير';
-      default: return '';
+      case UserRole.verifier:
+        return 'موظف تحقق';
+      case UserRole.rep:
+        return 'مندوب';
+      case UserRole.storageActor:
+        return 'مخزن';
+      case UserRole.manager:
+        return 'مدير';
+      default:
+        return '';
     }
   }
 }
@@ -297,7 +335,12 @@ class _AddMembersSheetState extends State<_AddMembersSheet> {
       builder: (_, scrollController) => Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.horizontalLarge,
+              AppSpacing.verticalLarge,
+              AppSpacing.horizontalLarge,
+              AppSpacing.verticalSmall,
+            ),
             child: Row(
               children: [
                 Expanded(
@@ -326,13 +369,18 @@ class _AddMembersSheetState extends State<_AddMembersSheet> {
                 return CheckboxListTile(
                   value: checked,
                   onChanged: (_) => setState(() {
-                    if (checked) { _selected.remove(user.id); }
-                    else { _selected.add(user.id); }
+                    if (checked) {
+                      _selected.remove(user.id);
+                    } else {
+                      _selected.add(user.id);
+                    }
                   }),
                   title: Text(user.fullName),
                   subtitle: Text(_roleLabel(user.role)),
                   secondary: CircleAvatar(
-                    child: Text(user.fullName.isNotEmpty ? user.fullName[0] : '?'),
+                    child: Text(
+                      user.fullName.isNotEmpty ? user.fullName[0] : '?',
+                    ),
                   ),
                   controlAffinity: ListTileControlAffinity.trailing,
                 );
@@ -346,11 +394,16 @@ class _AddMembersSheetState extends State<_AddMembersSheet> {
 
   String _roleLabel(UserRole? role) {
     switch (role) {
-      case UserRole.verifier: return 'موظف تحقق';
-      case UserRole.rep: return 'مندوب';
-      case UserRole.storageActor: return 'مخزن';
-      case UserRole.manager: return 'مدير';
-      default: return '';
+      case UserRole.verifier:
+        return 'موظف تحقق';
+      case UserRole.rep:
+        return 'مندوب';
+      case UserRole.storageActor:
+        return 'مخزن';
+      case UserRole.manager:
+        return 'مدير';
+      default:
+        return '';
     }
   }
 }

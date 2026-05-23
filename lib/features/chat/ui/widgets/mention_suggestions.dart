@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../../../core/design_system/theme/theme.dart';
 import '../../../../shared/models/profile.dart';
 
 class MentionSuggestions extends StatelessWidget {
@@ -22,7 +23,8 @@ class MentionSuggestions extends StatelessWidget {
     final q = query.toLowerCase();
 
     // @all shown when query is empty or matches "الجميع" / "all"
-    final showAll = q.isEmpty ||
+    final showAll =
+        q.isEmpty ||
         'الجميع'.contains(q) ||
         'all'.contains(q) ||
         'الكل'.contains(q);
@@ -35,15 +37,16 @@ class MentionSuggestions extends StatelessWidget {
         .toList();
 
     final allCount = showAll ? 1 : 0;
-    final totalCount = allCount + filteredMembers.length + filteredOrders.length;
+    final totalCount =
+        allCount + filteredMembers.length + filteredOrders.length;
 
     return Container(
       constraints: const BoxConstraints(maxHeight: 220),
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(
-          top: BorderSide(color: Theme.of(context).dividerColor),
-          bottom: BorderSide(color: Theme.of(context).dividerColor),
+          top: const BorderSide(color: AppColors.borderLight),
+          bottom: const BorderSide(color: AppColors.borderLight),
         ),
         boxShadow: [
           BoxShadow(
@@ -57,7 +60,12 @@ class MentionSuggestions extends StatelessWidget {
           ? Padding(
               padding: const EdgeInsets.symmetric(vertical: 16),
               child: Center(
-                child: Text('لا توجد نتائج', style: TextStyle(color: Theme.of(context).hintColor)),
+                child: Text(
+                  'لا توجد نتائج',
+                  style: AppTextStyles.bodyMedium.copyWith(
+                    color: AppColors.textTertiary,
+                  ),
+                ),
               ),
             )
           : ListView.builder(
@@ -71,14 +79,21 @@ class MentionSuggestions extends StatelessWidget {
                     dense: true,
                     leading: CircleAvatar(
                       radius: 16,
-                      backgroundColor: Colors.purple.shade50,
-                      child: Icon(Icons.group,
-                          size: 16, color: Colors.purple.shade700),
+                      backgroundColor: AppColors.primaryLight.withAlpha(45),
+                      child: const Icon(
+                        Icons.group,
+                        size: 16,
+                        color: AppColors.primary,
+                      ),
                     ),
-                    title: const Text('@الجميع',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: const Text('إشعار جميع أعضاء المجموعة',
-                        style: TextStyle(fontSize: 11)),
+                    title: const Text(
+                      '@الجميع',
+                      style: TextStyle(fontWeight: FontWeight.bold),
+                    ),
+                    subtitle: const Text(
+                      'إشعار جميع أعضاء المجموعة',
+                      style: TextStyle(fontSize: 11),
+                    ),
                     onTap: () => onSelectUser('', 'الجميع'),
                   );
                 }
@@ -90,13 +105,18 @@ class MentionSuggestions extends StatelessWidget {
                     dense: true,
                     leading: CircleAvatar(
                       radius: 16,
-                      backgroundColor: Colors.teal.shade50,
-                      child: Icon(Icons.person,
-                          size: 16, color: Colors.teal.shade700),
+                      backgroundColor: AppColors.infoLight.withAlpha(60),
+                      child: const Icon(
+                        Icons.person,
+                        size: 16,
+                        color: AppColors.infoDark,
+                      ),
                     ),
                     title: Text(member.fullName),
-                    subtitle: Text(_roleLabel(member.role),
-                        style: const TextStyle(fontSize: 11)),
+                    subtitle: Text(
+                      _roleLabel(member.role),
+                      style: const TextStyle(fontSize: 11),
+                    ),
                     onTap: () => onSelectUser(member.id, member.fullName),
                   );
                 }
@@ -107,13 +127,18 @@ class MentionSuggestions extends StatelessWidget {
                   dense: true,
                   leading: CircleAvatar(
                     radius: 16,
-                    backgroundColor: Colors.blue.shade50,
-                    child: Icon(Icons.inventory_2_outlined,
-                        size: 16, color: Colors.blue.shade700),
+                    backgroundColor: AppColors.accent.withAlpha(40),
+                    child: const Icon(
+                      Icons.inventory_2_outlined,
+                      size: 16,
+                      color: AppColors.accentDark,
+                    ),
                   ),
                   title: Text(order.displayName),
-                  subtitle: const Text('طلب نشط',
-                      style: TextStyle(fontSize: 11)),
+                  subtitle: const Text(
+                    'طلب نشط',
+                    style: TextStyle(fontSize: 11),
+                  ),
                   onTap: () => onSelectOrder(order.id, order.displayName),
                 );
               },

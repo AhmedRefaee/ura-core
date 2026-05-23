@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import '../../../core/design_system/theme/theme.dart';
+import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../shared/models/profile.dart';
@@ -38,9 +40,15 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
     if (!mounted) return;
     switch (result) {
       case AppSuccess(:final data):
-        setState(() { _users = data; _loadingUsers = false; });
+        setState(() {
+          _users = data;
+          _loadingUsers = false;
+        });
       case AppFailure(:final error):
-        setState(() { _error = error.message; _loadingUsers = false; });
+        setState(() {
+          _error = error.message;
+          _loadingUsers = false;
+        });
     }
   }
 
@@ -49,6 +57,12 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
     if (title.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('أدخل اسم المجموعة')),
+      );
+      return;
+    }
+    if (_selected.length < 2) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('يجب إضافة عضوين على الأقل للمجموعة')),
       );
       return;
     }
@@ -63,7 +77,9 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
           setState(() => _creating = false);
         }
       case AppSuccess(:final data):
-        await Future.wait(_selected.map((uid) => _repo.addParticipant(data, uid)));
+        await Future.wait(
+          _selected.map((uid) => _repo.addParticipant(data, uid)),
+        );
         if (mounted) Navigator.pop(context, (threadId: data, title: title));
     }
   }
@@ -71,6 +87,7 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
         title: const Text('محادثة جديدة'),
         actions: [
@@ -90,7 +107,12 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.horizontalLarge,
+              AppSpacing.verticalLarge,
+              AppSpacing.horizontalLarge,
+              AppSpacing.verticalSmall,
+            ),
             child: TextField(
               controller: _titleController,
               autofocus: true,
@@ -102,9 +124,14 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
             ),
           ),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+            padding: const EdgeInsets.fromLTRB(
+              AppSpacing.horizontalLarge,
+              AppSpacing.verticalSmall,
+              AppSpacing.horizontalLarge,
+              AppSpacing.verticalXSmall,
+            ),
             child: Text(
-              'إضافة أعضاء${_selected.isEmpty ? '' : ' (${_selected.length})'}',
+              'إضافة أعضاء${_selected.isEmpty ? ' (2 على الأقل)' : ' (${_selected.length})'}',
               style: Theme.of(context).textTheme.titleSmall,
             ),
           ),
@@ -116,23 +143,25 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
   }
 
   Widget _buildUserList() {
-    if (_loadingUsers) return const Center(child: CircularProgressIndicator());
+    if (_loadingUsers) {
+      return const AppLoadingState(message: 'جاري تحميل المستخدمين...');
+    }
     if (_error != null) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(_error!, style: const TextStyle(color: Colors.red)),
-            const SizedBox(height: 12),
-            FilledButton(onPressed: _loadUsers, child: const Text('إعادة المحاولة')),
-          ],
-        ),
+      return AppErrorView(
+        title: 'تعذر تحميل المستخدمين',
+        message: _error,
+        retryText: 'إعادة المحاولة',
+        onRetry: _loadUsers,
       );
     }
     if (_users.isEmpty) {
-      return const Center(child: Text('لا يوجد مستخدمون', style: TextStyle(color: Colors.grey)));
+      return const AppEmptyState(
+        icon: Icons.people_outline,
+        title: 'لا يوجد مستخدمون',
+      );
     }
     return ListView.builder(
+      padding: const EdgeInsets.only(bottom: AppSpacing.verticalLarge),
       itemCount: _users.length,
       itemBuilder: (_, i) {
         final user = _users[i];
@@ -140,8 +169,11 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
         return CheckboxListTile(
           value: checked,
           onChanged: (_) => setState(() {
-            if (checked) { _selected.remove(user.id); }
-            else { _selected.add(user.id); }
+            if (checked) {
+              _selected.remove(user.id);
+            } else {
+              _selected.add(user.id);
+            }
           }),
           title: Text(user.fullName),
           subtitle: Text(_roleLabel(user.role)),
@@ -149,6 +181,10 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
             child: Text(user.fullName.isNotEmpty ? user.fullName[0] : '?'),
           ),
           controlAffinity: ListTileControlAffinity.trailing,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: AppSpacing.horizontalLarge,
+            vertical: AppSpacing.verticalXSmall,
+          ),
         );
       },
     );
@@ -156,11 +192,16 @@ class _CreateThreadScreenState extends State<CreateThreadScreen> {
 
   String _roleLabel(UserRole? role) {
     switch (role) {
-      case UserRole.verifier: return 'موظف تحقق';
-      case UserRole.rep: return 'مندوب';
-      case UserRole.storageActor: return 'مخزن';
-      case UserRole.manager: return 'مدير';
-      default: return '';
+      case UserRole.verifier:
+        return 'موظف تحقق';
+      case UserRole.rep:
+        return 'مندوب';
+      case UserRole.storageActor:
+        return 'مخزن';
+      case UserRole.manager:
+        return 'مدير';
+      default:
+        return '';
     }
   }
 }

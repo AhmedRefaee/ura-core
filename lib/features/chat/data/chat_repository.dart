@@ -357,12 +357,12 @@ class ChatRepository {
     }
   }
 
-  Future<AppResult<String>> getOrCreateDirectThread(String verifierId) async {
+  Future<AppResult<String>> getOrCreateDirectThread(String otherUserId) async {
     try {
-      logger.d('ChatRepository → getOrCreateDirectThread: verifierId=$verifierId');
+      logger.d('ChatRepository → getOrCreateDirectThread: otherUserId=$otherUserId');
       final result = await _supabase.rpc(
         'get_or_create_direct_thread',
-        params: {'p_verifier_id': verifierId},
+        params: {'p_other_user_id': otherUserId},
       );
       final threadId = result as String;
       logger.i('ChatRepository → direct thread: $threadId');
@@ -371,6 +371,23 @@ class ChatRepository {
       logger.e('ChatRepository → getOrCreateDirectThread failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
+  }
+
+  /// Realtime stream of all approved profiles excluding the current user.
+  /// Emits a new list whenever any profile row changes (approval, role change,
+  /// name update). Used by ChatDirectoryCubit for the live user directory.
+  Stream<List<Profile>> subscribeToApprovedProfiles() {
+    final currentId = _supabase.auth.currentUser?.id;
+    logger.d('ChatRepository → subscribeToApprovedProfiles');
+    return _supabase
+        .from('profiles')
+        .stream(primaryKey: ['id'])
+        .map((rows) => rows
+            .where((r) =>
+                r['is_approved'] == true &&
+                r['id'] != currentId)
+            .map(Profile.fromMap)
+            .toList());
   }
 
   Future<AppResult<List<ChatMessage>>> getOrderCommunicationHistory(String orderId) async {

@@ -47,7 +47,11 @@ class ChatThreadsCubit extends Cubit<ChatThreadsState> {
     if (!isClosed) {
       switch (result) {
         case AppSuccess(:final data):
-          emit(ChatThreadsLoaded(data));
+          final sorted = [...data]
+            ..sort((a, b) => (b.lastMessageAt ?? b.createdAt)
+                .compareTo(a.lastMessageAt ?? a.createdAt));
+          final withMessages = sorted.where((t) => t.lastMessageAt != null).toList();
+          emit(ChatThreadsLoaded(withMessages));
           _subscribeToChanges();
         case AppFailure(:final error):
           logger.e('ChatThreadsCubit → loadThreads failed: ${error.message}');
@@ -77,7 +81,11 @@ class ChatThreadsCubit extends Cubit<ChatThreadsState> {
   Future<void> _silentRefresh() async {
     final result = await _repo.getThreads();
     if (!isClosed && result is AppSuccess<List<ChatThread>>) {
-      emit(ChatThreadsLoaded(result.data));
+      final sorted = [...result.data]
+        ..sort((a, b) => (b.lastMessageAt ?? b.createdAt)
+            .compareTo(a.lastMessageAt ?? a.createdAt));
+      final withMessages = sorted.where((t) => t.lastMessageAt != null).toList();
+      emit(ChatThreadsLoaded(withMessages));
     }
   }
 

@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app_error.dart';
 
@@ -13,7 +14,7 @@ class ErrorHandler {
         type: AppErrorType.server,
       );
     }
-    if (error is SocketException) {
+    if (error is SocketException || error is http.ClientException) {
       return const AppError(
         message: 'تحقق من اتصالك بالإنترنت',
         type: AppErrorType.network,

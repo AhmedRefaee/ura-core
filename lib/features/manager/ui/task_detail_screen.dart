@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../shared/models/chat_message.dart';
@@ -7,12 +9,15 @@ import '../../../shared/models/order.dart';
 import '../../../shared/models/order_edit_log_entry.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
+import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
 import '../../../shared/widgets/receipt_viewer_screen.dart';
 import '../../../features/chat/data/chat_repository.dart';
 import '../../../features/chat/ui/chat_thread_screen.dart';
 import '../../../features/verifier/data/order_repository.dart';
+import '../../../features/verifier/logic/create_order_cubit.dart';
 import '../../../features/verifier/logic/edit_order_cubit.dart';
+import '../../../features/verifier/ui/create_order_screen.dart';
 import '../../../features/verifier/ui/edit_order_screen.dart';
 import '../logic/task_detail_cubit.dart';
 import '../../profile/ui/profile_screen.dart';
@@ -44,6 +49,18 @@ class _TaskDetailView extends StatelessWidget {
   final bool showDeleteButton;
   const _TaskDetailView({this.showDeleteButton = false});
 
+  void _openCopyOrder(BuildContext context, Order order) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<CreateOrderCubit>()..loadLookups(),
+          child: CreateOrderScreen(prefillFrom: order),
+        ),
+      ),
+    );
+  }
+
   void _openEditOrder(BuildContext context, String orderId) async {
     final result = await Navigator.push<bool>(
       context,
@@ -64,7 +81,9 @@ class _TaskDetailView extends StatelessWidget {
           context: context,
           builder: (_) => AlertDialog(
             title: const Text('حذف الطلب'),
-            content: const Text('هل أنت متأكد من حذف هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.'),
+            content: const Text(
+              'هل أنت متأكد من حذف هذا الطلب؟ لا يمكن التراجع عن هذا الإجراء.',
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context, false),
@@ -89,7 +108,9 @@ class _TaskDetailView extends StatelessWidget {
       },
       builder: (context, state) {
         if (state is TaskDetailLoading || state is TaskDetailInitial) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
         }
         if (state is TaskDetailError) {
           return Scaffold(
@@ -98,7 +119,10 @@ class _TaskDetailView extends StatelessWidget {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(state.message, style: const TextStyle(color: Colors.red)),
+                  Text(
+                    state.message,
+                    style: const TextStyle(color: Colors.red),
+                  ),
                   const SizedBox(height: 12),
                   FilledButton(
                     onPressed: () => context.read<TaskDetailCubit>().load(),
@@ -114,7 +138,8 @@ class _TaskDetailView extends StatelessWidget {
         final order = state.order;
         final auditLog = state.auditLog;
         final receipts = state.receipts;
-        final canDelete = showDeleteButton && order.status != OrderStatus.delivered;
+        final canDelete =
+            showDeleteButton && order.status != OrderStatus.delivered;
 
         // 0-item guard: manager can still delete, but no order processing UI.
         if (order.items.isEmpty) {
@@ -144,6 +169,11 @@ class _TaskDetailView extends StatelessWidget {
             title: Text(order.entity?.name ?? 'تفاصيل المهمة'),
             actions: [
               IconButton(
+                icon: const Icon(Icons.content_copy_outlined),
+                tooltip: 'نسخ الطلب',
+                onPressed: () => _openCopyOrder(context, order),
+              ),
+              IconButton(
                 icon: const Icon(Icons.edit_outlined),
                 tooltip: 'تعديل الطلب',
                 onPressed: () => _openEditOrder(context, order.id),
@@ -168,11 +198,20 @@ class _TaskDetailView extends StatelessWidget {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (order.referenceCode != null)
+                _ReferenceCodeBar(code: order.referenceCode!),
               _OrderInfoCard(order: order),
+              const SizedBox(height: 16),
+              OrderStatusStepper(order: order),
               const SizedBox(height: 16),
               OrderStatusTimeline(order: order, auditLog: auditLog),
               const SizedBox(height: 16),
-              _ItemsCard(items: order.items, orderStatus: order.status, receipts: receipts, orderDirection: order.direction),
+              _ItemsCard(
+                items: order.items,
+                orderStatus: order.status,
+                receipts: receipts,
+                orderDirection: order.direction,
+              ),
               const SizedBox(height: 16),
               _EditHistorySection(orderId: order.id),
               const SizedBox(height: 16),
@@ -181,6 +220,55 @@ class _TaskDetailView extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+// ── Reference Code ────────────────────────────────────────────────────────────
+
+class _ReferenceCodeBar extends StatelessWidget {
+  final String code;
+  const _ReferenceCodeBar({required this.code});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          Clipboard.setData(ClipboardData(text: code));
+          AppSnackbar.show(
+            context,
+            message: 'تم نسخ الرمز المرجعي',
+            variant: AppSnackbarVariant.success,
+            duration: const Duration(seconds: 2),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.tag, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                code,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+              const Spacer(),
+              const Icon(Icons.content_copy_outlined, size: 16),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -207,14 +295,12 @@ class _OrderInfoCard extends StatelessWidget {
               order.rep?.fullName ?? 'لا يوجد',
               onTap: order.rep != null
                   ? () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => ProfileScreen(
-                            profile: order.rep!,
-                            isSelf: false,
-                          ),
-                        ),
-                      )
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) =>
+                            ProfileScreen(profile: order.rep!, isSelf: false),
+                      ),
+                    )
                   : null,
             ),
             if (order.notes != null && order.notes!.isNotEmpty)
@@ -248,15 +334,20 @@ class _Row extends StatelessWidget {
               ),
             ),
           )
-        : Text(value,
-            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13));
+        : Text(
+            value,
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+          );
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 4),
       child: Row(
         children: [
           Icon(icon, size: 16, color: Colors.grey),
           const SizedBox(width: 8),
-          Text('$label: ', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          Text(
+            '$label: ',
+            style: const TextStyle(color: Colors.grey, fontSize: 13),
+          ),
           Expanded(child: valueWidget),
         ],
       ),
@@ -296,15 +387,20 @@ class _ItemsCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('الأصناف',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const Text(
+              'الأصناف',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
             const SizedBox(height: 8),
-            ...items.map((item) => _ItemRow(
-              item: item,
-              fmt: _fmt,
-              orderStatus: orderStatus,
-              receipts: receipts,
-            )),
+            ...items.map(
+              (item) => _ItemRow(
+                item: item,
+                fmt: _fmt,
+                orderStatus: orderStatus,
+                orderDirection: orderDirection,
+                receipts: receipts,
+              ),
+            ),
           ],
         ),
       ),
@@ -316,11 +412,13 @@ class _ItemRow extends StatelessWidget {
   final OrderItem item;
   final String Function(DateTime?) fmt;
   final OrderStatus orderStatus;
+  final OrderDirection orderDirection;
   final Map<String, String> receipts;
   const _ItemRow({
     required this.item,
     required this.fmt,
     required this.orderStatus,
+    required this.orderDirection,
     required this.receipts,
   });
 
@@ -350,7 +448,9 @@ class _ItemRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            item.isCustom ? Icons.shopping_bag_outlined : Icons.inventory_outlined,
+            item.isCustom
+                ? Icons.shopping_bag_outlined
+                : Icons.inventory_outlined,
             size: 18,
             color: item.isCustom ? Colors.orange : Colors.teal,
           ),
@@ -359,26 +459,33 @@ class _ItemRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.displayName,
-                    style: const TextStyle(fontWeight: FontWeight.w500)),
+                Text(
+                  item.displayName,
+                  style: const TextStyle(fontWeight: FontWeight.w500),
+                ),
                 Text(
                   item.finalQuantity != null
                       ? 'الكمية: ${item.finalQuantity} (مطلوب: ${item.quantity})'
                       : 'الكمية: ${item.quantity}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-                if (!item.isCustom && item.wasUnavailableAtCreation)
+                if (!item.isCustom &&
+                    item.wasUnavailableAtCreation &&
+                    orderDirection == OrderDirection.outbound)
                   Chip(
-                    avatar: const Icon(Icons.warning_amber_rounded,
-                        color: Colors.orange, size: 16),
+                    avatar: const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Colors.orange,
+                      size: 16,
+                    ),
                     label: const Text(
                       'غير متوفر',
                       style: TextStyle(fontSize: 11, color: Colors.orange),
                     ),
-                    backgroundColor:
-                        Colors.orange.withValues(alpha: 0.1),
+                    backgroundColor: Colors.orange.withValues(alpha: 0.1),
                     side: BorderSide(
-                        color: Colors.orange.withValues(alpha: 0.4)),
+                      color: Colors.orange.withValues(alpha: 0.4),
+                    ),
                     visualDensity: VisualDensity.compact,
                   ),
                 if (!item.isCustom &&
@@ -388,26 +495,35 @@ class _ItemRow extends StatelessWidget {
                     children: [
                       Icon(checkIcon, size: 14, color: checkColor),
                       const SizedBox(width: 4),
-                      Text(checkLabel,
-                          style: TextStyle(fontSize: 12, color: checkColor)),
+                      Text(
+                        checkLabel,
+                        style: TextStyle(fontSize: 12, color: checkColor),
+                      ),
                       if (item.checker != null) ...[
-                        const Text('  ·  ',
-                            style: TextStyle(fontSize: 12, color: Colors.grey)),
-                        Text(item.checker!.fullName,
-                            style: const TextStyle(
-                                fontSize: 12, color: Colors.grey)),
+                        const Text(
+                          '  ·  ',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                        Text(
+                          item.checker!.fullName,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
                       ],
                     ],
                   ),
                   if (item.checkedAt != null)
-                    Text(fmt(item.checkedAt),
-                        style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    Text(
+                      fmt(item.checkedAt),
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
                 ],
               ],
             ),
           ),
-          if (item.isCustom)
-            _ReceiptIcon(receiptUrl: receipts[item.id]),
+          if (item.isCustom) _ReceiptIcon(receiptUrl: receipts[item.id]),
         ],
       ),
     );
@@ -426,14 +542,13 @@ class _ReceiptIcon extends StatelessWidget {
         tooltip: 'عرض الإيصال',
         onPressed: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => ReceiptViewerScreen(url: receiptUrl!)),
+          MaterialPageRoute(
+            builder: (_) => ReceiptViewerScreen(url: receiptUrl!),
+          ),
         ),
       );
     }
-    return const Icon(
-      Icons.receipt_long_outlined,
-      color: Colors.grey,
-    );
+    return const Icon(Icons.receipt_long_outlined, color: Colors.grey);
   }
 }
 
@@ -463,7 +578,10 @@ class _EditHistorySectionState extends State<_EditHistorySection> {
     if (!mounted) return;
     switch (result) {
       case AppSuccess(:final data):
-        setState(() { _entries = data; _isLoading = false; });
+        setState(() {
+          _entries = data;
+          _isLoading = false;
+        });
       case AppFailure():
         setState(() => _isLoading = false);
     }
@@ -529,84 +647,105 @@ class _EditHistorySectionState extends State<_EditHistorySection> {
               ],
             ),
             const SizedBox(height: 12),
-            ..._entries.map((entry) => Container(
-              margin: const EdgeInsets.only(bottom: 8),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.blue.shade100),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.person_outline, size: 14, color: Colors.grey.shade600),
-                      const SizedBox(width: 4),
-                      Text(
-                        entry.performer?.fullName ?? 'مجهول',
-                        style: const TextStyle(fontSize: 12, color: Colors.grey),
-                      ),
-                      const Spacer(),
-                      Text(
-                        _fmt(entry.serverTimestamp),
-                        style: const TextStyle(fontSize: 11, color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: Colors.amber.shade50,
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Icon(Icons.format_quote, size: 14, color: Colors.amber),
-                        const SizedBox(width: 4),
-                        Expanded(
-                          child: Text(
-                            entry.reason,
-                            style: const TextStyle(fontSize: 12, fontStyle: FontStyle.italic),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 6),
-                  ...entry.changes.map((change) => Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 2),
-                    child: Row(
+            ..._entries.map(
+              (entry) => Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade100),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
                       children: [
                         Icon(
-                          change['action'] == 'remove_item'
-                              ? Icons.remove_circle_outline
-                              : change['action'] == 'add_item'
-                                  ? Icons.add_circle_outline
-                                  : Icons.edit_outlined,
+                          Icons.person_outline,
                           size: 14,
-                          color: change['action'] == 'remove_item'
-                              ? Colors.red
-                              : change['action'] == 'add_item'
-                                  ? Colors.green
-                                  : Colors.blue,
+                          color: Colors.grey.shade600,
                         ),
-                        const SizedBox(width: 6),
-                        Expanded(
-                          child: Text(
-                            _changeLabel(change),
-                            style: const TextStyle(fontSize: 12),
+                        const SizedBox(width: 4),
+                        Text(
+                          entry.performer?.fullName ?? 'مجهول',
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: Colors.grey,
+                          ),
+                        ),
+                        const Spacer(),
+                        Text(
+                          _fmt(entry.serverTimestamp),
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
                           ),
                         ),
                       ],
                     ),
-                  )),
-                ],
+                    const SizedBox(height: 6),
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Icon(
+                            Icons.format_quote,
+                            size: 14,
+                            color: Colors.amber,
+                          ),
+                          const SizedBox(width: 4),
+                          Expanded(
+                            child: Text(
+                              entry.reason,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontStyle: FontStyle.italic,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    ...entry.changes.map(
+                      (change) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 2),
+                        child: Row(
+                          children: [
+                            Icon(
+                              change['action'] == 'remove_item'
+                                  ? Icons.remove_circle_outline
+                                  : change['action'] == 'add_item'
+                                  ? Icons.add_circle_outline
+                                  : Icons.edit_outlined,
+                              size: 14,
+                              color: change['action'] == 'remove_item'
+                                  ? Colors.red
+                                  : change['action'] == 'add_item'
+                                  ? Colors.green
+                                  : Colors.blue,
+                            ),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                _changeLabel(change),
+                                style: const TextStyle(fontSize: 12),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            )),
+            ),
           ],
         ),
       ),
@@ -636,7 +775,9 @@ class _CommunicationHistorySectionState
   }
 
   Future<List<ChatMessage>> _loadHistory() async {
-    final result = await sl<ChatRepository>().getOrderCommunicationHistory(widget.orderId);
+    final result = await sl<ChatRepository>().getOrderCommunicationHistory(
+      widget.orderId,
+    );
     return switch (result) {
       AppSuccess(:final data) => data,
       AppFailure() => [],
@@ -659,13 +800,18 @@ class _CommunicationHistorySectionState
           children: [
             Row(
               children: [
-                const Icon(Icons.chat_bubble_outline,
-                    size: 18, color: Colors.blueGrey),
+                const Icon(
+                  Icons.chat_bubble_outline,
+                  size: 18,
+                  color: Colors.blueGrey,
+                ),
                 const SizedBox(width: 8),
                 Text(
                   'سجل التواصل (${history.length})',
                   style: const TextStyle(
-                      fontWeight: FontWeight.bold, fontSize: 15),
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                  ),
                 ),
               ],
             ),

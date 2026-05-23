@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
 import '../../inventory/ui/inventory_form_screen.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
+import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
@@ -47,8 +49,7 @@ class StorageOrderDetailScreen extends StatelessWidget {
             appBar: AppBar(title: const Text('تفاصيل الطلب')),
             body: Center(
               child: FilledButton(
-                onPressed: () =>
-                    context.read<StorageOrderDetailCubit>().load(),
+                onPressed: () => context.read<StorageOrderDetailCubit>().load(),
                 child: const Text('إعادة المحاولة'),
               ),
             ),
@@ -71,8 +72,7 @@ class StorageOrderDetailScreen extends StatelessWidget {
             actions: [
               IconButton(
                 icon: const Icon(Icons.refresh),
-                onPressed: () =>
-                    context.read<StorageOrderDetailCubit>().load(),
+                onPressed: () => context.read<StorageOrderDetailCubit>().load(),
               ),
             ],
           ),
@@ -80,7 +80,11 @@ class StorageOrderDetailScreen extends StatelessWidget {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
+              if (order.referenceCode != null)
+                _ReferenceCodeBar(code: order.referenceCode!),
               _InfoCard(order: order),
+              const SizedBox(height: 16),
+              OrderStatusStepper(order: order),
               const SizedBox(height: 16),
               OrderStatusTimeline(order: order, auditLog: state.auditLog),
               const SizedBox(height: 16),
@@ -199,12 +203,15 @@ class _InfoRow extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: Colors.grey),
           const SizedBox(width: 8),
-          Text('$label: ',
-              style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          Text(
+            '$label: ',
+            style: const TextStyle(color: Colors.grey, fontSize: 13),
+          ),
           Expanded(
-            child: Text(value,
-                style: const TextStyle(
-                    fontWeight: FontWeight.w500, fontSize: 13)),
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            ),
           ),
         ],
       ),
@@ -240,15 +247,16 @@ class _ItemsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (state.order.items.isEmpty) {
-      return const Text('لا توجد أصناف في هذا الطلب',
-          style: TextStyle(color: Colors.grey));
+      return const Text(
+        'لا توجد أصناف في هذا الطلب',
+        style: TextStyle(color: Colors.grey),
+      );
     }
 
     final storageTurn = _isStorageTurn(state.order);
     // Check controls only shown for inbound_external (items must be verified)
     final showCheckControls =
-        storageTurn &&
-        state.order.direction == OrderDirection.inboundExternal;
+        storageTurn && state.order.direction == OrderDirection.inboundExternal;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -264,7 +272,8 @@ class _ItemsSection extends StatelessWidget {
             state: state,
             showCheckControls: showCheckControls,
             showQtyEdit: storageTurn && item.inventoryId != null,
-            isFinished: state.order.status == OrderStatus.delivered ||
+            isFinished:
+                state.order.status == OrderStatus.delivered ||
                 state.order.status == OrderStatus.deliveredToStorage,
           ),
         ),
@@ -292,7 +301,9 @@ class _ItemTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveQty = state.effectiveQuantity(item);
     final effectiveStatus = state.effectiveStatus(item);
-    final showWarning = !item.isCustom && item.wasUnavailableAtCreation;
+    final showWarning = !item.isCustom &&
+        item.wasUnavailableAtCreation &&
+        state.order.direction == OrderDirection.outbound;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -311,8 +322,10 @@ class _ItemTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(item.displayName,
-                      style: const TextStyle(fontWeight: FontWeight.w500)),
+                  child: Text(
+                    item.displayName,
+                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  ),
                 ),
                 if (showCheckControls)
                   _ItemCheckControls(
@@ -338,19 +351,23 @@ class _ItemTile extends StatelessWidget {
                 originalQty: item.quantity,
               )
             else
-              Text('الكمية: $effectiveQty',
-                  style: const TextStyle(fontSize: 13, color: Colors.grey)),
+              Text(
+                'الكمية: $effectiveQty',
+                style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
             if (showWarning)
               Chip(
-                avatar: const Icon(Icons.warning_amber_rounded,
-                    color: Colors.orange, size: 16),
+                avatar: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange,
+                  size: 16,
+                ),
                 label: const Text(
                   'غير متوفر',
                   style: TextStyle(fontSize: 11, color: Colors.orange),
                 ),
                 backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                side: BorderSide(
-                    color: Colors.orange.withValues(alpha: 0.4)),
+                side: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
                 visualDensity: VisualDensity.compact,
               ),
             if (item.isCustom)
@@ -376,7 +393,9 @@ class _ItemTile extends StatelessWidget {
   void _openAddToStorage(BuildContext context, OrderItem item) async {
     final json = item.customItemJson;
     final prefill = CustomItemPrefill(
-      name: json != null ? (json['name'] as String? ?? item.customDescription ?? '') : (item.customDescription ?? ''),
+      name: json != null
+          ? (json['name'] as String? ?? item.customDescription ?? '')
+          : (item.customDescription ?? ''),
       quantity: item.effectiveQuantity,
       unit: json?['unit'] as String? ?? 'قطعة',
       sku: json?['sku'] as String?,
@@ -387,9 +406,7 @@ class _ItemTile extends StatelessWidget {
 
     final added = await Navigator.push<bool>(
       context,
-      MaterialPageRoute(
-        builder: (_) => InventoryFormScreen(prefill: prefill),
-      ),
+      MaterialPageRoute(builder: (_) => InventoryFormScreen(prefill: prefill)),
     );
 
     if (added == true && context.mounted) {
@@ -464,9 +481,10 @@ class _QuantityEditorState extends State<_QuantityEditor> {
         Text(
           'الكمية${edited ? ' (معدّلة)' : ''}: ',
           style: TextStyle(
-              fontSize: 13,
-              color: edited ? Colors.blue : Colors.grey,
-              fontWeight: edited ? FontWeight.bold : FontWeight.normal),
+            fontSize: 13,
+            color: edited ? Colors.blue : Colors.grey,
+            fontWeight: edited ? FontWeight.bold : FontWeight.normal,
+          ),
         ),
         SizedBox(
           width: 80,
@@ -478,8 +496,10 @@ class _QuantityEditorState extends State<_QuantityEditor> {
             style: const TextStyle(fontSize: 13),
             decoration: InputDecoration(
               isDense: true,
-              contentPadding:
-                  const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 6,
+              ),
               border: const OutlineInputBorder(),
               hintText: widget.originalQty.toString(),
               suffixText: edited ? '✎' : null,
@@ -488,8 +508,10 @@ class _QuantityEditorState extends State<_QuantityEditor> {
           ),
         ),
         const SizedBox(width: 8),
-        Text('(الأصلية: ${widget.originalQty})',
-            style: const TextStyle(fontSize: 11, color: Colors.grey)),
+        Text(
+          '(الأصلية: ${widget.originalQty})',
+          style: const TextStyle(fontSize: 11, color: Colors.grey),
+        ),
       ],
     );
   }
@@ -594,10 +616,10 @@ class _ActionSectionState extends State<_ActionSection> {
         isActing: widget.state.isActing,
         canAct: true,
         onConfirm: () => context.read<StorageOrderDetailCubit>().confirmPickup(
-              notes: _notesController.text.trim().isEmpty
-                  ? null
-                  : _notesController.text.trim(),
-            ),
+          notes: _notesController.text.trim().isEmpty
+              ? null
+              : _notesController.text.trim(),
+        ),
       );
     }
 
@@ -615,10 +637,10 @@ class _ActionSectionState extends State<_ActionSection> {
         canAct: true,
         onConfirm: () =>
             context.read<StorageOrderDetailCubit>().confirmDelivery(
-                  notes: _notesController.text.trim().isEmpty
-                      ? null
-                      : _notesController.text.trim(),
-                ),
+              notes: _notesController.text.trim().isEmpty
+                  ? null
+                  : _notesController.text.trim(),
+            ),
       );
     }
 
@@ -640,10 +662,10 @@ class _ActionSectionState extends State<_ActionSection> {
         canAct: canConfirm,
         onConfirm: () =>
             context.read<StorageOrderDetailCubit>().confirmDelivery(
-                  notes: _notesController.text.trim().isEmpty
-                      ? null
-                      : _notesController.text.trim(),
-                ),
+              notes: _notesController.text.trim().isEmpty
+                  ? null
+                  : _notesController.text.trim(),
+            ),
       );
     }
 
@@ -673,18 +695,23 @@ class _ActionSectionState extends State<_ActionSection> {
               children: [
                 Icon(icon, color: color),
                 const SizedBox(width: 8),
-                Text(title,
-                    style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 15,
-                        color: color)),
+                Text(
+                  title,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 15,
+                    color: color,
+                  ),
+                ),
               ],
             ),
             const SizedBox(height: 6),
             if (!canAct)
               Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 8,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.orange.shade50,
                   border: Border.all(color: Colors.orange.shade200),
@@ -692,20 +719,29 @@ class _ActionSectionState extends State<_ActionSection> {
                 ),
                 child: Row(
                   children: [
-                    const Icon(Icons.warning_amber,
-                        color: Colors.orange, size: 16),
+                    const Icon(
+                      Icons.warning_amber,
+                      color: Colors.orange,
+                      size: 16,
+                    ),
                     const SizedBox(width: 6),
                     Expanded(
-                      child: Text(subtitle,
-                          style: const TextStyle(
-                              color: Colors.orange, fontSize: 13)),
+                      child: Text(
+                        subtitle,
+                        style: const TextStyle(
+                          color: Colors.orange,
+                          fontSize: 13,
+                        ),
+                      ),
                     ),
                   ],
                 ),
               )
             else
-              Text(subtitle,
-                  style: const TextStyle(color: Colors.grey, fontSize: 13)),
+              Text(
+                subtitle,
+                style: const TextStyle(color: Colors.grey, fontSize: 13),
+              ),
             const SizedBox(height: 12),
             TextField(
               controller: notesController,
@@ -724,13 +760,16 @@ class _ActionSectionState extends State<_ActionSection> {
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(
-                          strokeWidth: 2, color: Colors.white),
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
                     )
                   : Icon(icon),
               label: Text(buttonLabel),
               style: FilledButton.styleFrom(
-                  backgroundColor: color,
-                  minimumSize: const Size.fromHeight(50)),
+                backgroundColor: color,
+                minimumSize: const Size.fromHeight(50),
+              ),
             ),
           ],
         ),
@@ -745,7 +784,8 @@ class _DoneOrWaitingBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDone = order.status == OrderStatus.delivered ||
+    final isDone =
+        order.status == OrderStatus.delivered ||
         order.status == OrderStatus.deliveredToStorage;
 
     if (isDone) {
@@ -757,9 +797,13 @@ class _DoneOrWaitingBadge extends StatelessWidget {
             children: [
               Icon(Icons.verified, color: Colors.green),
               SizedBox(width: 8),
-              Text('اكتمل إجراء المخزن على هذا الطلب',
-                  style: TextStyle(
-                      color: Colors.green, fontWeight: FontWeight.bold)),
+              Text(
+                'اكتمل إجراء المخزن على هذا الطلب',
+                style: TextStyle(
+                  color: Colors.green,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ],
           ),
         ),
@@ -776,9 +820,58 @@ class _DoneOrWaitingBadge extends StatelessWidget {
           children: [
             Icon(Icons.hourglass_top_outlined, color: Colors.grey),
             SizedBox(width: 8),
-            Text('في انتظار إجراء المندوب',
-                style: TextStyle(color: Colors.grey)),
+            Text(
+              'في انتظار إجراء المندوب',
+              style: TextStyle(color: Colors.grey),
+            ),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ReferenceCodeBar extends StatelessWidget {
+  final String code;
+  const _ReferenceCodeBar({required this.code});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          Clipboard.setData(ClipboardData(text: code));
+          AppSnackbar.show(
+            context,
+            message: 'تم نسخ الرمز المرجعي',
+            variant: AppSnackbarVariant.success,
+            duration: const Duration(seconds: 2),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.tag, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                code,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+              const Spacer(),
+              const Icon(Icons.content_copy_outlined, size: 16),
+            ],
+          ),
         ),
       ),
     );

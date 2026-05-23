@@ -1,12 +1,14 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:image_picker/image_picker.dart';
+import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
-import '../../../shared/order_status_theme.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
+import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
 import '../../../shared/widgets/receipt_viewer_screen.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
@@ -73,13 +75,19 @@ class RepOrderDetailScreen extends StatelessWidget {
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
-              _StatusStepper(order.status, order.direction, order.involvesStorage),
+              if (order.referenceCode != null)
+                _ReferenceCodeBar(code: order.referenceCode!),
+              OrderStatusStepper(order: order),
               const SizedBox(height: 16),
               OrderStatusTimeline(order: order, auditLog: state.auditLog),
               const SizedBox(height: 4),
               _InfoCard(order: order),
               const SizedBox(height: 16),
-              _ItemsSection(order: order, receipts: state.receipts, isActing: state.isActing),
+              _ItemsSection(
+                order: order,
+                receipts: state.receipts,
+                isActing: state.isActing,
+              ),
               const SizedBox(height: 24),
               _ActionSection(state: state),
               const SizedBox(height: 24),
@@ -162,7 +170,10 @@ class _ChatBridgeButtonState extends State<_ChatBridgeButton> {
 class _CommunicationHistorySection extends StatelessWidget {
   final List<ChatMessage> history;
   final String orderId;
-  const _CommunicationHistorySection({required this.history, required this.orderId});
+  const _CommunicationHistorySection({
+    required this.history,
+    required this.orderId,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -173,7 +184,11 @@ class _CommunicationHistorySection extends StatelessWidget {
       children: [
         Row(
           children: [
-            const Icon(Icons.chat_bubble_outline, size: 18, color: Colors.blueGrey),
+            const Icon(
+              Icons.chat_bubble_outline,
+              size: 18,
+              color: Colors.blueGrey,
+            ),
             const SizedBox(width: 8),
             Text(
               'سجل التواصل (${history.length})',
@@ -233,94 +248,6 @@ class _HistoryTile extends StatelessWidget {
   }
 }
 
-// ─── Status Stepper ───────────────────────────────────────────────────────────
-
-class _StatusStepper extends StatelessWidget {
-  final OrderStatus status;
-  final OrderDirection direction;
-  final bool involvesStorage;
-  const _StatusStepper(this.status, this.direction, this.involvesStorage);
-
-  List<(OrderStatus, String)> get _steps {
-    switch (direction) {
-      case OrderDirection.inboundRep:
-        return [
-          (OrderStatus.assigned, 'معين'),
-          (OrderStatus.pickedUp, 'تم الاستلام'),
-          (OrderStatus.onTheMove, 'في الطريق'),
-          (OrderStatus.delivered, 'مُسلَّم للمخزن'),
-        ];
-      case OrderDirection.outbound when involvesStorage:
-        return [
-          (OrderStatus.assigned, 'معين'),
-          (OrderStatus.pickedUp, 'أُرسل من المخزن'),
-          (OrderStatus.onTheMove, 'في الطريق'),
-          (OrderStatus.delivered, 'تم التسليم'),
-        ];
-      default:
-        return [
-          (OrderStatus.assigned, 'معين'),
-          (OrderStatus.pickedUp, 'تم الاستلام'),
-          (OrderStatus.onTheMove, 'في الطريق'),
-          (OrderStatus.delivered, 'تم التسليم'),
-        ];
-    }
-  }
-
-  int get _currentIndex =>
-      _steps.indexWhere((s) => s.$1 == status).clamp(0, _steps.length - 1);
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 8),
-        child: Row(
-          children: List.generate(_steps.length * 2 - 1, (i) {
-            if (i.isOdd) {
-              final stepIndex = i ~/ 2;
-              final done = stepIndex < _currentIndex;
-              return Expanded(
-                child: Container(
-                  height: 2,
-                  color: done ? _steps[stepIndex].$1.color : Colors.grey.shade300,
-                ),
-              );
-            }
-            final stepIndex = i ~/ 2;
-            final done = stepIndex <= _currentIndex;
-            final current = stepIndex == _currentIndex;
-            final stepColor = _steps[stepIndex].$1.color;
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircleAvatar(
-                  radius: 14,
-                  backgroundColor: done ? stepColor : Colors.grey.shade300,
-                  child: Icon(
-                    done ? Icons.check : Icons.circle,
-                    size: 14,
-                    color: done ? Colors.white : Colors.grey,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _steps[stepIndex].$2,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: current ? FontWeight.bold : FontWeight.normal,
-                    color: done ? stepColor : Colors.grey,
-                  ),
-                ),
-              ],
-            );
-          }),
-        ),
-      ),
-    );
-  }
-}
-
 // ─── Info Card ────────────────────────────────────────────────────────────────
 
 class _InfoCard extends StatelessWidget {
@@ -360,10 +287,15 @@ class _InfoRow extends StatelessWidget {
         children: [
           Icon(icon, size: 16, color: Colors.grey),
           const SizedBox(width: 8),
-          Text('$label: ', style: const TextStyle(color: Colors.grey, fontSize: 13)),
+          Text(
+            '$label: ',
+            style: const TextStyle(color: Colors.grey, fontSize: 13),
+          ),
           Expanded(
-            child: Text(value,
-                style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+            child: Text(
+              value,
+              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            ),
           ),
         ],
       ),
@@ -388,26 +320,33 @@ class _ItemsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     if (order.items.isEmpty) return const SizedBox.shrink();
 
-    final canUpload = order.status == OrderStatus.assigned ||
+    final canUpload =
+        order.status == OrderStatus.assigned ||
         order.status == OrderStatus.pickedUp ||
         order.status == OrderStatus.onTheMove;
 
-    final isFinished = order.status == OrderStatus.delivered ||
+    final isFinished =
+        order.status == OrderStatus.delivered ||
         order.status == OrderStatus.deliveredToStorage;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('الأصناف',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+        const Text(
+          'الأصناف',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+        ),
         const SizedBox(height: 8),
-        ...order.items.map((item) => _ItemTile(
-              item: item,
-              receiptUrl: receipts[item.id],
-              isActing: isActing,
-              canUpload: canUpload,
-              isFinished: isFinished,
-            )),
+        ...order.items.map(
+          (item) => _ItemTile(
+            item: item,
+            receiptUrl: receipts[item.id],
+            isActing: isActing,
+            canUpload: canUpload,
+            isFinished: isFinished,
+            direction: order.direction,
+          ),
+        ),
       ],
     );
   }
@@ -419,25 +358,31 @@ class _ItemTile extends StatelessWidget {
   final bool isActing;
   final bool canUpload;
   final bool isFinished;
+  final OrderDirection direction;
 
   const _ItemTile({
     required this.item,
     required this.receiptUrl,
     required this.isActing,
     required this.canUpload,
+    required this.direction,
     this.isFinished = false,
   });
 
   @override
   Widget build(BuildContext context) {
     final hasReceipt = receiptUrl != null;
-    final showWarning = !item.isCustom && item.wasUnavailableAtCreation;
+    final showWarning = !item.isCustom &&
+        item.wasUnavailableAtCreation &&
+        direction == OrderDirection.outbound;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Icon(
-          item.isCustom ? Icons.shopping_bag_outlined : Icons.inventory_outlined,
+          item.isCustom
+              ? Icons.shopping_bag_outlined
+              : Icons.inventory_outlined,
           color: item.isCustom ? Colors.orange : Colors.teal,
         ),
         title: Text(item.displayName),
@@ -448,15 +393,17 @@ class _ItemTile extends StatelessWidget {
             Text('الكمية: ${item.effectiveQuantity}'),
             if (showWarning)
               Chip(
-                avatar: const Icon(Icons.warning_amber_rounded,
-                    color: Colors.orange, size: 16),
+                avatar: const Icon(
+                  Icons.warning_amber_rounded,
+                  color: Colors.orange,
+                  size: 16,
+                ),
                 label: const Text(
                   'غير متوفر',
                   style: TextStyle(fontSize: 11, color: Colors.orange),
                 ),
                 backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                side: BorderSide(
-                    color: Colors.orange.withValues(alpha: 0.4)),
+                side: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
                 visualDensity: VisualDensity.compact,
               ),
           ],
@@ -482,9 +429,9 @@ class _ItemTile extends StatelessWidget {
     if (picked == null) return;
     if (!context.mounted) return;
     context.read<RepOrderDetailCubit>().uploadReceipt(
-          orderItemId: item.id,
-          imageFile: File(picked.path),
-        );
+      orderItemId: item.id,
+      imageFile: File(picked.path),
+    );
   }
 
   Future<ImageSource?> _pickSource(BuildContext context) async {
@@ -530,7 +477,10 @@ class _ReceiptButton extends StatelessWidget {
   Widget build(BuildContext context) {
     if (isActing) {
       return const SizedBox(
-          width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2));
+        width: 24,
+        height: 24,
+        child: CircularProgressIndicator(strokeWidth: 2),
+      );
     }
     if (hasReceipt) {
       return IconButton(
@@ -538,7 +488,9 @@ class _ReceiptButton extends StatelessWidget {
         tooltip: 'عرض الإيصال',
         onPressed: () => Navigator.push(
           context,
-          MaterialPageRoute(builder: (_) => ReceiptViewerScreen(url: receiptUrl!)),
+          MaterialPageRoute(
+            builder: (_) => ReceiptViewerScreen(url: receiptUrl!),
+          ),
         ),
       );
     }
@@ -610,30 +562,42 @@ class _ActionSectionState extends State<_ActionSection> {
     final status = order.status;
 
     if (status == OrderStatus.delivered &&
-        (dir == OrderDirection.outbound || dir == OrderDirection.inboundExternal)) {
-      return _CompletedCard(icon: Icons.check_circle, message: 'تم تسليم هذا الطلب');
+        (dir == OrderDirection.outbound ||
+            dir == OrderDirection.inboundExternal)) {
+      return _CompletedCard(
+        icon: Icons.check_circle,
+        message: 'تم تسليم هذا الطلب',
+      );
     }
 
     if (status == OrderStatus.deliveredToStorage) {
-      return _CompletedCard(icon: Icons.verified, message: 'تم الاستلام في المخزن');
+      return _CompletedCard(
+        icon: Icons.verified,
+        message: 'تم الاستلام في المخزن',
+      );
     }
 
     if (dir == OrderDirection.inboundRep && status == OrderStatus.onTheMove) {
       return _WaitingCard(
-          icon: Icons.warehouse_outlined,
-          message: 'في انتظار تأكيد أمين المخزن للاستلام');
+        icon: Icons.warehouse_outlined,
+        message: 'في انتظار تأكيد أمين المخزن للاستلام',
+      );
     }
 
     if (dir == OrderDirection.inboundRep && status == OrderStatus.delivered) {
-      return _CompletedCard(icon: Icons.verified, message: 'تم الاستلام في المخزن');
+      return _CompletedCard(
+        icon: Icons.verified,
+        message: 'تم الاستلام في المخزن',
+      );
     }
 
     if (dir == OrderDirection.outbound &&
         order.involvesStorage &&
         status == OrderStatus.assigned) {
       return _WaitingCard(
-          icon: Icons.warehouse_outlined,
-          message: 'في انتظار أمين المخزن لإصدار البضاعة');
+        icon: Icons.warehouse_outlined,
+        message: 'في انتظار أمين المخزن لإصدار البضاعة',
+      );
     }
 
     Widget? actionButton;
@@ -747,8 +711,10 @@ class _ActionButton extends StatelessWidget {
                 const Icon(Icons.warning_amber, color: Colors.orange, size: 18),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(warningMessage!,
-                      style: const TextStyle(color: Colors.orange, fontSize: 13)),
+                  child: Text(
+                    warningMessage!,
+                    style: const TextStyle(color: Colors.orange, fontSize: 13),
+                  ),
                 ),
               ],
             ),
@@ -759,7 +725,10 @@ class _ActionButton extends StatelessWidget {
               ? const SizedBox(
                   width: 16,
                   height: 16,
-                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: Colors.white,
+                  ),
                 )
               : Icon(icon),
           label: Text(label),
@@ -785,9 +754,13 @@ class _CompletedCard extends StatelessWidget {
           children: [
             Icon(icon, color: Colors.green),
             const SizedBox(width: 8),
-            Text(message,
-                style: const TextStyle(
-                    color: Colors.green, fontWeight: FontWeight.bold)),
+            Text(
+              message,
+              style: const TextStyle(
+                color: Colors.green,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
           ],
         ),
       ),
@@ -814,8 +787,10 @@ class _WaitingCard extends StatelessWidget {
           Icon(icon, color: Colors.grey),
           const SizedBox(width: 12),
           Expanded(
-            child: Text(message,
-                style: const TextStyle(color: Colors.grey, fontSize: 13)),
+            child: Text(
+              message,
+              style: const TextStyle(color: Colors.grey, fontSize: 13),
+            ),
           ),
         ],
       ),
@@ -823,3 +798,49 @@ class _WaitingCard extends StatelessWidget {
   }
 }
 
+class _ReferenceCodeBar extends StatelessWidget {
+  final String code;
+  const _ReferenceCodeBar({required this.code});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(8),
+        onTap: () {
+          Clipboard.setData(ClipboardData(text: code));
+          AppSnackbar.show(
+            context,
+            message: 'تم نسخ الرمز المرجعي',
+            variant: AppSnackbarVariant.success,
+            duration: const Duration(seconds: 2),
+          );
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.tag, size: 16),
+              const SizedBox(width: 8),
+              Text(
+                code,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  fontFeatures: [FontFeature.tabularFigures()],
+                ),
+              ),
+              const Spacer(),
+              const Icon(Icons.content_copy_outlined, size: 16),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -39,6 +39,19 @@ class OrderStatusTimeline extends StatelessWidget {
     }
   }
 
+  DateTime? _overallDeliveredAt(List<_TimelineStep> steps) {
+    if (order.status != OrderStatus.delivered &&
+        order.status != OrderStatus.deliveredToStorage) {
+      return null;
+    }
+    for (final step in steps.reversed) {
+      if (step.countsAsDelivery && step.reached && step.timestamp != null) {
+        return step.timestamp;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final pickedUpEntry = _entryFor(OrderStatus.pickedUp);
@@ -69,7 +82,9 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
           performer: deliveredEntry?.performer,
           notes: deliveredEntry?.notes,
-          reached: status == OrderStatus.delivered ||
+          countsAsDelivery: true,
+          reached:
+              status == OrderStatus.delivered ||
               status == OrderStatus.deliveredToStorage,
         ),
       ];
@@ -85,7 +100,7 @@ class OrderStatusTimeline extends StatelessWidget {
           reached: true,
         ),
         _TimelineStep(
-          label: 'تم استلام البضاعة من العميل',
+          label: 'تم الشراء',
           icon: OrderStatus.pickedUp.icon,
           color: OrderStatus.pickedUp.color,
           timestamp: order.pickedUpAt,
@@ -100,28 +115,26 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.moveStartedAt ?? onTheMoveEntry?.serverTimestamp,
           performer: onTheMoveEntry?.performer,
           notes: onTheMoveEntry?.notes,
-          reached: status == OrderStatus.onTheMove ||
+          reached:
+              status == OrderStatus.onTheMove ||
               status == OrderStatus.delivered ||
               status == OrderStatus.deliveredToStorage,
         ),
         _TimelineStep(
-          label: 'تم التسليم للمخزن',
-          icon: OrderStatus.delivered.icon,
-          color: OrderStatus.delivered.color,
-          timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
-          performer: deliveredEntry?.performer,
-          notes: deliveredEntry?.notes,
-          reached: status == OrderStatus.delivered ||
-              status == OrderStatus.deliveredToStorage,
-        ),
-        _TimelineStep(
-          label: 'تم الاستلام في المخزن',
+          label: 'استلام المخزن',
           icon: OrderStatus.deliveredToStorage.icon,
           color: OrderStatus.deliveredToStorage.color,
-          timestamp: deliveredToStorageEntry?.serverTimestamp,
-          performer: deliveredToStorageEntry?.performer,
-          notes: deliveredToStorageEntry?.notes,
-          reached: status == OrderStatus.deliveredToStorage,
+          timestamp:
+              deliveredToStorageEntry?.serverTimestamp ??
+              order.deliveredAt ??
+              deliveredEntry?.serverTimestamp,
+          performer:
+              deliveredToStorageEntry?.performer ?? deliveredEntry?.performer,
+          notes: deliveredToStorageEntry?.notes ?? deliveredEntry?.notes,
+          countsAsDelivery: true,
+          reached:
+              status == OrderStatus.delivered ||
+              status == OrderStatus.deliveredToStorage,
         ),
       ];
     } else {
@@ -137,7 +150,9 @@ class OrderStatusTimeline extends StatelessWidget {
           reached: true,
         ),
         _TimelineStep(
-          label: order.involvesStorage ? 'تم الاستلام من المخزن' : 'تم الاستلام',
+          label: order.involvesStorage
+              ? 'تم الاستلام من المخزن'
+              : 'تم الاستلام',
           icon: OrderStatus.pickedUp.icon,
           color: OrderStatus.pickedUp.color,
           timestamp: order.pickedUpAt,
@@ -152,7 +167,8 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.moveStartedAt ?? onTheMoveEntry?.serverTimestamp,
           performer: onTheMoveEntry?.performer,
           notes: onTheMoveEntry?.notes,
-          reached: status == OrderStatus.onTheMove ||
+          reached:
+              status == OrderStatus.onTheMove ||
               status == OrderStatus.delivered,
         ),
         _TimelineStep(
@@ -162,6 +178,7 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
           performer: deliveredEntry?.performer,
           notes: deliveredEntry?.notes,
+          countsAsDelivery: true,
           reached: status == OrderStatus.delivered,
         ),
       ];
@@ -173,12 +190,15 @@ class OrderStatusTimeline extends StatelessWidget {
       if (i < steps.length - 1) {
         final from = steps[i];
         final to = steps[i + 1];
-        if (from.reached && to.reached &&
-            from.timestamp != null && to.timestamp != null) {
-          tiles.add(_DurationBadge(from: from.timestamp!, to: to.timestamp!));
-        }
+        tiles.add(_StepConnector(from: from, to: to));
       }
     }
+
+    final overallDeliveredAt = _overallDeliveredAt(steps);
+    final overallDuration =
+        order.createdAt != null && overallDeliveredAt != null
+        ? overallDeliveredAt.difference(order.createdAt!).abs()
+        : null;
 
     return Card(
       child: Padding(
@@ -186,9 +206,15 @@ class OrderStatusTimeline extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('مسار الحالة',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+            const Text(
+              'مسار الحالة',
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+            ),
             const SizedBox(height: 12),
+            if (overallDuration != null) ...[
+              _OverallDurationBadge(duration: overallDuration),
+              const SizedBox(height: 12),
+            ],
             ...tiles,
           ],
         ),
@@ -204,6 +230,7 @@ class _TimelineStep {
   final DateTime? timestamp;
   final Profile? performer;
   final String? notes;
+  final bool countsAsDelivery;
   final bool reached;
 
   const _TimelineStep({
@@ -213,8 +240,70 @@ class _TimelineStep {
     required this.timestamp,
     required this.performer,
     this.notes,
+    this.countsAsDelivery = false,
     required this.reached,
   });
+}
+
+String _fmtDuration(Duration d) {
+  if (d.inSeconds < 60) return '${d.inSeconds} ثانية';
+  if (d.inMinutes < 60) {
+    final mins = d.inMinutes;
+    final secs = d.inSeconds % 60;
+    return secs == 0 ? '$mins دقيقة' : '$mins دقيقة $secs ثانية';
+  }
+  if (d.inHours < 24) {
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    return m == 0 ? '$h ساعة' : '$h ساعة $m دقيقة';
+  }
+  final days = d.inDays;
+  final h = d.inHours % 24;
+  return h == 0 ? '$days يوم' : '$days يوم $h ساعة';
+}
+
+class _OverallDurationBadge extends StatelessWidget {
+  final Duration duration;
+
+  const _OverallDurationBadge({required this.duration});
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accent = Colors.green.shade700;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: accent.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: accent.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.timer_outlined, size: 18, color: accent),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'المدة الإجمالية من الإنشاء إلى التسليم',
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            _fmtDuration(duration),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: accent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 class _StepTile extends StatelessWidget {
@@ -258,8 +347,11 @@ class _StepTile extends StatelessWidget {
               CircleAvatar(
                 radius: 16,
                 backgroundColor: active ? step.color : Colors.grey.shade300,
-                child: Icon(step.icon,
-                    size: 16, color: active ? Colors.white : Colors.grey),
+                child: Icon(
+                  step.icon,
+                  size: 16,
+                  color: active ? Colors.white : Colors.grey,
+                ),
               ),
             ],
           ),
@@ -268,11 +360,13 @@ class _StepTile extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(step.label,
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: active ? null : Colors.grey,
-                    )),
+                Text(
+                  step.label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: active ? null : Colors.grey,
+                  ),
+                ),
                 if (active) ...[
                   const SizedBox(height: 2),
                   Text(
@@ -290,21 +384,29 @@ class _StepTile extends StatelessWidget {
                       child: Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Icon(Icons.notes, size: 13, color: Colors.blueGrey),
+                          const Icon(
+                            Icons.notes,
+                            size: 13,
+                            color: Colors.blueGrey,
+                          ),
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
                               step.notes!,
                               style: const TextStyle(
-                                  fontSize: 12, color: Colors.blueGrey),
+                                fontSize: 12,
+                                color: Colors.blueGrey,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ),
                 ] else
-                  Text('لم يتم بعد',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text(
+                    'لم يتم بعد',
+                    style: const TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
               ],
             ),
           ),
@@ -314,45 +416,96 @@ class _StepTile extends StatelessWidget {
   }
 }
 
-class _DurationBadge extends StatelessWidget {
-  final DateTime from;
-  final DateTime to;
-  const _DurationBadge({required this.from, required this.to});
+class _StepConnector extends StatelessWidget {
+  final _TimelineStep from;
+  final _TimelineStep to;
 
-  String _fmtDuration(Duration d) {
-    if (d.inSeconds < 60) return '${d.inSeconds} ثانية';
-    if (d.inMinutes < 60) {
-      final mins = d.inMinutes;
-      final secs = d.inSeconds % 60;
-      return secs == 0 ? '$mins دقيقة' : '$mins دقيقة $secs ثانية';
+  const _StepConnector({required this.from, required this.to});
+
+  bool get _hasDuration =>
+      from.reached &&
+      to.reached &&
+      from.timestamp != null &&
+      to.timestamp != null;
+
+  List<Color> get _colors {
+    if (from.reached && to.reached) {
+      return [from.color, to.color];
     }
-    if (d.inHours < 24) {
-      final h = d.inHours;
-      final m = d.inMinutes % 60;
-      return m == 0 ? '$h ساعة' : '$h ساعة $m دقيقة';
+    if (from.reached) {
+      return [
+        from.color.withValues(alpha: 0.72),
+        to.color.withValues(alpha: 0.56),
+      ];
     }
-    final days = d.inDays;
-    final h = d.inHours % 24;
-    return h == 0 ? '$days يوم' : '$days يوم $h ساعة';
+    return [
+      from.color.withValues(alpha: 0.38),
+      to.color.withValues(alpha: 0.38),
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
-    final d = to.difference(from).abs();
+    final colors = _colors;
     return Padding(
-      padding: const EdgeInsets.only(left: 10, bottom: 12),
+      padding: const EdgeInsetsDirectional.only(start: 10, end: 6, bottom: 12),
       child: Row(
         children: [
           Container(
-            width: 12,
-            height: 1,
-            color: Colors.grey.shade400,
+            width: 44,
+            height: 7,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(999),
+              gradient: LinearGradient(
+                begin: AlignmentDirectional.centerStart,
+                end: AlignmentDirectional.centerEnd,
+                colors: colors,
+              ),
+              boxShadow: from.reached
+                  ? [
+                      BoxShadow(
+                        color: colors.last.withValues(alpha: 0.22),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ]
+                  : null,
+            ),
           ),
-          const SizedBox(width: 4),
-          Text(
-            _fmtDuration(d),
-            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-          ),
+          const SizedBox(width: 8),
+          if (_hasDuration)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(
+                color: colors.last.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(color: colors.last.withValues(alpha: 0.22)),
+              ),
+              child: Text(
+                _fmtDuration(to.timestamp!.difference(from.timestamp!).abs()),
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: colors.last.withValues(alpha: 0.82),
+                ),
+              ),
+            )
+          else
+            Expanded(
+              child: Container(
+                height: 1,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: AlignmentDirectional.centerStart,
+                    end: AlignmentDirectional.centerEnd,
+                    colors: [
+                      colors.last.withValues(alpha: 0.25),
+                      colors.last.withValues(alpha: 0),
+                    ],
+                  ),
+                ),
+              ),
+            ),
         ],
       ),
     );

@@ -41,9 +41,11 @@ import '../../features/inventory/logic/inventory_detail_cubit.dart';
 import '../../features/inventory/logic/inventory_form_cubit.dart';
 import '../../features/inventory/logic/inventory_list_cubit.dart';
 import '../../features/chat/data/chat_repository.dart';
+import '../../features/chat/logic/chat_directory_cubit.dart';
 import '../../features/chat/logic/chat_threads_cubit.dart';
 import '../../features/chat/logic/order_chat_badge_cubit.dart';
 import '../../features/entities/logic/entities_cubit.dart';
+import '../../features/entities/logic/import_entities_cubit.dart';
 import '../../shared/models/inventory_item.dart';
 
 final sl = GetIt.instance;
@@ -75,12 +77,15 @@ Future<void> setupDependencies() async {
   sl.registerLazySingleton<RepOrdersRepository>(() => RepOrdersRepository());
   sl.registerLazySingleton<ChatRepository>(() => ChatRepository());
 
-  // Chat cubits (singleton badge cubit; factory threads cubit)
+  // Chat cubits (singleton badge cubit; factory threads + directory cubits)
   sl.registerLazySingleton<OrderChatBadgeCubit>(
     () => OrderChatBadgeCubit(sl<ChatRepository>()),
   );
   sl.registerFactory<ChatThreadsCubit>(
     () => ChatThreadsCubit(sl<ChatRepository>()),
+  );
+  sl.registerFactory<ChatDirectoryCubit>(
+    () => ChatDirectoryCubit(sl<ChatRepository>()),
   );
 
   // Auth & Orders
@@ -180,5 +185,8 @@ Future<void> setupDependencies() async {
   // Entities
   sl.registerFactory<EntitiesCubit>(
     () => EntitiesCubit(sl<EntityRepository>()),
+  );
+  sl.registerFactory<ImportEntitiesCubit>(
+    () => ImportEntitiesCubit(sl<EntityRepository>()),
   );
 }

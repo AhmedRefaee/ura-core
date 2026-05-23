@@ -1,17 +1,43 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/di/injection.dart';
 import '../../../shared/models/entity.dart';
 import '../logic/entities_cubit.dart';
+import '../logic/import_entities_cubit.dart';
+import 'import_entities_screen.dart';
 import 'widgets/entity_form_sheet.dart';
 
 class EntitiesScreen extends StatelessWidget {
   const EntitiesScreen({super.key});
+
+  Future<void> _openImport(BuildContext context) async {
+    final cubit = context.read<EntitiesCubit>();
+    final imported = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<ImportEntitiesCubit>(),
+          child: const ImportEntitiesScreen(),
+        ),
+      ),
+    );
+    if (imported == true && context.mounted) {
+      cubit.load();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: const Text('إدارة الجهات'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.upload_file_outlined),
+            tooltip: 'استيراد من Excel',
+            onPressed: () => _openImport(context),
+          ),
+        ],
       ),
       body: Column(
         children: [

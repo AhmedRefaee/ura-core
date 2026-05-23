@@ -101,4 +101,18 @@ class EntityRepository {
       return AppFailure(ErrorHandler.handle(e));
     }
   }
+
+  Future<AppResult<void>> upsertEntities(
+      List<Map<String, dynamic>> rows) async {
+    try {
+      logger.d('EntityRepository → upsertEntities | ${rows.length} rows');
+      await _supabase.from('entities').upsert(rows, onConflict: 'id');
+      logger.i('EntityRepository → upsert: ${rows.length} entities applied');
+      return const AppSuccess(null);
+    } catch (e, st) {
+      logger.e('EntityRepository → upsertEntities failed',
+          error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
 }

@@ -1,6 +1,9 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../models/order.dart';
+import 'order_list_tile.dart';
 
 enum OrderSortMode { mostRecent, oldest, frequent }
 
@@ -198,41 +201,60 @@ class _GroupTile extends StatelessWidget {
       );
     }
 
-    return Padding(
-      padding: EdgeInsetsDirectional.only(start: 12.0 * depth),
-      child: tile,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final maxIndent = constraints.maxWidth * 0.04;
+        final indent = math.min(12.0 * depth, maxIndent);
+        return Padding(
+          padding: EdgeInsetsDirectional.only(start: indent),
+          child: tile,
+        );
+      },
     );
   }
 
   List<Widget> _buildOrderChildren(BuildContext context) {
     if (viewMode == OrderViewMode.list) {
-      return group.orders.map((order) => orderBuilder(context, order)).toList();
+      return group.orders
+          .map(
+            (order) => GroupedOrderScope(
+              insetCard: true,
+              child: orderBuilder(context, order),
+            ),
+          )
+          .toList();
     }
 
     return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final count = constraints.maxWidth >= 560 ? 3 : 2;
-            return GridView.builder(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: count,
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                mainAxisExtent: _orderGridTileExtent(
-                  constraints.maxWidth,
-                  count,
-                ),
-              ),
-              itemBuilder: (context, index) =>
-                  orderBuilder(context, group.orders[index]),
-              itemCount: group.orders.length,
-            );
-          },
-        ),
+      LayoutBuilder(
+        builder: (context, constraints) {
+          final narrow = constraints.maxWidth < 380;
+          final hPad = narrow ? 6.0 : 12.0;
+          return Padding(
+            padding: EdgeInsets.fromLTRB(hPad, 4, hPad, 12),
+            child: LayoutBuilder(
+              builder: (context, innerConstraints) {
+                final count = innerConstraints.maxWidth >= 560 ? 3 : 2;
+                return GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: count,
+                    mainAxisSpacing: 10,
+                    crossAxisSpacing: 10,
+                    mainAxisExtent: _orderGridTileExtent(
+                      innerConstraints.maxWidth,
+                      count,
+                    ),
+                  ),
+                  itemBuilder: (context, index) =>
+                      orderBuilder(context, group.orders[index]),
+                  itemCount: group.orders.length,
+                );
+              },
+            ),
+          );
+        },
       ),
     ];
   }
@@ -249,12 +271,7 @@ double _orderGridTileExtent(double availableWidth, int columnCount) {
 }
 
 DateTime orderSortDate(Order order) {
-  return order.deliveredAt ??
-      order.moveStartedAt ??
-      order.pickedUpAt ??
-      order.assignedAt ??
-      order.createdAt ??
-      DateTime.fromMillisecondsSinceEpoch(0);
+  return order.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
 }
 
 List<Order> sortOrders(List<Order> orders, OrderSortMode mode) {

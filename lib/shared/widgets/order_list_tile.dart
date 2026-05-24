@@ -2,6 +2,26 @@ import 'package:flutter/material.dart';
 import '../models/order.dart';
 import '../order_status_theme.dart';
 
+class GroupedOrderScope extends InheritedWidget {
+  final bool insetCard;
+
+  const GroupedOrderScope({
+    super.key,
+    required this.insetCard,
+    required super.child,
+  });
+
+  static bool insetOf(BuildContext context) {
+    final scope = context
+        .dependOnInheritedWidgetOfExactType<GroupedOrderScope>();
+    return scope?.insetCard ?? false;
+  }
+
+  @override
+  bool updateShouldNotify(GroupedOrderScope oldWidget) =>
+      insetCard != oldWidget.insetCard;
+}
+
 class OrderListTile extends StatelessWidget {
   final Order order;
   final VoidCallback? onTap;
@@ -32,9 +52,12 @@ class OrderListTile extends StatelessWidget {
     final statusColor = order.status.color;
     final orderDateLabel = _formatOrderDate(order.createdAt);
     final completionDurationLabel = _formatCompletionDuration(order);
+    final inset = GroupedOrderScope.insetOf(context);
 
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      margin: inset
+          ? const EdgeInsets.symmetric(vertical: 6)
+          : const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(12),
@@ -79,39 +102,15 @@ class OrderListTile extends StatelessWidget {
                         completionDurationLabel: completionDurationLabel,
                       ),
                     ],
-                    if (order.notes != null && order.notes!.isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        order.notes!,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: Colors.grey,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 10,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: statusColor.withAlpha(30),
-                  border: Border.all(color: statusColor),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  order.statusLabel,
-                  style: TextStyle(
-                    color: statusColor,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                  ),
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 120),
+                child: _StatusBadge(
+                  label: order.statusLabel,
+                  color: statusColor,
                 ),
               ),
               if (onCopy != null)
@@ -179,23 +178,14 @@ class OrderGridCard extends StatelessWidget {
               Row(
                 children: [
                   Icon(icon, color: iconColor, size: 24),
-                  const Spacer(),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: statusColor.withAlpha(30),
-                      border: Border.all(color: statusColor),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: Text(
-                      order.statusLabel,
-                      style: TextStyle(
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Align(
+                      alignment: AlignmentDirectional.centerEnd,
+                      child: _StatusBadge(
+                        label: order.statusLabel,
                         color: statusColor,
-                        fontWeight: FontWeight.bold,
-                        fontSize: 10,
+                        compact: true,
                       ),
                     ),
                   ),
@@ -328,13 +318,54 @@ class _OrderMetaPill extends StatelessWidget {
       children: [
         Icon(icon, size: compact ? 12 : 13, color: color),
         const SizedBox(width: 4),
-        Text(
-          label,
-          style: TextStyle(fontSize: compact ? 10 : 11, color: color),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
+        Flexible(
+          child: Text(
+            label,
+            style: TextStyle(fontSize: compact ? 10 : 11, color: color),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            softWrap: false,
+          ),
         ),
       ],
+    );
+  }
+}
+
+class _StatusBadge extends StatelessWidget {
+  final String label;
+  final Color color;
+  final bool compact;
+
+  const _StatusBadge({
+    required this.label,
+    required this.color,
+    this.compact = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: compact ? 8 : 10,
+        vertical: compact ? 4 : 6,
+      ),
+      decoration: BoxDecoration(
+        color: color.withAlpha(30),
+        border: Border.all(color: color),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: color,
+          fontWeight: FontWeight.bold,
+          fontSize: compact ? 10 : 11,
+        ),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        softWrap: false,
+      ),
     );
   }
 }

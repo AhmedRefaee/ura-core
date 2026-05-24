@@ -2,9 +2,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ura_core/core/cache/memory_cache.dart';
 
 // MemoryCache uses DateTime.now() internally, so TTL tests use a real
-// short-lived cache rather than a fake clock.
+// short-lived cache rather than a fake clock. The TTL is generous enough to
+// absorb Future.delayed jitter on slower hosts (Windows timers in particular).
 MemoryCache<String, String> _shortCache() =>
-    MemoryCache(ttl: const Duration(milliseconds: 10));
+    MemoryCache(ttl: const Duration(milliseconds: 100));
 
 void main() {
   group('MemoryCache', () {
@@ -28,7 +29,7 @@ void main() {
     test('miss after TTL expires', () async {
       final c = _shortCache();
       c.set('key', 'value');
-      await Future.delayed(const Duration(milliseconds: 20));
+      await Future.delayed(const Duration(milliseconds: 200));
       expect(c.get('key'), isNull);
     });
 
@@ -66,21 +67,21 @@ void main() {
     test('overwriting a key resets its TTL', () async {
       final c = _shortCache();
       c.set('key', 'first');
-      // Wait almost to expiry, then overwrite to reset TTL
-      await Future.delayed(const Duration(milliseconds: 5));
+      // Wait most of the way to expiry, then overwrite to reset TTL
+      await Future.delayed(const Duration(milliseconds: 60));
       c.set('key', 'second');
       // Should still be readable immediately after overwrite
       expect(c.get('key'), 'second');
-      // Wait for the original TTL window to pass — key should still be live
-      // because the overwrite restarted the clock
-      await Future.delayed(const Duration(milliseconds: 8));
+      // Wait past the original TTL window — key should still be live because
+      // the overwrite restarted the clock (60ms + 60ms = 120ms total > 100ms)
+      await Future.delayed(const Duration(milliseconds: 60));
       expect(c.get('key'), 'second');
     });
 
     test('expired entry is removed on next get', () async {
       final c = _shortCache();
       c.set('key', 'val');
-      await Future.delayed(const Duration(milliseconds: 20));
+      await Future.delayed(const Duration(milliseconds: 200));
       // get triggers eviction
       expect(c.get('key'), isNull);
       // setting again after eviction should work

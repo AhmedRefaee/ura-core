@@ -41,9 +41,11 @@ class StatsCubit extends Cubit<StatsState> {
 
   Future<void> load(String period) async {
     logger.d('StatsCubit → load: $period');
+    if (isClosed) return;
     emit(StatsLoading());
     final (start, end) = _getDateRange(period);
     final result = await _repo.fetchAll(start, end);
+    if (isClosed) return;
     switch (result) {
       case AppSuccess(:final data):
         emit(StatsLoaded(data: data, period: period));

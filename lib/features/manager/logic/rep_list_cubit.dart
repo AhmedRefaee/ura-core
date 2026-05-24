@@ -56,6 +56,8 @@ class RepListCubit extends Cubit<RepListState> {
       _repo.fetchLatestOrderStatusByRep(),
     ]);
 
+    if (isClosed) return;
+
     final repsError = results[0].failureOrNull;
     if (repsError != null) {
       logger.e('RepListCubit → load failed: ${repsError.message}');

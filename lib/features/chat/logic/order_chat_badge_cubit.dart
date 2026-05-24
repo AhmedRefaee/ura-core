@@ -54,7 +54,11 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState> {
           _sub = null;
           emit(const OrderChatBadgeState({}));
         } else if (data.event == AuthChangeEvent.tokenRefreshed) {
-          logger.d('OrderChatBadgeCubit → Token refreshed, subscription should remain active');
+          logger.d('OrderChatBadgeCubit → Token refreshed');
+          if (_sub == null) {
+            logger.w('OrderChatBadgeCubit → Subscription was gone after token refresh, resubscribing');
+            subscribe();
+          }
         }
       },
       onError: (e, st) {
@@ -112,12 +116,14 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState> {
             logger.e('OrderChatBadgeCubit → Realtime subscription failed');
           }
           
-          // Clear the subscription so it can be recreated
+          // Cancel and clear so it can be recreated on next token refresh
+          _sub?.cancel();
           _sub = null;
           _logDiagnostic('Subscription cleared after error');
         },
         onDone: () {
           logger.w('OrderChatBadgeCubit → Stream completed unexpectedly');
+          _sub?.cancel();
           _sub = null;
           _logDiagnostic('Stream done, subscription cleared');
         },

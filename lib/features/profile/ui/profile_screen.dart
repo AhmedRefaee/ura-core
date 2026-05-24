@@ -17,11 +17,7 @@ class ProfileScreen extends StatefulWidget {
   final Profile profile;
   final bool isSelf;
 
-  const ProfileScreen({
-    super.key,
-    required this.profile,
-    this.isSelf = true,
-  });
+  const ProfileScreen({super.key, required this.profile, this.isSelf = true});
 
   @override
   State<ProfileScreen> createState() => _ProfileScreenState();
@@ -94,10 +90,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   ],
                 );
               }
-              final active =
-                  state is UserOrdersLoaded ? state.orders : <Order>[];
-              final done =
-                  state is UserOrdersLoaded ? state.doneOrders : <Order>[];
+              final active = state is UserOrdersLoaded
+                  ? state.orders
+                  : <Order>[];
+              final done = state is UserOrdersLoaded
+                  ? state.doneOrders
+                  : <Order>[];
               return _ProfileBody(
                 profile: widget.profile,
                 phone: _phone,
@@ -151,31 +149,29 @@ class _ProfileBodyState extends State<_ProfileBody> {
       OrderStatus.deliveredToStorage,
     };
     final allOrders = [...widget.active, ...widget.done];
-    final delivered =
-        allOrders.where((o) => doneStatuses.contains(o.status)).toList();
+    final delivered = allOrders
+        .where((o) => doneStatuses.contains(o.status))
+        .toList();
 
     double? avgPickup, avgTransit, avgTotal;
     if (widget.profile.role == UserRole.rep) {
       final pickups = allOrders
           .where((o) => o.assignedAt != null && o.pickedUpAt != null)
-          .map((o) =>
-              o.pickedUpAt!.difference(o.assignedAt!).inMinutes / 60.0)
+          .map((o) => o.pickedUpAt!.difference(o.assignedAt!).inMinutes / 60.0)
           .toList();
       if (pickups.isNotEmpty) {
         avgPickup = pickups.reduce((a, b) => a + b) / pickups.length;
       }
       final transits = delivered
           .where((o) => o.pickedUpAt != null && o.deliveredAt != null)
-          .map((o) =>
-              o.deliveredAt!.difference(o.pickedUpAt!).inMinutes / 60.0)
+          .map((o) => o.deliveredAt!.difference(o.pickedUpAt!).inMinutes / 60.0)
           .toList();
       if (transits.isNotEmpty) {
         avgTransit = transits.reduce((a, b) => a + b) / transits.length;
       }
       final totals = delivered
           .where((o) => o.createdAt != null && o.deliveredAt != null)
-          .map((o) =>
-              o.deliveredAt!.difference(o.createdAt!).inMinutes / 60.0)
+          .map((o) => o.deliveredAt!.difference(o.createdAt!).inMinutes / 60.0)
           .toList();
       if (totals.isNotEmpty) {
         avgTotal = totals.reduce((a, b) => a + b) / totals.length;
@@ -257,22 +253,7 @@ class _ProfileBodyState extends State<_ProfileBody> {
 
           // ── Done orders (paginated) ──────────────────────────────────────
           if (widget.done.isNotEmpty) ...[
-            SliverPadding(
-              padding: EdgeInsets.fromLTRB(
-                AppSpacing.horizontalMedium,
-                AppSpacing.verticalMedium,
-                AppSpacing.horizontalMedium,
-                AppSpacing.verticalXSmall,
-              ),
-              sliver: SliverToBoxAdapter(
-                child: Text(
-                  'المكتملة (${widget.done.length})',
-                  style: AppTextStyles.titleMedium.copyWith(
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
+          
             SliverPadding(
               padding: EdgeInsets.symmetric(
                 horizontal: AppSpacing.horizontalMedium,
@@ -301,8 +282,7 @@ class _ProfileBodyState extends State<_ProfileBody> {
                     vertical: AppSpacing.verticalSmall,
                   ),
                   child: OutlinedButton.icon(
-                    onPressed: () =>
-                        setState(() => _doneLimit += _pageSize),
+                    onPressed: () => setState(() => _doneLimit += _pageSize),
                     icon: const Icon(Icons.expand_more),
                     label: Text(
                       'عرض المزيد — ${widget.done.length - _doneLimit} متبقية',
@@ -697,10 +677,7 @@ class _EditPhoneDialogState extends State<_EditPhoneDialog> {
           onPressed: () => Navigator.pop(context),
           child: const Text('إلغاء'),
         ),
-        FilledButton(
-          onPressed: _submit,
-          child: const Text('حفظ'),
-        ),
+        FilledButton(onPressed: _submit, child: const Text('حفظ')),
       ],
     );
   }

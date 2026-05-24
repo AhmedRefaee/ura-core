@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/di/injection.dart';
 import '../../../shared/models/profile.dart';
 import '../../../shared/widgets/notification_dot.dart';
 import '../../notifications/logic/notifications_badge_cubit.dart';
@@ -39,64 +40,67 @@ class _StatsScreenState extends State<StatsScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return ColoredBox(
-      color: theme.colorScheme.surface,
-      child: SafeArea(
-        top: true,
-        bottom: false,
-        child: BlocBuilder<StatsCubit, StatsState>(
-          builder: (context, state) {
-            if (state is StatsLoading) {
-              return CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  _buildSliverAppBar(context),
-                  const SliverFillRemaining(
-                    child: Center(child: CircularProgressIndicator()),
-                  ),
-                ],
-              );
-            }
-            if (state is StatsError) {
-              return CustomScrollView(
-                physics: const AlwaysScrollableScrollPhysics(),
-                slivers: [
-                  _buildSliverAppBar(context),
-                  SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.error_outline,
-                              size: 64, color: Colors.red),
-                          const SizedBox(height: 16),
-                          Text(state.message,
-                              style: const TextStyle(color: Colors.red),
-                              textAlign: TextAlign.center),
-                          const SizedBox(height: 16),
-                          FilledButton(
-                            onPressed: () => context
-                                .read<StatsCubit>()
-                                .load(_selectedPeriod),
-                            child: const Text('إعادة المحاولة'),
-                          ),
-                        ],
+    return BlocProvider.value(
+      value: sl<NotificationsBadgeCubit>(),
+      child: Scaffold(
+        backgroundColor: theme.colorScheme.surface,
+        body: SafeArea(
+          top: true,
+          bottom: false,
+          child: BlocBuilder<StatsCubit, StatsState>(
+            builder: (context, state) {
+              if (state is StatsLoading) {
+                return CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    _buildSliverAppBar(context),
+                    const SliverFillRemaining(
+                      child: Center(child: CircularProgressIndicator()),
+                    ),
+                  ],
+                );
+              }
+              if (state is StatsError) {
+                return CustomScrollView(
+                  physics: const AlwaysScrollableScrollPhysics(),
+                  slivers: [
+                    _buildSliverAppBar(context),
+                    SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.error_outline,
+                                size: 64, color: Colors.red),
+                            const SizedBox(height: 16),
+                            Text(state.message,
+                                style: const TextStyle(color: Colors.red),
+                                textAlign: TextAlign.center),
+                            const SizedBox(height: 16),
+                            FilledButton(
+                              onPressed: () => context
+                                  .read<StatsCubit>()
+                                  .load(_selectedPeriod),
+                              child: const Text('إعادة المحاولة'),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                ],
-              );
-            }
-            if (state is StatsLoaded) {
-              return RefreshIndicator(
-                onRefresh: () =>
-                    context.read<StatsCubit>().load(_selectedPeriod),
-                child: _buildContent(context, state.data),
-              );
-            }
-            return const SizedBox.shrink();
-          },
+                  ],
+                );
+              }
+              if (state is StatsLoaded) {
+                return RefreshIndicator(
+                  onRefresh: () =>
+                      context.read<StatsCubit>().load(_selectedPeriod),
+                  child: _buildContent(context, state.data),
+                );
+              }
+              return const SizedBox.shrink();
+            },
+          ),
         ),
       ),
     );

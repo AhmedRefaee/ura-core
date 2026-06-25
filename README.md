@@ -7,6 +7,7 @@
 **Inventory, orders, and team chat — in one app.**
 
 [![Download APK](https://img.shields.io/badge/Download-Android%20APK-1abc9c?style=for-the-badge&logo=android)](https://github.com/AhmedRefaee/ura-core/releases/latest/download/URA.apk)
+[![Open Web App](https://img.shields.io/badge/Open-Web%20App-orange?style=for-the-badge&logo=googlechrome&logoColor=white)](https://ura-core-9981c.web.app)
 
 </div>
 
@@ -24,6 +25,9 @@ fulfillment. Different team members get a tailored view based on their role:
 
 Everyone gets built-in **chat** (with image sharing) and **push notifications**
 so nothing gets missed.
+
+URA also runs in the browser at **[ura-core-9981c.web.app](https://ura-core-9981c.web.app)** —
+no install needed, works on any device.
 
 ## Download (Android)
 

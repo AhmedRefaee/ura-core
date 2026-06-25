@@ -5,6 +5,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/entity.dart';
 import '../../verifier/data/entity_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class EntitiesState extends Equatable {
@@ -45,12 +46,13 @@ class EntitiesLoaded extends EntitiesState {
     String? query,
     EntityCategory? categoryFilter,
     bool? clearCategoryFilter,
-  }) =>
-      EntitiesLoaded(
-        all: all ?? this.all,
-        query: query ?? this.query,
-        categoryFilter: clearCategoryFilter == true ? null : (categoryFilter ?? this.categoryFilter),
-      );
+  }) => EntitiesLoaded(
+    all: all ?? this.all,
+    query: query ?? this.query,
+    categoryFilter: clearCategoryFilter == true
+        ? null
+        : (categoryFilter ?? this.categoryFilter),
+  );
 
   @override
   List<Object?> get props => [all, query, categoryFilter];
@@ -65,38 +67,38 @@ class EntitiesError extends EntitiesState {
 
 // ── Cubit ─────────────────────────────────────────────────────────────────────
 
-class EntitiesCubit extends Cubit<EntitiesState> {
+class EntitiesCubit extends Cubit<EntitiesState> with SafeEmit<EntitiesState> {
   final EntityRepository _repo;
 
   EntitiesCubit(this._repo) : super(EntitiesInitial());
 
   Future<void> load() async {
     logger.d('EntitiesCubit → load');
-    emit(EntitiesLoading());
+    safeEmit(EntitiesLoading());
     final result = await _repo.fetchEntities();
     switch (result) {
       case AppSuccess(:final data):
-        emit(EntitiesLoaded(all: data));
+        safeEmit(EntitiesLoaded(all: data));
         logger.i('EntitiesCubit → loaded ${data.length} entities');
       case AppFailure(:final error):
         logger.e('EntitiesCubit → load failed: ${error.message}');
-        emit(EntitiesError(error.message));
+        safeEmit(EntitiesError(error.message));
     }
   }
 
   void search(String query) {
     final s = state;
     if (s is! EntitiesLoaded) return;
-    emit(s.copyWith(query: query));
+    safeEmit(s.copyWith(query: query));
   }
 
   void filterByCategory(EntityCategory? category) {
     final s = state;
     if (s is! EntitiesLoaded) return;
     if (category == null) {
-      emit(s.copyWith(clearCategoryFilter: true));
+      safeEmit(s.copyWith(clearCategoryFilter: true));
     } else {
-      emit(s.copyWith(categoryFilter: category));
+      safeEmit(s.copyWith(categoryFilter: category));
     }
   }
 

@@ -1,0 +1,7 @@
+{
+  "editor.unicodeHighlight.allowedLocales": {
+    "ar": true
+  },
+  "editor.unicodeHighlight.ambiguousCharacters": false,
+  "editor.unicodeHighlight.invisibleCharacters": false
+}

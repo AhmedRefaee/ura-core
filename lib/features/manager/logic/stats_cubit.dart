@@ -5,6 +5,7 @@ import '../../../core/logging/app_logger.dart';
 import '../data/stats_models.dart';
 import '../data/stats_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class StatsState extends Equatable {
@@ -34,7 +35,7 @@ class StatsError extends StatsState {
 
 // ── Cubit ─────────────────────────────────────────────────────────────────────
 
-class StatsCubit extends Cubit<StatsState> {
+class StatsCubit extends Cubit<StatsState> with SafeEmit<StatsState> {
   final StatsRepository _repo;
 
   StatsCubit(this._repo) : super(StatsInitial());
@@ -42,16 +43,16 @@ class StatsCubit extends Cubit<StatsState> {
   Future<void> load(String period) async {
     logger.d('StatsCubit → load: $period');
     if (isClosed) return;
-    emit(StatsLoading());
+    safeEmit(StatsLoading());
     final (start, end) = _getDateRange(period);
     final result = await _repo.fetchAll(start, end);
     if (isClosed) return;
     switch (result) {
       case AppSuccess(:final data):
-        emit(StatsLoaded(data: data, period: period));
+        safeEmit(StatsLoaded(data: data, period: period));
       case AppFailure(:final error):
         logger.e('StatsCubit → load failed: ${error.message}');
-        emit(StatsError(error.message));
+        safeEmit(StatsError(error.message));
     }
   }
 

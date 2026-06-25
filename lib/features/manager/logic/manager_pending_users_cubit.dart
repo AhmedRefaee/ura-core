@@ -6,6 +6,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/profile.dart';
 import '../data/manager_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class ManagerPendingUsersState extends Equatable {
@@ -34,7 +35,8 @@ class ManagerPendingUsersError extends ManagerPendingUsersState {
 
 // ── Cubit ─────────────────────────────────────────────────────────────────────
 
-class ManagerPendingUsersCubit extends Cubit<ManagerPendingUsersState> {
+class ManagerPendingUsersCubit extends Cubit<ManagerPendingUsersState>
+    with SafeEmit<ManagerPendingUsersState> {
   final ManagerRepository _repo;
   RealtimeChannel? _channel;
 
@@ -42,7 +44,7 @@ class ManagerPendingUsersCubit extends Cubit<ManagerPendingUsersState> {
 
   Future<void> load() async {
     logger.d('ManagerPendingUsersCubit → load');
-    emit(ManagerPendingUsersLoading());
+    safeEmit(ManagerPendingUsersLoading());
     await _fetchUsers();
   }
 
@@ -50,7 +52,7 @@ class ManagerPendingUsersCubit extends Cubit<ManagerPendingUsersState> {
     final result = await _repo.fetchPendingUsers();
     switch (result) {
       case AppSuccess(:final data):
-        emit(ManagerPendingUsersLoaded(data));
+        safeEmit(ManagerPendingUsersLoaded(data));
         _channel ??= Supabase.instance.client
             .channel('pending-users-$hashCode')
             .onPostgresChanges(
@@ -62,7 +64,7 @@ class ManagerPendingUsersCubit extends Cubit<ManagerPendingUsersState> {
             .subscribe();
       case AppFailure(:final error):
         logger.e('ManagerPendingUsersCubit → load failed: ${error.message}');
-        emit(ManagerPendingUsersError(error.message));
+        safeEmit(ManagerPendingUsersError(error.message));
     }
   }
 
@@ -73,8 +75,10 @@ class ManagerPendingUsersCubit extends Cubit<ManagerPendingUsersState> {
       case AppSuccess():
         break;
       case AppFailure(:final error):
-        logger.e('ManagerPendingUsersCubit → approveUser failed: ${error.message}');
-        emit(ManagerPendingUsersError(error.message));
+        logger.e(
+          'ManagerPendingUsersCubit → approveUser failed: ${error.message}',
+        );
+        safeEmit(ManagerPendingUsersError(error.message));
     }
   }
 

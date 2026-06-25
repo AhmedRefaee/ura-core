@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/errors/error_handler.dart';
@@ -197,60 +196,6 @@ class StorageRepository {
       return AppFailure(ErrorHandler.fromRpcResult(result as Map));
     } catch (e, st) {
       logger.e('StorageRepository → confirmDelivery failed', error: e, stackTrace: st);
-      return AppFailure(ErrorHandler.handle(e));
-    }
-  }
-
-  // ── Receipt upload ────────────────────────────────────────────────────────
-
-  Future<AppResult<String>> uploadReceipt({
-    required String orderId,
-    required String orderItemId,
-    required File imageFile,
-  }) async {
-    try {
-      final userId = _supabase.auth.currentUser!.id;
-      final ext = imageFile.path.split('.').last;
-      final path = '$userId/$orderId/$orderItemId.$ext';
-      logger.d('StorageRepository → uploadReceipt: $path');
-
-      await _supabase.storage.from('receipts').upload(
-            path,
-            imageFile,
-            fileOptions: const FileOptions(upsert: true),
-          );
-
-      final url = _supabase.storage.from('receipts').getPublicUrl(path);
-
-      await _supabase.from('receipts').insert({
-        'order_id': orderId,
-        'order_item_id': orderItemId,
-        'image_url': url,
-        'uploaded_by': userId,
-      });
-
-      logger.i('StorageRepository → receipt saved for item $orderItemId');
-      return AppSuccess(url);
-    } catch (e, st) {
-      logger.e('StorageRepository → uploadReceipt failed', error: e, stackTrace: st);
-      return AppFailure(ErrorHandler.handle(e));
-    }
-  }
-
-  Future<AppResult<Map<String, String>>> fetchReceipts(String orderId) async {
-    try {
-      logger.d('StorageRepository → fetchReceipts: $orderId');
-      final data = await _supabase
-          .from('receipts')
-          .select('order_item_id, image_url')
-          .eq('order_id', orderId);
-      final map = <String, String>{};
-      for (final row in data as List) {
-        map[row['order_item_id'] as String] = row['image_url'] as String;
-      }
-      return AppSuccess(map);
-    } catch (e, st) {
-      logger.e('StorageRepository → fetchReceipts failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

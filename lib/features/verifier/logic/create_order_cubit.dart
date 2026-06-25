@@ -13,6 +13,7 @@ import '../data/inventory_repository.dart';
 import '../data/order_repository.dart';
 import '../data/order_template_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 export '../../../shared/models/draft_order_item.dart' show DraftOrderItem;
 
 abstract class CreateOrderState extends Equatable {
@@ -110,7 +111,8 @@ class CreateOrderError extends CreateOrderState {
   List<Object?> get props => [message];
 }
 
-class CreateOrderCubit extends Cubit<CreateOrderState> {
+class CreateOrderCubit extends Cubit<CreateOrderState>
+    with SafeEmit<CreateOrderState> {
   final OrderRepository _orderRepo;
   final EntityRepository _entityRepo;
   final InventoryRepository _inventoryRepo;
@@ -125,7 +127,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
 
   Future<void> loadLookups() async {
     logger.d('CreateOrderCubit → loadLookups');
-    emit(CreateOrderLoadingLookups());
+    safeEmit(CreateOrderLoadingLookups());
 
     final results = await Future.wait([
       _entityRepo.fetchEntities(),
@@ -144,13 +146,13 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
       logger.e(
         'CreateOrderCubit → loadLookups failed: ${entitiesError.message}',
       );
-      emit(CreateOrderError(entitiesError.message));
+      safeEmit(CreateOrderError(entitiesError.message));
       return;
     }
     final repsError = repsResult.failureOrNull;
     if (repsError != null) {
       logger.e('CreateOrderCubit → loadLookups failed: ${repsError.message}');
-      emit(CreateOrderError(repsError.message));
+      safeEmit(CreateOrderError(repsError.message));
       return;
     }
     final repStatusesError = repStatusesResult.failureOrNull;
@@ -164,11 +166,11 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
       logger.e(
         'CreateOrderCubit → loadLookups failed: ${inventoryError.message}',
       );
-      emit(CreateOrderError(inventoryError.message));
+      safeEmit(CreateOrderError(inventoryError.message));
       return;
     }
 
-    emit(
+    safeEmit(
       CreateOrderReady(
         entities: (entitiesResult as AppSuccess<List<Entity>>).data,
         reps: (repsResult as AppSuccess<List<Profile>>).data,
@@ -186,7 +188,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
   void setDirection(OrderDirection direction) {
     final s = state;
     if (s is! CreateOrderReady) return;
-    emit(
+    safeEmit(
       s.copyWith(
         direction: direction,
         clearRep: direction == OrderDirection.inboundExternal,
@@ -197,13 +199,13 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
   void selectEntity(Entity entity) {
     final s = state;
     if (s is! CreateOrderReady) return;
-    emit(s.copyWith(selectedEntity: entity));
+    safeEmit(s.copyWith(selectedEntity: entity));
   }
 
   void selectRep(Profile rep) {
     final s = state;
     if (s is! CreateOrderReady) return;
-    emit(s.copyWith(selectedRep: rep));
+    safeEmit(s.copyWith(selectedRep: rep));
   }
 
   void addInventoryItem(InventoryItem item, int quantity) {
@@ -218,7 +220,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
           isCustom: false,
         ),
       );
-    emit(s.copyWith(items: updated));
+    safeEmit(s.copyWith(items: updated));
   }
 
   void addCustomItem(
@@ -237,7 +239,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
           sourceInventoryId: sourceInventoryId,
         ),
       );
-    emit(s.copyWith(items: updated));
+    safeEmit(s.copyWith(items: updated));
   }
 
   void addMultipleItems(
@@ -256,20 +258,20 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
         ),
       );
     }
-    emit(s.copyWith(items: updated));
+    safeEmit(s.copyWith(items: updated));
   }
 
   void removeItem(int index) {
     final s = state;
     if (s is! CreateOrderReady) return;
     final updated = List<DraftOrderItem>.from(s.items)..removeAt(index);
-    emit(s.copyWith(items: updated));
+    safeEmit(s.copyWith(items: updated));
   }
 
   void setNotes(String notes) {
     final s = state;
     if (s is! CreateOrderReady) return;
-    emit(s.copyWith(notes: notes));
+    safeEmit(s.copyWith(notes: notes));
   }
 
   void applyCopyFromOrder(Order order) {
@@ -293,7 +295,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
         ? const <Profile>[]
         : s.reps.where((r) => r.id == order.repId);
     final rep = repMatches.isEmpty ? null : repMatches.first;
-    emit(
+    safeEmit(
       s.copyWith(
         direction: order.direction,
         selectedEntity: entity,
@@ -325,7 +327,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
         .toList();
     final repsWithId = s.reps.where((r) => r.id == template.repId);
     final rep = repsWithId.isEmpty ? null : repsWithId.first;
-    emit(
+    safeEmit(
       s.copyWith(
         direction: template.direction,
         selectedRep: rep,
@@ -352,7 +354,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
     if (isClosed) return;
     switch (result) {
       case AppSuccess():
-        emit(s.copyWith(templateSaveSucceeded: true));
+        safeEmit(s.copyWith(templateSaveSucceeded: true));
         logger.i('CreateOrderCubit → template saved');
       case AppFailure(:final error):
         logger.e('CreateOrderCubit → saveAsTemplate failed: ${error.message}');
@@ -363,7 +365,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
     final s = state;
     if (s is! CreateOrderReady || !s.canSubmit) return;
     logger.d('CreateOrderCubit → submit');
-    emit(CreateOrderSubmitting());
+    safeEmit(CreateOrderSubmitting());
 
     String directionStr;
     switch (s.direction) {
@@ -385,7 +387,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
 
     switch (result) {
       case AppSuccess(:final data):
-        emit(CreateOrderSuccess(data));
+        safeEmit(CreateOrderSuccess(data));
         // Track usage (non-critical — failure is only logged)
         _templateRepo
             .trackUsage(
@@ -404,7 +406,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState> {
             });
       case AppFailure(:final error):
         logger.e('CreateOrderCubit → submit failed: ${error.message}');
-        emit(CreateOrderError(error.message));
+        safeEmit(CreateOrderError(error.message));
     }
   }
 }

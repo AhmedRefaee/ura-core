@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../auth/logic/auth_cubit.dart';
+import '../../auth/logic/auth_state.dart';
+import '../../../shared/models/profile.dart';
 import '../logic/theme_cubit.dart';
+import 'company_info_card.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
@@ -15,6 +19,9 @@ class SettingsScreen extends StatelessWidget {
           builder: (context, state) {
             final themeCubit = context.read<ThemeCubit>();
             final isDarkMode = state.isDarkMode;
+            final authState = context.watch<AuthCubit>().state;
+            final isManager = authState is AuthAuthenticated &&
+                authState.profile.role == UserRole.manager;
 
             return SingleChildScrollView(
               child: Column(
@@ -48,6 +55,7 @@ class SettingsScreen extends StatelessWidget {
                       textAlign: TextAlign.center,
                     ),
                   ),
+                  if (isManager) const CompanyInfoCard(),
                 ],
               ),
             );

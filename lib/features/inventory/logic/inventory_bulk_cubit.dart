@@ -5,6 +5,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../data/inventory_management_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ──────────────────────────────────────────────────────────────────
 
 abstract class InventoryBulkState extends Equatable {
@@ -61,21 +62,22 @@ class InventoryBulkError extends InventoryBulkState {
 
 // ── Cubit ────────────────────────────────────────────────────────────────────
 
-class InventoryBulkCubit extends Cubit<InventoryBulkState> {
+class InventoryBulkCubit extends Cubit<InventoryBulkState>
+    with SafeEmit<InventoryBulkState> {
   final InventoryManagementRepository _repo;
 
   InventoryBulkCubit(this._repo) : super(InventoryBulkInitial());
 
   Future<void> loadItems() async {
-    emit(InventoryBulkLoading());
+    safeEmit(InventoryBulkLoading());
     final result = await _repo.fetchInventory();
     switch (result) {
       case AppSuccess(:final data):
         logger.d('InventoryBulkCubit loaded ${data.length} items');
-        emit(InventoryBulkReady(items: data));
+        safeEmit(InventoryBulkReady(items: data));
       case AppFailure(:final error):
         logger.e('InventoryBulkCubit load failed: ${error.message}');
-        emit(InventoryBulkError(error.message));
+        safeEmit(InventoryBulkError(error.message));
     }
   }
 
@@ -89,20 +91,21 @@ class InventoryBulkCubit extends Cubit<InventoryBulkState> {
     } else {
       updated[itemId] = quantity;
     }
-    emit(current.copyWith(pendingQuantities: updated));
+    safeEmit(current.copyWith(pendingQuantities: updated));
   }
 
   void resetItem(String itemId) {
     final current = state;
     if (current is! InventoryBulkReady) return;
-    final updated = Map<String, int>.from(current.pendingQuantities)..remove(itemId);
-    emit(current.copyWith(pendingQuantities: updated));
+    final updated = Map<String, int>.from(current.pendingQuantities)
+      ..remove(itemId);
+    safeEmit(current.copyWith(pendingQuantities: updated));
   }
 
   Future<void> saveChanges() async {
     final current = state;
     if (current is! InventoryBulkReady || !current.hasChanges) return;
-    emit(InventoryBulkSaving());
+    safeEmit(InventoryBulkSaving());
     final updates = current.pendingQuantities.entries
         .map((e) => (itemId: e.key, quantity: e.value))
         .toList();
@@ -110,10 +113,10 @@ class InventoryBulkCubit extends Cubit<InventoryBulkState> {
     switch (result) {
       case AppSuccess():
         logger.i('InventoryBulkCubit saved ${updates.length} changes');
-        emit(InventoryBulkSuccess());
+        safeEmit(InventoryBulkSuccess());
       case AppFailure(:final error):
         logger.e('InventoryBulkCubit save failed: ${error.message}');
-        emit(InventoryBulkError(error.message));
+        safeEmit(InventoryBulkError(error.message));
     }
   }
 }

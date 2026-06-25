@@ -21,3 +21,4 @@ extension AppResultX<T> on AppResult<T> {
         AppSuccess() => null,
       };
 }
+

@@ -8,6 +8,7 @@ class Profile extends Equatable {
   final String? phone;
   final UserRole? role;
   final bool isApproved;
+  final String? organizationId;
   final DateTime? createdAt;
 
   const Profile({
@@ -16,6 +17,7 @@ class Profile extends Equatable {
     this.phone,
     this.role,
     required this.isApproved,
+    this.organizationId,
     this.createdAt,
   });
 
@@ -26,6 +28,7 @@ class Profile extends Equatable {
       phone: map['phone'] as String?,
       role: _roleFromString(map['role'] as String?),
       isApproved: map['is_approved'] as bool? ?? false,
+      organizationId: map['organization_id'] as String?,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
@@ -39,6 +42,7 @@ class Profile extends Equatable {
       'phone': phone,
       'role': _roleToString(role),
       'is_approved': isApproved,
+      'organization_id': organizationId,
       'created_at': createdAt?.toIso8601String(),
     };
   }
@@ -74,5 +78,6 @@ class Profile extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, fullName, phone, role, isApproved, createdAt];
+  List<Object?> get props =>
+      [id, fullName, phone, role, isApproved, organizationId, createdAt];
 }

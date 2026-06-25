@@ -5,6 +5,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/order_template.dart';
 import '../data/order_template_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class OrderTemplatesState extends Equatable {
@@ -33,7 +34,8 @@ class OrderTemplatesError extends OrderTemplatesState {
 
 // ── Cubit ─────────────────────────────────────────────────────────────────────
 
-class OrderTemplatesCubit extends Cubit<OrderTemplatesState> {
+class OrderTemplatesCubit extends Cubit<OrderTemplatesState>
+    with SafeEmit<OrderTemplatesState> {
   final OrderTemplateRepository _repo;
 
   OrderTemplatesCubit(this._repo) : super(OrderTemplatesInitial());
@@ -41,15 +43,15 @@ class OrderTemplatesCubit extends Cubit<OrderTemplatesState> {
   Future<void> load(String entityId) async {
     if (isClosed) return;
     logger.d('OrderTemplatesCubit → load $entityId');
-    emit(OrderTemplatesLoading());
+    safeEmit(OrderTemplatesLoading());
     final result = await _repo.fetchForEntity(entityId);
     if (isClosed) return;
     switch (result) {
       case AppSuccess(:final data):
-        emit(OrderTemplatesLoaded(data));
+        safeEmit(OrderTemplatesLoaded(data));
       case AppFailure(:final error):
         logger.e('OrderTemplatesCubit → load failed: ${error.message}');
-        emit(OrderTemplatesError(error.message));
+        safeEmit(OrderTemplatesError(error.message));
     }
   }
 
@@ -57,7 +59,7 @@ class OrderTemplatesCubit extends Cubit<OrderTemplatesState> {
     final s = state;
     if (s is! OrderTemplatesLoaded) return;
     final optimistic = s.templates.where((t) => t.id != templateId).toList();
-    emit(OrderTemplatesLoaded(optimistic));
+    safeEmit(OrderTemplatesLoaded(optimistic));
     final result = await _repo.deleteTemplate(templateId);
     if (isClosed) return;
     switch (result) {
@@ -65,7 +67,7 @@ class OrderTemplatesCubit extends Cubit<OrderTemplatesState> {
         logger.i('OrderTemplatesCubit → deleted $templateId');
       case AppFailure(:final error):
         logger.e('OrderTemplatesCubit → delete failed: ${error.message}');
-        emit(s); // restore original list on failure
+        safeEmit(s); // restore original list on failure
     }
   }
 }

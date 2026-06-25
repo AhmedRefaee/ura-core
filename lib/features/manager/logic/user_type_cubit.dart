@@ -5,6 +5,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/profile.dart';
 import '../data/manager_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class UserTypeState extends Equatable {
@@ -33,21 +34,21 @@ class UserTypeError extends UserTypeState {
 
 // ── Cubit ─────────────────────────────────────────────────────────────────────
 
-class UserTypeCubit extends Cubit<UserTypeState> {
+class UserTypeCubit extends Cubit<UserTypeState> with SafeEmit<UserTypeState> {
   final ManagerRepository _repo;
 
   UserTypeCubit(this._repo) : super(UserTypeInitial());
 
   Future<void> load(String role) async {
     logger.d('UserTypeCubit → load: $role');
-    emit(UserTypeLoading());
+    safeEmit(UserTypeLoading());
     final result = await _repo.fetchUsersByRole(role);
     switch (result) {
       case AppSuccess(:final data):
-        emit(UserTypeLoaded(data));
+        safeEmit(UserTypeLoaded(data));
       case AppFailure(:final error):
         logger.e('UserTypeCubit → load failed: ${error.message}');
-        emit(UserTypeError(error.message));
+        safeEmit(UserTypeError(error.message));
     }
   }
 }

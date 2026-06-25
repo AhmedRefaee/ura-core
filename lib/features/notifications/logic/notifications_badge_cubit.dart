@@ -4,7 +4,9 @@ import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../data/notifications_repository.dart';
 
-class NotificationsBadgeCubit extends Cubit<int> {
+import '../../../core/logic/safe_emit.dart';
+
+class NotificationsBadgeCubit extends Cubit<int> with SafeEmit<int> {
   final NotificationsRepository _repo;
   RealtimeChannel? _channel;
 
@@ -30,7 +32,7 @@ class NotificationsBadgeCubit extends Cubit<int> {
     switch (result) {
       case AppSuccess(:final data):
         logger.d('NotificationsBadgeCubit → unread: $data');
-        emit(data);
+        safeEmit(data);
       case AppFailure(:final error):
         logger.e('NotificationsBadgeCubit → error: ${error.message}');
     }
@@ -39,7 +41,7 @@ class NotificationsBadgeCubit extends Cubit<int> {
   Future<void> cancel() async {
     await _channel?.unsubscribe();
     _channel = null;
-    emit(0);
+    safeEmit(0);
   }
 
   @override

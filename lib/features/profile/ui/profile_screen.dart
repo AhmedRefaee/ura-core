@@ -10,6 +10,7 @@ import '../../../shared/models/profile.dart';
 import '../../../shared/widgets/order_list_tile.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../auth/logic/auth_cubit.dart';
+import '../../auth/logic/auth_state.dart';
 import '../../manager/logic/user_orders_cubit.dart';
 import '../../manager/ui/task_detail_screen.dart';
 
@@ -25,11 +26,29 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   late String? _phone;
+  String? _orgName;
 
   @override
   void initState() {
     super.initState();
     _phone = widget.profile.phone;
+    _loadOrgName();
+  }
+
+  Future<void> _loadOrgName() async {
+    // Every profile shown in-app is RLS-scoped to the viewer's own
+    // organization, so the viewer's org id always matches the profile being
+    // displayed — fetch it from the logged-in session, not the viewed profile
+    // (which may not have organization_id projected in every query).
+    final authState = context.read<AuthCubit>().state;
+    if (authState is! AuthAuthenticated) return;
+    final repo = sl<AuthRepository>();
+    final result =
+        await repo.fetchOrganizationName(authState.profile.organizationId);
+    if (!mounted) return;
+    if (result is AppSuccess<String?>) {
+      setState(() => _orgName = result.data);
+    }
   }
 
   Future<void> _editPhone() async {
@@ -99,6 +118,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
               return _ProfileBody(
                 profile: widget.profile,
                 phone: _phone,
+                orgName: _orgName,
                 onEditPhone: widget.isSelf ? _editPhone : null,
                 active: active,
                 done: done,
@@ -116,6 +136,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 class _ProfileBody extends StatefulWidget {
   final Profile profile;
   final String? phone;
+  final String? orgName;
   final VoidCallback? onEditPhone;
   final List<Order> active;
   final List<Order> done;
@@ -123,6 +144,7 @@ class _ProfileBody extends StatefulWidget {
   const _ProfileBody({
     required this.profile,
     required this.phone,
+    required this.orgName,
     required this.onEditPhone,
     required this.active,
     required this.done,
@@ -194,6 +216,7 @@ class _ProfileBodyState extends State<_ProfileBody> {
                 _InfoSection(
                   profile: widget.profile,
                   phone: widget.phone,
+                  orgName: widget.orgName,
                   onEditPhone: widget.onEditPhone,
                 ),
                 if (allOrders.isNotEmpty) ...[
@@ -379,11 +402,13 @@ class _ProfileHeader extends StatelessWidget {
 class _InfoSection extends StatelessWidget {
   final Profile profile;
   final String? phone;
+  final String? orgName;
   final VoidCallback? onEditPhone;
 
   const _InfoSection({
     required this.profile,
     required this.phone,
+    this.orgName,
     this.onEditPhone,
   });
 
@@ -409,6 +434,14 @@ class _InfoSection extends StatelessWidget {
               ),
             ),
           ),
+          if (orgName != null) ...[
+            AppListTile(
+              leading: const Icon(Icons.apartment_outlined),
+              title: const Text('المؤسسة'),
+              trailing: Text(orgName!, style: AppTextStyles.bodyMedium),
+              showDivider: true,
+            ),
+          ],
           AppListTile(
             leading: const Icon(Icons.phone_outlined),
             title: const Text('رقم الواتساب'),

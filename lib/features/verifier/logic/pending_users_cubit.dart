@@ -5,6 +5,8 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/profile.dart';
 import '../data/order_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
+
 abstract class PendingUsersState extends Equatable {
   const PendingUsersState();
   @override
@@ -29,21 +31,22 @@ class PendingUsersError extends PendingUsersState {
   List<Object?> get props => [message];
 }
 
-class PendingUsersCubit extends Cubit<PendingUsersState> {
+class PendingUsersCubit extends Cubit<PendingUsersState>
+    with SafeEmit<PendingUsersState> {
   final OrderRepository _repo;
 
   PendingUsersCubit(this._repo) : super(PendingUsersInitial());
 
   Future<void> loadPendingUsers() async {
     logger.d('PendingUsersCubit → loadPendingUsers');
-    emit(PendingUsersLoading());
+    safeEmit(PendingUsersLoading());
     final result = await _repo.fetchPendingUsers();
     switch (result) {
       case AppSuccess(:final data):
-        emit(PendingUsersLoaded(data));
+        safeEmit(PendingUsersLoaded(data));
       case AppFailure(:final error):
         logger.e('PendingUsersCubit → load failed: ${error.message}');
-        emit(PendingUsersError(error.message));
+        safeEmit(PendingUsersError(error.message));
     }
   }
 
@@ -55,7 +58,7 @@ class PendingUsersCubit extends Cubit<PendingUsersState> {
         await loadPendingUsers();
       case AppFailure(:final error):
         logger.e('PendingUsersCubit → approveUser failed: ${error.message}');
-        emit(PendingUsersError(error.message));
+        safeEmit(PendingUsersError(error.message));
     }
   }
 }

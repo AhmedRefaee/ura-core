@@ -14,26 +14,31 @@ import '../data/inventory_management_repository.dart';
 import '../data/models/bulk_edit_error_model.dart';
 import '../data/models/bulk_edit_item_model.dart';
 import 'bulk_edit_excel_state.dart';
-import 'web_download_stub.dart'
-    if (dart.library.html) 'web_download_web.dart';
+import '../../../core/logic/safe_emit.dart';
+import 'web_download_stub.dart' if (dart.library.html) 'web_download_web.dart';
 
-class BulkEditExcelCubit extends Cubit<BulkEditExcelState> {
+class BulkEditExcelCubit extends Cubit<BulkEditExcelState>
+    with SafeEmit<BulkEditExcelState> {
   final InventoryManagementRepository _repo;
 
   BulkEditExcelCubit(this._repo) : super(BulkEditExcelInitial());
 
   Future<void> exportCurrentItems() async {
-    emit(BulkEditExcelExporting());
+    safeEmit(BulkEditExcelExporting());
     try {
       final result = await _repo.fetchAllForExport();
       if (result is AppFailure) {
-        emit(BulkEditExcelError((result as AppFailure<List<InventoryItem>>).error.message));
+        safeEmit(
+          BulkEditExcelError(
+            (result as AppFailure<List<InventoryItem>>).error.message,
+          ),
+        );
         return;
       }
       final items = (result as AppSuccess<List<InventoryItem>>).data;
       final bytes = _buildExportBytes(items);
       if (bytes == null) {
-        emit(BulkEditExcelError('فشل إنشاء ملف Excel'));
+        safeEmit(BulkEditExcelError('فشل إنشاء ملف Excel'));
         return;
       }
 
@@ -48,10 +53,10 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState> {
           logger.w('open_filex: ${openResult.type} — ${openResult.message}');
         }
       }
-      emit(BulkEditExcelInitial());
+      safeEmit(BulkEditExcelInitial());
     } catch (e, st) {
       logger.e('exportCurrentItems failed', error: e, stackTrace: st);
-      emit(BulkEditExcelError('فشل التصدير: ${e.toString()}'));
+      safeEmit(BulkEditExcelError('فشل التصدير: ${e.toString()}'));
     }
   }
 
@@ -73,7 +78,8 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState> {
     ];
     for (var i = 0; i < headers.length; i++) {
       final cell = sheet.cell(
-          CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0));
+        CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0),
+      );
       cell.value = TextCellValue(headers[i]);
       cell.cellStyle = CellStyle(bold: true);
     }
@@ -84,16 +90,22 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState> {
 
       void setStr(int col, String? value) {
         sheet
-            .cell(CellIndex.indexByColumnRow(
-                columnIndex: col, rowIndex: rowIndex))
-            .value = TextCellValue(value ?? '');
+            .cell(
+              CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIndex),
+            )
+            .value = TextCellValue(
+          value ?? '',
+        );
       }
 
       void setInt(int col, int value) {
         sheet
-            .cell(CellIndex.indexByColumnRow(
-                columnIndex: col, rowIndex: rowIndex))
-            .value = IntCellValue(value);
+            .cell(
+              CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIndex),
+            )
+            .value = IntCellValue(
+          value,
+        );
       }
 
       setStr(0, item.id);
@@ -111,7 +123,7 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState> {
   }
 
   Future<void> pickAndParseBulkEdit() async {
-    emit(BulkEditExcelParsing());
+    safeEmit(BulkEditExcelParsing());
     try {
       final picked = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -120,13 +132,13 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState> {
       );
 
       if (picked == null || picked.files.isEmpty) {
-        emit(BulkEditExcelInitial());
+        safeEmit(BulkEditExcelInitial());
         return;
       }
 
       final bytes = picked.files.first.bytes;
       if (bytes == null) {
-        emit(BulkEditExcelError('تعذر قراءة الملف'));
+        safeEmit(BulkEditExcelError('تعذر قراءة الملف'));
         return;
       }
 
@@ -140,7 +152,7 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState> {
       final sheetName = excel.tables.keys.first;
       final sheet = excel.tables[sheetName];
       if (sheet == null || sheet.rows.isEmpty) {
-        emit(BulkEditExcelError('الملف فارغ أو لا يحتوي على بيانات'));
+        safeEmit(BulkEditExcelError('الملف فارغ أو لا يحتوي على بيانات'));
         return;
       }
 
@@ -182,44 +194,49 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState> {
           seenIds.add(item.id!.toLowerCase());
           validItems.add(item);
         } else {
-          invalidItems.add(BulkEditErrorModel(
-            rowNumber: item.rowNumber,
-            errors: errors,
-            rawData: item,
-          ));
+          invalidItems.add(
+            BulkEditErrorModel(
+              rowNumber: item.rowNumber,
+              errors: errors,
+              rawData: item,
+            ),
+          );
         }
       }
 
       if (totalRows == 0) {
-        emit(BulkEditExcelError('لم يتم العثور على صفوف بيانات في الملف'));
+        safeEmit(BulkEditExcelError('لم يتم العثور على صفوف بيانات في الملف'));
         return;
       }
 
-      emit(BulkEditExcelParsed(
-        validItems: validItems,
-        invalidItems: invalidItems,
-        totalRows: totalRows,
-      ));
+      safeEmit(
+        BulkEditExcelParsed(
+          validItems: validItems,
+          invalidItems: invalidItems,
+          totalRows: totalRows,
+        ),
+      );
     } catch (e, st) {
       logger.e('pickAndParseBulkEdit failed', error: e, stackTrace: st);
-      emit(BulkEditExcelError('فشل تحليل الملف: ${e.toString()}'));
+      safeEmit(BulkEditExcelError('فشل تحليل الملف: ${e.toString()}'));
     }
   }
 
   Future<void> applyUpdates(List<BulkEditItemModel> items) async {
-    emit(BulkEditExcelSaving());
+    safeEmit(BulkEditExcelSaving());
     try {
       final rows = items.map((e) => e.toUpdateMap()).toList();
       final result = await _repo.bulkUpdateItems(rows);
       if (result is AppSuccess) {
-        emit(BulkEditExcelDone(items.length));
+        safeEmit(BulkEditExcelDone(items.length));
       } else if (result is AppFailure) {
-        emit(BulkEditExcelError(
-            (result as AppFailure<void>).error.message));
+        safeEmit(
+          BulkEditExcelError((result as AppFailure<void>).error.message),
+        );
       }
     } catch (e, st) {
       logger.e('applyUpdates failed', error: e, stackTrace: st);
-      emit(BulkEditExcelError('فشل التحديث: ${e.toString()}'));
+      safeEmit(BulkEditExcelError('فشل التحديث: ${e.toString()}'));
     }
   }
 

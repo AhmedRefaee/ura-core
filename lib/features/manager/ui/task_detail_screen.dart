@@ -11,7 +11,6 @@ import '../../../shared/models/order_item.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
-import '../../../shared/widgets/receipt_viewer_screen.dart';
 import '../../../features/chat/data/chat_repository.dart';
 import '../../../features/chat/ui/chat_thread_screen.dart';
 import '../../../features/verifier/data/order_repository.dart';
@@ -137,7 +136,6 @@ class _TaskDetailView extends StatelessWidget {
 
         final order = state.order;
         final auditLog = state.auditLog;
-        final receipts = state.receipts;
         final canDelete =
             showDeleteButton && order.status != OrderStatus.delivered;
 
@@ -209,7 +207,6 @@ class _TaskDetailView extends StatelessWidget {
               _ItemsCard(
                 items: order.items,
                 orderStatus: order.status,
-                receipts: receipts,
                 orderDirection: order.direction,
               ),
               const SizedBox(height: 16),
@@ -361,12 +358,10 @@ class _ItemsCard extends StatelessWidget {
   final List<OrderItem> items;
   final OrderStatus orderStatus;
   final OrderDirection orderDirection;
-  final Map<String, String> receipts;
   const _ItemsCard({
     required this.items,
     required this.orderStatus,
     required this.orderDirection,
-    required this.receipts,
   });
 
   String _fmt(DateTime? dt) {
@@ -398,7 +393,6 @@ class _ItemsCard extends StatelessWidget {
                 fmt: _fmt,
                 orderStatus: orderStatus,
                 orderDirection: orderDirection,
-                receipts: receipts,
               ),
             ),
           ],
@@ -413,13 +407,11 @@ class _ItemRow extends StatelessWidget {
   final String Function(DateTime?) fmt;
   final OrderStatus orderStatus;
   final OrderDirection orderDirection;
-  final Map<String, String> receipts;
   const _ItemRow({
     required this.item,
     required this.fmt,
     required this.orderStatus,
     required this.orderDirection,
-    required this.receipts,
   });
 
   @override
@@ -523,32 +515,9 @@ class _ItemRow extends StatelessWidget {
               ],
             ),
           ),
-          if (item.isCustom) _ReceiptIcon(receiptUrl: receipts[item.id]),
         ],
       ),
     );
-  }
-}
-
-class _ReceiptIcon extends StatelessWidget {
-  final String? receiptUrl;
-  const _ReceiptIcon({this.receiptUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    if (receiptUrl != null) {
-      return IconButton(
-        icon: const Icon(Icons.receipt_long, color: Colors.green),
-        tooltip: 'عرض الإيصال',
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ReceiptViewerScreen(url: receiptUrl!),
-          ),
-        ),
-      );
-    }
-    return const Icon(Icons.receipt_long_outlined, color: Colors.grey);
   }
 }
 

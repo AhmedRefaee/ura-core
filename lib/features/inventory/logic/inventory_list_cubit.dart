@@ -6,6 +6,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../data/inventory_management_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ──────────────────────────────────────────────────────────────────
 
 abstract class InventoryListState extends Equatable {
@@ -33,9 +34,11 @@ class InventoryListLoaded extends InventoryListState {
 
   List<InventoryItem> get filteredItems {
     return allItems.where((item) {
-      final matchesSearch = searchQuery.isEmpty ||
+      final matchesSearch =
+          searchQuery.isEmpty ||
           item.itemName.toLowerCase().contains(searchQuery.toLowerCase()) ||
-          (item.sku?.toLowerCase().contains(searchQuery.toLowerCase()) ?? false);
+          (item.sku?.toLowerCase().contains(searchQuery.toLowerCase()) ??
+              false);
       final matchesCategory =
           selectedCategory == null || item.category == selectedCategory;
       final matchesStatus =
@@ -45,12 +48,9 @@ class InventoryListLoaded extends InventoryListState {
   }
 
   List<String> get availableCategories {
-    final cats = allItems
-        .map((i) => i.category)
-        .whereType<String>()
-        .toSet()
-        .toList()
-      ..sort();
+    final cats =
+        allItems.map((i) => i.category).whereType<String>().toSet().toList()
+          ..sort();
     return cats;
   }
 
@@ -73,8 +73,12 @@ class InventoryListLoaded extends InventoryListState {
   }
 
   @override
-  List<Object?> get props =>
-      [allItems, searchQuery, selectedCategory, statusFilter];
+  List<Object?> get props => [
+    allItems,
+    searchQuery,
+    selectedCategory,
+    statusFilter,
+  ];
 }
 
 const _sentinel = Object();
@@ -88,14 +92,15 @@ class InventoryListError extends InventoryListState {
 
 // ── Cubit ────────────────────────────────────────────────────────────────────
 
-class InventoryListCubit extends Cubit<InventoryListState> {
+class InventoryListCubit extends Cubit<InventoryListState>
+    with SafeEmit<InventoryListState> {
   final InventoryManagementRepository _repo;
   RealtimeChannel? _channel;
 
   InventoryListCubit(this._repo) : super(InventoryListInitial());
 
   Future<void> loadInventory() async {
-    emit(InventoryListLoading());
+    safeEmit(InventoryListLoading());
     await _fetchInventory();
   }
 
@@ -106,11 +111,19 @@ class InventoryListCubit extends Cubit<InventoryListState> {
       case AppSuccess(:final data):
         logger.d('InventoryListCubit loaded ${data.length} items');
         final current = state;
-        emit(InventoryListLoaded(allItems: data).copyWith(
-          searchQuery: current is InventoryListLoaded ? current.searchQuery : '',
-          selectedCategory: current is InventoryListLoaded ? current.selectedCategory : null,
-          statusFilter: current is InventoryListLoaded ? current.statusFilter : null,
-        ));
+        safeEmit(
+          InventoryListLoaded(allItems: data).copyWith(
+            searchQuery: current is InventoryListLoaded
+                ? current.searchQuery
+                : '',
+            selectedCategory: current is InventoryListLoaded
+                ? current.selectedCategory
+                : null,
+            statusFilter: current is InventoryListLoaded
+                ? current.statusFilter
+                : null,
+          ),
+        );
         _channel ??= Supabase.instance.client
             .channel('inventory-list-$hashCode')
             .onPostgresChanges(
@@ -122,7 +135,7 @@ class InventoryListCubit extends Cubit<InventoryListState> {
             .subscribe();
       case AppFailure(:final error):
         logger.e('InventoryListCubit load failed: ${error.message}');
-        if (!isClosed) emit(InventoryListError(error.message));
+        if (!isClosed) safeEmit(InventoryListError(error.message));
     }
   }
 
@@ -134,17 +147,23 @@ class InventoryListCubit extends Cubit<InventoryListState> {
 
   void setSearch(String query) {
     final current = state;
-    if (current is InventoryListLoaded) emit(current.copyWith(searchQuery: query));
+    if (current is InventoryListLoaded) {
+      safeEmit(current.copyWith(searchQuery: query));
+    }
   }
 
   void setCategory(String? category) {
     final current = state;
-    if (current is InventoryListLoaded) emit(current.copyWith(selectedCategory: category));
+    if (current is InventoryListLoaded) {
+      safeEmit(current.copyWith(selectedCategory: category));
+    }
   }
 
   void setStatusFilter(AvailabilityStatus? status) {
     final current = state;
-    if (current is InventoryListLoaded) emit(current.copyWith(statusFilter: status));
+    if (current is InventoryListLoaded) {
+      safeEmit(current.copyWith(statusFilter: status));
+    }
   }
 
   Future<void> loadUsageCounts() async {
@@ -157,7 +176,7 @@ class InventoryListCubit extends Cubit<InventoryListState> {
         final updated = current.allItems
             .map((item) => item.copyWithUsageCount(data[item.id] ?? 0))
             .toList();
-        emit(current.copyWith(allItems: updated));
+        safeEmit(current.copyWith(allItems: updated));
       case AppFailure(:final error):
         logger.w('loadUsageCounts failed (non-fatal): ${error.message}');
     }

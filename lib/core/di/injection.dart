@@ -46,6 +46,8 @@ import '../../features/chat/logic/chat_threads_cubit.dart';
 import '../../features/chat/logic/order_chat_badge_cubit.dart';
 import '../../features/entities/logic/entities_cubit.dart';
 import '../../features/entities/logic/import_entities_cubit.dart';
+import '../../features/admin/data/admin_repository.dart';
+import '../../features/admin/logic/admin_cubit.dart';
 import '../../shared/models/inventory_item.dart';
 
 final sl = GetIt.instance;
@@ -181,6 +183,10 @@ Future<void> setupDependencies() async {
   sl.registerFactory<StatsCubit>(
     () => StatsCubit(sl<StatsRepository>()),
   );
+
+  // Admin (platform-admin console)
+  sl.registerLazySingleton<AdminRepository>(() => AdminRepository());
+  sl.registerFactory<AdminCubit>(() => AdminCubit(sl<AdminRepository>()));
 
   // Entities
   sl.registerFactory<EntitiesCubit>(

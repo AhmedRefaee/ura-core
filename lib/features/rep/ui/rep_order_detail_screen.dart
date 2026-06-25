@@ -1,8 +1,6 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
@@ -10,7 +8,6 @@ import '../../../shared/models/order_item.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
-import '../../../shared/widgets/receipt_viewer_screen.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
 import '../logic/rep_order_detail_cubit.dart';
@@ -85,8 +82,6 @@ class RepOrderDetailScreen extends StatelessWidget {
               const SizedBox(height: 16),
               _ItemsSection(
                 order: order,
-                receipts: state.receipts,
-                isActing: state.isActing,
               ),
               const SizedBox(height: 24),
               _ActionSection(state: state),
@@ -307,27 +302,14 @@ class _InfoRow extends StatelessWidget {
 
 class _ItemsSection extends StatelessWidget {
   final Order order;
-  final Map<String, String> receipts;
-  final bool isActing;
 
   const _ItemsSection({
     required this.order,
-    required this.receipts,
-    required this.isActing,
   });
 
   @override
   Widget build(BuildContext context) {
     if (order.items.isEmpty) return const SizedBox.shrink();
-
-    final canUpload =
-        order.status == OrderStatus.assigned ||
-        order.status == OrderStatus.pickedUp ||
-        order.status == OrderStatus.onTheMove;
-
-    final isFinished =
-        order.status == OrderStatus.delivered ||
-        order.status == OrderStatus.deliveredToStorage;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -340,10 +322,6 @@ class _ItemsSection extends StatelessWidget {
         ...order.items.map(
           (item) => _ItemTile(
             item: item,
-            receiptUrl: receipts[item.id],
-            isActing: isActing,
-            canUpload: canUpload,
-            isFinished: isFinished,
             direction: order.direction,
           ),
         ),
@@ -354,24 +332,15 @@ class _ItemsSection extends StatelessWidget {
 
 class _ItemTile extends StatelessWidget {
   final OrderItem item;
-  final String? receiptUrl;
-  final bool isActing;
-  final bool canUpload;
-  final bool isFinished;
   final OrderDirection direction;
 
   const _ItemTile({
     required this.item,
-    required this.receiptUrl,
-    required this.isActing,
-    required this.canUpload,
     required this.direction,
-    this.isFinished = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final hasReceipt = receiptUrl != null;
     final showWarning = !item.isCustom &&
         item.wasUnavailableAtCreation &&
         direction == OrderDirection.outbound;
@@ -408,99 +377,8 @@ class _ItemTile extends StatelessWidget {
               ),
           ],
         ),
-        trailing: item.isCustom
-            ? _ReceiptButton(
-                hasReceipt: hasReceipt,
-                receiptUrl: receiptUrl,
-                isActing: isActing,
-                canUpload: canUpload,
-                onUpload: () => _pickAndUpload(context),
-              )
-            : _CheckStatusIcon(item.checkStatus),
+        trailing: item.isCustom ? null : _CheckStatusIcon(item.checkStatus),
       ),
-    );
-  }
-
-  Future<void> _pickAndUpload(BuildContext context) async {
-    final picker = ImagePicker();
-    final source = await _pickSource(context);
-    if (source == null) return;
-    final picked = await picker.pickImage(source: source, imageQuality: 80);
-    if (picked == null) return;
-    if (!context.mounted) return;
-    context.read<RepOrderDetailCubit>().uploadReceipt(
-      orderItemId: item.id,
-      imageFile: File(picked.path),
-    );
-  }
-
-  Future<ImageSource?> _pickSource(BuildContext context) async {
-    return showModalBottomSheet<ImageSource>(
-      context: context,
-      builder: (_) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.camera_alt),
-              title: const Text('التقاط صورة'),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-            ListTile(
-              leading: const Icon(Icons.photo_library),
-              title: const Text('اختيار من المعرض'),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _ReceiptButton extends StatelessWidget {
-  final bool hasReceipt;
-  final String? receiptUrl;
-  final bool isActing;
-  final bool canUpload;
-  final VoidCallback onUpload;
-
-  const _ReceiptButton({
-    required this.hasReceipt,
-    required this.receiptUrl,
-    required this.isActing,
-    required this.canUpload,
-    required this.onUpload,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    if (isActing) {
-      return const SizedBox(
-        width: 24,
-        height: 24,
-        child: CircularProgressIndicator(strokeWidth: 2),
-      );
-    }
-    if (hasReceipt) {
-      return IconButton(
-        icon: const Icon(Icons.receipt_long, color: Colors.green),
-        tooltip: 'عرض الإيصال',
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (_) => ReceiptViewerScreen(url: receiptUrl!),
-          ),
-        ),
-      );
-    }
-    if (!canUpload) {
-      return const Icon(Icons.receipt_long_outlined, color: Colors.grey);
-    }
-    return IconButton(
-      icon: const Icon(Icons.upload_file, color: Colors.orange),
-      tooltip: 'رفع إيصال',
-      onPressed: onUpload,
     );
   }
 }
@@ -544,13 +422,6 @@ class _ActionSectionState extends State<_ActionSection> {
   String? get _notes {
     final t = _notesController.text.trim();
     return t.isEmpty ? null : t;
-  }
-
-  String? _getWarningMessage(RepOrderDetailLoaded state) {
-    if (!state.allCustomItemsHaveReceipts) {
-      return 'يجب رفع إيصال لجميع الأصناف المخصصة';
-    }
-    return null;
   }
 
   @override
@@ -610,7 +481,6 @@ class _ActionSectionState extends State<_ActionSection> {
         canAct: canProceed,
         icon: Icons.inventory_2_outlined,
         label: 'تأكيد الاستلام',
-        warningMessage: _getWarningMessage(widget.state),
         onPressed: () =>
             context.read<RepOrderDetailCubit>().markPickedUp(notes: _notes),
       );
@@ -622,7 +492,6 @@ class _ActionSectionState extends State<_ActionSection> {
         canAct: canProceed,
         icon: Icons.local_shipping_outlined,
         label: 'ابدأ التنقل',
-        warningMessage: _getWarningMessage(widget.state),
         onPressed: () =>
             context.read<RepOrderDetailCubit>().startMove(notes: _notes),
       );
@@ -634,7 +503,6 @@ class _ActionSectionState extends State<_ActionSection> {
         canAct: canProceed,
         icon: Icons.local_shipping_outlined,
         label: 'ابدأ التنقل نحو المخزن',
-        warningMessage: _getWarningMessage(widget.state),
         onPressed: () =>
             context.read<RepOrderDetailCubit>().startMove(notes: _notes),
       );
@@ -646,7 +514,6 @@ class _ActionSectionState extends State<_ActionSection> {
         canAct: canProceed,
         icon: Icons.check_circle_outline,
         label: 'تم التسليم للعميل',
-        warningMessage: _getWarningMessage(widget.state),
         onPressed: () =>
             context.read<RepOrderDetailCubit>().markDelivered(notes: _notes),
       );
@@ -680,7 +547,6 @@ class _ActionButton extends StatelessWidget {
   final bool canAct;
   final IconData icon;
   final String label;
-  final String? warningMessage;
   final VoidCallback onPressed;
 
   const _ActionButton({
@@ -688,53 +554,25 @@ class _ActionButton extends StatelessWidget {
     required this.canAct,
     required this.icon,
     required this.label,
-    this.warningMessage,
     required this.onPressed,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (!canAct && warningMessage != null && !isActing)
-          Container(
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.only(bottom: 12),
-            decoration: BoxDecoration(
-              color: Colors.orange.shade50,
-              border: Border.all(color: Colors.orange),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                const Icon(Icons.warning_amber, color: Colors.orange, size: 18),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    warningMessage!,
-                    style: const TextStyle(color: Colors.orange, fontSize: 13),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        FilledButton.icon(
-          onPressed: (isActing || !canAct) ? null : onPressed,
-          icon: isActing
-              ? const SizedBox(
-                  width: 16,
-                  height: 16,
-                  child: CircularProgressIndicator(
-                    strokeWidth: 2,
-                    color: Colors.white,
-                  ),
-                )
-              : Icon(icon),
-          label: Text(label),
-          style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
-        ),
-      ],
+    return FilledButton.icon(
+      onPressed: (isActing || !canAct) ? null : onPressed,
+      icon: isActing
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : Icon(icon),
+      label: Text(label),
+      style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(50)),
     );
   }
 }

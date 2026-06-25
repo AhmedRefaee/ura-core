@@ -6,6 +6,7 @@ import '../../../shared/models/order.dart';
 import '../../../shared/models/profile.dart';
 import '../data/manager_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class UserOrdersState extends Equatable {
@@ -22,10 +23,7 @@ class UserOrdersLoaded extends UserOrdersState {
   final List<Order> orders;
   final List<Order> doneOrders;
 
-  const UserOrdersLoaded({
-    required this.orders,
-    this.doneOrders = const [],
-  });
+  const UserOrdersLoaded({required this.orders, this.doneOrders = const []});
 
   @override
   List<Object?> get props => [orders, doneOrders];
@@ -40,7 +38,8 @@ class UserOrdersError extends UserOrdersState {
 
 // ── Cubit ─────────────────────────────────────────────────────────────────────
 
-class UserOrdersCubit extends Cubit<UserOrdersState> {
+class UserOrdersCubit extends Cubit<UserOrdersState>
+    with SafeEmit<UserOrdersState> {
   final ManagerRepository _repo;
 
   UserOrdersCubit(this._repo) : super(UserOrdersInitial()) {
@@ -49,13 +48,13 @@ class UserOrdersCubit extends Cubit<UserOrdersState> {
 
   Future<void> loadForUser(Profile user) async {
     logger.d('UserOrdersCubit → loadForUser START: ${user.id} (${user.role})');
-    
+
     if (isClosed) {
       logger.w('UserOrdersCubit → loadForUser ABORTED: cubit already closed');
       return;
     }
-    
-    emit(UserOrdersLoading());
+
+    safeEmit(UserOrdersLoading());
 
     const doneStatuses = {
       OrderStatus.delivered,
@@ -67,74 +66,104 @@ class UserOrdersCubit extends Cubit<UserOrdersState> {
         logger.d('UserOrdersCubit → fetching orders for rep: ${user.id}');
         final result = await _repo.fetchOrdersByRep(user.id);
         logger.d('UserOrdersCubit → rep fetch completed, isClosed: $isClosed');
-        
+
         if (isClosed) {
-          logger.w('UserOrdersCubit → ABORTING emit: cubit closed during rep fetch');
+          logger.w(
+            'UserOrdersCubit → ABORTING emit: cubit closed during rep fetch',
+          );
           return;
         }
-        
+
         switch (result) {
           case AppSuccess(:final data):
-            logger.d('UserOrdersCubit → emitting UserOrdersLoaded with ${data.length} orders');
+            logger.d(
+              'UserOrdersCubit → emitting UserOrdersLoaded with ${data.length} orders',
+            );
             if (!isClosed) {
-              emit(UserOrdersLoaded(
-                orders: data.where((o) => !doneStatuses.contains(o.status)).toList(),
-                doneOrders: data.where((o) => doneStatuses.contains(o.status)).toList(),
-              ));
+              safeEmit(
+                UserOrdersLoaded(
+                  orders: data
+                      .where((o) => !doneStatuses.contains(o.status))
+                      .toList(),
+                  doneOrders: data
+                      .where((o) => doneStatuses.contains(o.status))
+                      .toList(),
+                ),
+              );
             }
           case AppFailure(:final error):
             logger.e('UserOrdersCubit → load failed: ${error.message}');
             if (!isClosed) {
-              emit(UserOrdersError(error.message));
+              safeEmit(UserOrdersError(error.message));
             }
         }
 
       case UserRole.storageActor:
-        logger.d('UserOrdersCubit → fetching orders for storageActor: ${user.id}');
+        logger.d(
+          'UserOrdersCubit → fetching orders for storageActor: ${user.id}',
+        );
         final result = await _repo.fetchOrdersByStorageActor(user.id);
-        logger.d('UserOrdersCubit → storageActor fetch completed, isClosed: $isClosed');
-        
+        logger.d(
+          'UserOrdersCubit → storageActor fetch completed, isClosed: $isClosed',
+        );
+
         if (isClosed) {
-          logger.w('UserOrdersCubit → ABORTING emit: cubit closed during storageActor fetch');
+          logger.w(
+            'UserOrdersCubit → ABORTING emit: cubit closed during storageActor fetch',
+          );
           return;
         }
-        
+
         switch (result) {
           case AppSuccess(:final data):
-            logger.d('UserOrdersCubit → emitting UserOrdersLoaded with ${data.length} orders');
+            logger.d(
+              'UserOrdersCubit → emitting UserOrdersLoaded with ${data.length} orders',
+            );
             if (!isClosed) {
-              emit(UserOrdersLoaded(
-                orders: data.where((o) => !doneStatuses.contains(o.status)).toList(),
-                doneOrders: data.where((o) => doneStatuses.contains(o.status)).toList(),
-              ));
+              safeEmit(
+                UserOrdersLoaded(
+                  orders: data
+                      .where((o) => !doneStatuses.contains(o.status))
+                      .toList(),
+                  doneOrders: data
+                      .where((o) => doneStatuses.contains(o.status))
+                      .toList(),
+                ),
+              );
             }
           case AppFailure(:final error):
             logger.e('UserOrdersCubit → load failed: ${error.message}');
             if (!isClosed) {
-              emit(UserOrdersError(error.message));
+              safeEmit(UserOrdersError(error.message));
             }
         }
 
       default:
         logger.d('UserOrdersCubit → fetching orders for creator: ${user.id}');
         final result = await _repo.fetchOrdersByCreator(user.id);
-        logger.d('UserOrdersCubit → creator fetch completed, isClosed: $isClosed');
-        
+        logger.d(
+          'UserOrdersCubit → creator fetch completed, isClosed: $isClosed',
+        );
+
         if (isClosed) {
-          logger.w('UserOrdersCubit → ABORTING emit: cubit closed during creator fetch');
+          logger.w(
+            'UserOrdersCubit → ABORTING emit: cubit closed during creator fetch',
+          );
           return;
         }
-        
+
         switch (result) {
           case AppSuccess(:final data):
-            logger.d('UserOrdersCubit → emitting UserOrdersLoaded with ${data.length} orders');
+            logger.d(
+              'UserOrdersCubit → emitting UserOrdersLoaded with ${data.length} orders',
+            );
             if (!isClosed) {
-              emit(UserOrdersLoaded(orders: data));
+              safeEmit(UserOrdersLoaded(orders: data));
             }
           case AppFailure(:final error):
             logger.e('UserOrdersCubit → load failed: ${error.message}');
             if (!isClosed) {
-              emit(UserOrdersError(error.message));
+              safeEmit(UserOrdersError(error.message));
             }
         }
     }

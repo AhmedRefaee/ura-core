@@ -8,6 +8,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/chat_message.dart';
 import '../data/chat_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ─── States ──────────────────────────────────────────────────────────────────
 
 abstract class ChatThreadState extends Equatable {
@@ -21,10 +22,7 @@ class ChatThreadLoading extends ChatThreadState {}
 class ChatThreadLoaded extends ChatThreadState {
   final List<ChatMessage> messages;
   final String? pendingInitialText;
-  const ChatThreadLoaded({
-    required this.messages,
-    this.pendingInitialText,
-  });
+  const ChatThreadLoaded({required this.messages, this.pendingInitialText});
   @override
   List<Object?> get props => [messages, pendingInitialText];
 }
@@ -38,7 +36,8 @@ class ChatThreadError extends ChatThreadState {
 
 // ─── Cubit ───────────────────────────────────────────────────────────────────
 
-class ChatThreadCubit extends Cubit<ChatThreadState> {
+class ChatThreadCubit extends Cubit<ChatThreadState>
+    with SafeEmit<ChatThreadState> {
   final ChatRepository _repo;
   final String threadId;
   final String? initialText;
@@ -62,16 +61,22 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
 
   void subscribe() {
     logger.d('ChatThreadCubit → subscribe: $threadId');
-    _sub = _repo.subscribeToThread(threadId).listen(
-      (messages) {
-        _messages = messages;
-        _emitMerged();
-      },
-      onError: (Object e, StackTrace st) {
-        logger.e('ChatThreadCubit → stream error', error: e, stackTrace: st);
-        emit(ChatThreadError(ErrorHandler.handle(e).message));
-      },
-    );
+    _sub = _repo
+        .subscribeToThread(threadId)
+        .listen(
+          (messages) {
+            _messages = messages;
+            _emitMerged();
+          },
+          onError: (Object e, StackTrace st) {
+            logger.e(
+              'ChatThreadCubit → stream error',
+              error: e,
+              stackTrace: st,
+            );
+            safeEmit(ChatThreadError(ErrorHandler.handle(e).message));
+          },
+        );
     _loadReactions();
     _reactionChannel ??= Supabase.instance.client
         .channel('chat-reactions-$threadId-$hashCode')
@@ -101,10 +106,7 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
         ? current.pendingInitialText
         : initialText;
     if (!isClosed) {
-      emit(ChatThreadLoaded(
-        messages: merged,
-        pendingInitialText: pending,
-      ));
+      safeEmit(ChatThreadLoaded(messages: merged, pendingInitialText: pending));
     }
   }
 
@@ -119,7 +121,9 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
     String? replyToContent,
     String? replyToSender,
   }) async {
-    logger.d('ChatThreadCubit → sendMessage, urgent=${isUrgent ?? isUrgentEntry}');
+    logger.d(
+      'ChatThreadCubit → sendMessage, urgent=${isUrgent ?? isUrgentEntry}',
+    );
     final result = await _repo.sendMessage(
       threadId: threadId,
       content: content,
@@ -136,23 +140,26 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
       case AppSuccess():
         final current = state;
         if (current is ChatThreadLoaded && current.pendingInitialText != null) {
-          emit(ChatThreadLoaded(
-              messages: current.messages, pendingInitialText: null));
+          safeEmit(
+            ChatThreadLoaded(
+              messages: current.messages,
+              pendingInitialText: null,
+            ),
+          );
         }
       case AppFailure(:final error):
         logger.e('ChatThreadCubit → sendMessage failed: ${error.message}');
-        if (!isClosed) emit(ChatThreadError(error.message));
+        if (!isClosed) safeEmit(ChatThreadError(error.message));
     }
   }
-
-
 
   Future<void> acknowledgeMessage(String messageId) async {
     logger.d('ChatThreadCubit → acknowledgeMessage: $messageId');
     final result = await _repo.acknowledgeMessage(messageId);
     if (result is AppFailure) {
       logger.e(
-          'ChatThreadCubit → acknowledgeMessage failed: ${result.error.message}');
+        'ChatThreadCubit → acknowledgeMessage failed: ${result.error.message}',
+      );
     }
   }
 
@@ -161,8 +168,9 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
     final myId = Supabase.instance.client.auth.currentUser?.id;
     // Optimistic update
     final existing = _reactions[messageId] ?? [];
-    final alreadyReacted =
-        existing.any((r) => r.emoji == emoji && r.userId == myId);
+    final alreadyReacted = existing.any(
+      (r) => r.emoji == emoji && r.userId == myId,
+    );
     if (alreadyReacted) {
       await removeReaction(messageId, emoji);
       return;
@@ -185,8 +193,9 @@ class ChatThreadCubit extends Cubit<ChatThreadState> {
     final myId = Supabase.instance.client.auth.currentUser?.id;
     final existing = _reactions[messageId] ?? [];
     // Optimistic update
-    _reactions[messageId] =
-        existing.where((r) => !(r.emoji == emoji && r.userId == myId)).toList();
+    _reactions[messageId] = existing
+        .where((r) => !(r.emoji == emoji && r.userId == myId))
+        .toList();
     _emitMerged();
     final result = await _repo.removeReaction(messageId, emoji);
     if (result is AppFailure) {

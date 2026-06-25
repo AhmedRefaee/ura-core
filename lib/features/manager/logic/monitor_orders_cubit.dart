@@ -6,6 +6,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/order.dart';
 import '../data/manager_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class MonitorOrdersState extends Equatable {
@@ -47,8 +48,12 @@ class MonitorOrdersLoaded extends MonitorOrdersState {
   }
 
   @override
-  List<Object?> get props =>
-      [activeOrders, finishedOrders, hasMoreFinished, isLoadingMoreFinished];
+  List<Object?> get props => [
+    activeOrders,
+    finishedOrders,
+    hasMoreFinished,
+    isLoadingMoreFinished,
+  ];
 }
 
 class MonitorOrdersError extends MonitorOrdersState {
@@ -60,7 +65,8 @@ class MonitorOrdersError extends MonitorOrdersState {
 
 // ── Cubit ─────────────────────────────────────────────────────────────────────
 
-class MonitorOrdersCubit extends Cubit<MonitorOrdersState> {
+class MonitorOrdersCubit extends Cubit<MonitorOrdersState>
+    with SafeEmit<MonitorOrdersState> {
   final ManagerRepository _repo;
   RealtimeChannel? _channel;
   int _finishedPage = 0;
@@ -70,7 +76,7 @@ class MonitorOrdersCubit extends Cubit<MonitorOrdersState> {
 
   Future<void> load() async {
     logger.d('MonitorOrdersCubit → load');
-    emit(MonitorOrdersLoading());
+    safeEmit(MonitorOrdersLoading());
     _finishedPage = 0;
     await _fetchOrders();
   }
@@ -80,7 +86,7 @@ class MonitorOrdersCubit extends Cubit<MonitorOrdersState> {
     final activeError = activeResult.failureOrNull;
     if (activeError != null) {
       logger.e('MonitorOrdersCubit → load failed: ${activeError.message}');
-      if (!isClosed) emit(MonitorOrdersError(activeError.message));
+      if (!isClosed) safeEmit(MonitorOrdersError(activeError.message));
       return;
     }
 
@@ -91,7 +97,7 @@ class MonitorOrdersCubit extends Cubit<MonitorOrdersState> {
     final finishedError = finishedResult.failureOrNull;
     if (finishedError != null) {
       logger.e('MonitorOrdersCubit → load failed: ${finishedError.message}');
-      if (!isClosed) emit(MonitorOrdersError(finishedError.message));
+      if (!isClosed) safeEmit(MonitorOrdersError(finishedError.message));
       return;
     }
 
@@ -100,11 +106,13 @@ class MonitorOrdersCubit extends Cubit<MonitorOrdersState> {
     _finishedPage = 1;
 
     if (!isClosed) {
-      emit(MonitorOrdersLoaded(
-        activeOrders: active,
-        finishedOrders: finished,
-        hasMoreFinished: finished.length == _pageSize,
-      ));
+      safeEmit(
+        MonitorOrdersLoaded(
+          activeOrders: active,
+          finishedOrders: finished,
+          hasMoreFinished: finished.length == _pageSize,
+        ),
+      );
     }
 
     _channel ??= Supabase.instance.client
@@ -123,7 +131,7 @@ class MonitorOrdersCubit extends Cubit<MonitorOrdersState> {
     if (isClosed || activeResult is! AppSuccess<List<Order>>) return;
     final current = state;
     if (current is! MonitorOrdersLoaded) return;
-    emit(current.copyWith(activeOrders: activeResult.data));
+    safeEmit(current.copyWith(activeOrders: activeResult.data));
   }
 
   Future<void> loadMoreFinished() async {
@@ -131,7 +139,7 @@ class MonitorOrdersCubit extends Cubit<MonitorOrdersState> {
     if (current is! MonitorOrdersLoaded) return;
     if (!current.hasMoreFinished || current.isLoadingMoreFinished) return;
 
-    emit(current.copyWith(isLoadingMoreFinished: true));
+    safeEmit(current.copyWith(isLoadingMoreFinished: true));
     final result = await _repo.fetchFinishedOrders(
       page: _finishedPage,
       pageSize: _pageSize,
@@ -141,14 +149,18 @@ class MonitorOrdersCubit extends Cubit<MonitorOrdersState> {
     switch (result) {
       case AppSuccess(:final data):
         _finishedPage++;
-        emit(current.copyWith(
-          finishedOrders: [...current.finishedOrders, ...data],
-          hasMoreFinished: data.length == _pageSize,
-          isLoadingMoreFinished: false,
-        ));
+        safeEmit(
+          current.copyWith(
+            finishedOrders: [...current.finishedOrders, ...data],
+            hasMoreFinished: data.length == _pageSize,
+            isLoadingMoreFinished: false,
+          ),
+        );
       case AppFailure(:final error):
-        logger.e('MonitorOrdersCubit → loadMoreFinished failed: ${error.message}');
-        emit(current.copyWith(isLoadingMoreFinished: false));
+        logger.e(
+          'MonitorOrdersCubit → loadMoreFinished failed: ${error.message}',
+        );
+        safeEmit(current.copyWith(isLoadingMoreFinished: false));
     }
   }
 

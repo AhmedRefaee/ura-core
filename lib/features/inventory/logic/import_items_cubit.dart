@@ -13,10 +13,11 @@ import '../data/inventory_management_repository.dart';
 import '../data/models/imported_item_model.dart';
 import '../data/models/item_import_error_model.dart';
 import 'import_items_state.dart';
-import 'web_download_stub.dart'
-    if (dart.library.html) 'web_download_web.dart';
+import '../../../core/logic/safe_emit.dart';
+import 'web_download_stub.dart' if (dart.library.html) 'web_download_web.dart';
 
-class ImportItemsCubit extends Cubit<ImportItemsState> {
+class ImportItemsCubit extends Cubit<ImportItemsState>
+    with SafeEmit<ImportItemsState> {
   final InventoryManagementRepository _repo;
 
   ImportItemsCubit(this._repo) : super(ImportItemsInitial());
@@ -25,7 +26,7 @@ class ImportItemsCubit extends Cubit<ImportItemsState> {
     try {
       final bytes = _buildTemplateBytes();
       if (bytes == null) {
-        emit(ImportItemsError('فشل إنشاء القالب'));
+        safeEmit(ImportItemsError('فشل إنشاء القالب'));
         return;
       }
 
@@ -42,7 +43,7 @@ class ImportItemsCubit extends Cubit<ImportItemsState> {
       }
     } catch (e, st) {
       logger.e('downloadTemplate failed', error: e, stackTrace: st);
-      emit(ImportItemsError('فشل إنشاء القالب: ${e.toString()}'));
+      safeEmit(ImportItemsError('فشل إنشاء القالب: ${e.toString()}'));
     }
   }
 
@@ -62,7 +63,9 @@ class ImportItemsCubit extends Cubit<ImportItemsState> {
       'ملاحظات',
     ];
     for (var i = 0; i < headers.length; i++) {
-      final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0));
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0),
+      );
       cell.value = TextCellValue(headers[i]);
       cell.cellStyle = CellStyle(bold: true);
     }
@@ -78,7 +81,9 @@ class ImportItemsCubit extends Cubit<ImportItemsState> {
       'ملاحظات اختيارية',
     ];
     for (var i = 0; i < example.length; i++) {
-      final cell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 1));
+      final cell = sheet.cell(
+        CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 1),
+      );
       cell.value = TextCellValue(example[i]);
     }
 
@@ -86,7 +91,7 @@ class ImportItemsCubit extends Cubit<ImportItemsState> {
   }
 
   Future<void> pickAndParse() async {
-    emit(ImportItemsParsing());
+    safeEmit(ImportItemsParsing());
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -95,13 +100,13 @@ class ImportItemsCubit extends Cubit<ImportItemsState> {
       );
 
       if (result == null || result.files.isEmpty) {
-        emit(ImportItemsInitial());
+        safeEmit(ImportItemsInitial());
         return;
       }
 
       final bytes = result.files.first.bytes;
       if (bytes == null) {
-        emit(ImportItemsError('تعذر قراءة الملف'));
+        safeEmit(ImportItemsError('تعذر قراءة الملف'));
         return;
       }
 
@@ -109,7 +114,7 @@ class ImportItemsCubit extends Cubit<ImportItemsState> {
       final sheetName = excel.tables.keys.first;
       final sheet = excel.tables[sheetName];
       if (sheet == null || sheet.rows.isEmpty) {
-        emit(ImportItemsError('الملف فارغ أو لا يحتوي على بيانات'));
+        safeEmit(ImportItemsError('الملف فارغ أو لا يحتوي على بيانات'));
         return;
       }
 
@@ -158,44 +163,48 @@ class ImportItemsCubit extends Cubit<ImportItemsState> {
           }
           validItems.add(item);
         } else {
-          invalidItems.add(ItemImportErrorModel(
-            rowNumber: item.rowNumber,
-            errors: errors,
-            rawData: item,
-          ));
+          invalidItems.add(
+            ItemImportErrorModel(
+              rowNumber: item.rowNumber,
+              errors: errors,
+              rawData: item,
+            ),
+          );
         }
       }
 
       if (totalRows == 0) {
-        emit(ImportItemsError('لم يتم العثور على صفوف بيانات في الملف'));
+        safeEmit(ImportItemsError('لم يتم العثور على صفوف بيانات في الملف'));
         return;
       }
 
-      emit(ImportItemsParsed(
-        validItems: validItems,
-        invalidItems: invalidItems,
-        totalRows: totalRows,
-      ));
+      safeEmit(
+        ImportItemsParsed(
+          validItems: validItems,
+          invalidItems: invalidItems,
+          totalRows: totalRows,
+        ),
+      );
     } catch (e, st) {
       logger.e('pickAndParse failed', error: e, stackTrace: st);
-      emit(ImportItemsError('فشل تحليل الملف: ${e.toString()}'));
+      safeEmit(ImportItemsError('فشل تحليل الملف: ${e.toString()}'));
     }
   }
 
   Future<void> importValidItems(List<ImportedItemModel> items) async {
-    emit(ImportItemsSaving());
+    safeEmit(ImportItemsSaving());
     try {
       final rows = items.map((e) => e.toInsertMap()).toList();
       final result = await _repo.bulkImportItems(rows);
 
       if (result is AppSuccess) {
-        emit(ImportItemsDone(items.length));
+        safeEmit(ImportItemsDone(items.length));
       } else if (result is AppFailure) {
-        emit(ImportItemsError(result.error.message));
+        safeEmit(ImportItemsError(result.error.message));
       }
     } catch (e, st) {
       logger.e('importValidItems failed', error: e, stackTrace: st);
-      emit(ImportItemsError('فشل الاستيراد: ${e.toString()}'));
+      safeEmit(ImportItemsError('فشل الاستيراد: ${e.toString()}'));
     }
   }
 

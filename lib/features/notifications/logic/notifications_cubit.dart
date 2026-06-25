@@ -6,6 +6,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/app_notification.dart';
 import '../data/notifications_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class NotificationsState extends Equatable {
@@ -34,7 +35,8 @@ class NotificationsError extends NotificationsState {
 
 // ── Cubit ─────────────────────────────────────────────────────────────────────
 
-class NotificationsCubit extends Cubit<NotificationsState> {
+class NotificationsCubit extends Cubit<NotificationsState>
+    with SafeEmit<NotificationsState> {
   final NotificationsRepository _repo;
   RealtimeChannel? _channel;
 
@@ -42,7 +44,7 @@ class NotificationsCubit extends Cubit<NotificationsState> {
 
   Future<void> load() async {
     logger.d('NotificationsCubit → load');
-    emit(NotificationsLoading());
+    safeEmit(NotificationsLoading());
     await _fetch();
   }
 
@@ -52,7 +54,7 @@ class NotificationsCubit extends Cubit<NotificationsState> {
     if (isClosed) return;
     switch (result) {
       case AppSuccess(:final data):
-        emit(NotificationsLoaded(data));
+        safeEmit(NotificationsLoaded(data));
         _channel ??= Supabase.instance.client
             .channel('notifications-list-$hashCode')
             .onPostgresChanges(
@@ -64,26 +66,30 @@ class NotificationsCubit extends Cubit<NotificationsState> {
             .subscribe();
       case AppFailure(:final error):
         logger.e('NotificationsCubit → load failed: ${error.message}');
-        emit(NotificationsError(error.message));
+        safeEmit(NotificationsError(error.message));
     }
   }
 
   Future<void> deleteNotification(String id) async {
     if (state is! NotificationsLoaded) return;
     final current = (state as NotificationsLoaded).items;
-    emit(NotificationsLoaded(current.where((n) => n.id != id).toList()));
+    safeEmit(NotificationsLoaded(current.where((n) => n.id != id).toList()));
     final result = await _repo.deleteNotification(id);
     if (result is AppFailure) {
-      logger.e('NotificationsCubit → deleteNotification failed: ${result.error.message}');
+      logger.e(
+        'NotificationsCubit → deleteNotification failed: ${result.error.message}',
+      );
       await _fetch();
     }
   }
 
   Future<void> deleteAllNotifications() async {
-    emit(const NotificationsLoaded([]));
+    safeEmit(const NotificationsLoaded([]));
     final result = await _repo.deleteAllNotifications();
     if (result is AppFailure) {
-      logger.e('NotificationsCubit → deleteAllNotifications failed: ${result.error.message}');
+      logger.e(
+        'NotificationsCubit → deleteAllNotifications failed: ${result.error.message}',
+      );
       await _fetch();
     }
   }
@@ -92,7 +98,9 @@ class NotificationsCubit extends Cubit<NotificationsState> {
     logger.d('NotificationsCubit → markAllRead');
     final result = await _repo.markAllRead();
     if (result is AppFailure) {
-      logger.e('NotificationsCubit → markAllRead failed: ${result.error.message}');
+      logger.e(
+        'NotificationsCubit → markAllRead failed: ${result.error.message}',
+      );
     }
   }
 

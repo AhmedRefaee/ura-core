@@ -9,6 +9,10 @@ import '../features/auth/ui/register_screen.dart';
 import '../features/auth/ui/pending_approval_screen.dart';
 import '../features/auth/ui/forgot_password_screen.dart';
 import '../features/auth/ui/reset_password_screen.dart';
+import '../features/auth/ui/create_org_name_screen.dart';
+import '../features/auth/ui/create_org_details_screen.dart';
+import '../features/auth/ui/join_org_screen.dart';
+import '../features/admin/ui/admin_console_screen.dart';
 import '../features/verifier/ui/verifier_home_screen.dart';
 import '../features/rep/ui/rep_home_screen.dart';
 import '../features/rep/ui/rep_order_detail_screen.dart';
@@ -32,6 +36,10 @@ import '../shared/models/profile.dart';
 class AppRoutes {
   static const String login = '/login';
   static const String register = '/register';
+  static const String createOrgName = '/create-org';
+  static const String createOrgDetails = '/onboarding/create-details';
+  static const String joinOrg = '/onboarding/join';
+  static const String admin = '/admin';
   static const String pending = '/pending';
   static const String forgotPassword = '/forgot-password';
   static const String resetPassword = '/reset-password';
@@ -71,11 +79,26 @@ GoRouter createRouter(AuthCubit authCubit) {
 
       final isOnAuthPage = location == AppRoutes.login ||
           location == AppRoutes.register ||
+          location == AppRoutes.createOrgName ||
           location == AppRoutes.forgotPassword;
       final isOnPending = location == AppRoutes.pending;
+      final isOnOnboarding = location == AppRoutes.createOrgDetails ||
+          location == AppRoutes.joinOrg;
+      final isOnAdmin = location == AppRoutes.admin;
 
       if (authState is AuthUnauthenticated || authState is AuthError) {
         return isOnAuthPage ? null : AppRoutes.login;
+      }
+
+      if (authState is AuthNeedsOnboarding) {
+        final target = authCubit.hasPendingOrgCreation
+            ? AppRoutes.createOrgDetails
+            : AppRoutes.joinOrg;
+        return location == target ? null : target;
+      }
+
+      if (authState is AuthPlatformAdmin) {
+        return isOnAdmin ? null : AppRoutes.admin;
       }
 
       if (authState is AuthPendingApproval) {
@@ -89,7 +112,7 @@ GoRouter createRouter(AuthCubit authCubit) {
       }
 
       if (authState is AuthAuthenticated) {
-        if (isOnAuthPage || isOnPending) {
+        if (isOnAuthPage || isOnPending || isOnOnboarding || isOnAdmin) {
           return _roleRoute(authState.profile.role);
         }
         return null;
@@ -105,6 +128,22 @@ GoRouter createRouter(AuthCubit authCubit) {
       GoRoute(
         path: AppRoutes.register,
         builder: (_, _) => const RegisterScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.createOrgName,
+        builder: (_, _) => const CreateOrgNameScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.createOrgDetails,
+        builder: (_, _) => const CreateOrgDetailsScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.joinOrg,
+        builder: (_, _) => const JoinOrgScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.admin,
+        builder: (_, _) => const AdminConsoleScreen(),
       ),
       GoRoute(
         path: AppRoutes.pending,

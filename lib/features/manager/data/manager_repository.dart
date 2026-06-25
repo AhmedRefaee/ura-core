@@ -98,6 +98,96 @@ class ManagerRepository {
     }
   }
 
+  // ── Organization access (join code) ─────────────────────────────────────────
+
+  /// Reads the current manager's org name + join code (RLS scopes to own org).
+  Future<AppResult<({String name, String joinCode})>> fetchOrgAccess() async {
+    try {
+      final data = await _supabase
+          .from('organizations')
+          .select('name, join_code')
+          .maybeSingle();
+      if (data == null) {
+        return const AppFailure(AppError(
+          message: 'تعذّر تحميل بيانات المؤسسة',
+          type: AppErrorType.notFound,
+        ));
+      }
+      return AppSuccess(
+          (name: data['name'] as String, joinCode: data['join_code'] as String));
+    } catch (e, st) {
+      logger.e('ManagerRepository → fetchOrgAccess failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  /// Optional company-info fields, editable by the manager only. All
+  /// blank/null by default.
+  Future<AppResult<({
+    String id,
+    String? description,
+    String? address,
+    String? contactEmail,
+    String? contactPhone,
+  })>> fetchCompanyInfo() async {
+    try {
+      final data = await _supabase
+          .from('organizations')
+          .select('id, description, address, contact_email, contact_phone')
+          .maybeSingle();
+      if (data == null) {
+        return const AppFailure(AppError(
+          message: 'تعذّر تحميل بيانات المؤسسة',
+          type: AppErrorType.notFound,
+        ));
+      }
+      return AppSuccess((
+        id: data['id'] as String,
+        description: data['description'] as String?,
+        address: data['address'] as String?,
+        contactEmail: data['contact_email'] as String?,
+        contactPhone: data['contact_phone'] as String?,
+      ));
+    } catch (e, st) {
+      logger.e('ManagerRepository → fetchCompanyInfo failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<void>> updateCompanyInfo({
+    required String orgId,
+    String? description,
+    String? address,
+    String? contactEmail,
+    String? contactPhone,
+  }) async {
+    try {
+      await _supabase.from('organizations').update({
+        'description': description,
+        'address': address,
+        'contact_email': contactEmail,
+        'contact_phone': contactPhone,
+      }).eq('id', orgId);
+      return const AppSuccess(null);
+    } catch (e, st) {
+      logger.e('ManagerRepository → updateCompanyInfo failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<String>> rotateJoinCode() async {
+    try {
+      final result = await _supabase.rpc('rotate_join_code') as Map;
+      if (result['success'] as bool? ?? false) {
+        return AppSuccess(result['join_code'] as String);
+      }
+      return AppFailure(ErrorHandler.fromRpcResult(result));
+    } catch (e, st) {
+      logger.e('ManagerRepository → rotateJoinCode failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
   Future<AppResult<Map<String, OrderStatus>>> fetchLatestOrderStatusByRep() async {
     try {
       logger.d('ManagerRepository → fetchLatestOrderStatusByRep');
@@ -256,25 +346,6 @@ class ManagerRepository {
           .toList());
     } catch (e, st) {
       logger.e('ManagerRepository → fetchAuditLog failed', error: e, stackTrace: st);
-      return AppFailure(ErrorHandler.handle(e));
-    }
-  }
-
-  Future<AppResult<Map<String, String>>> fetchReceipts(String orderId) async {
-    try {
-      logger.d('ManagerRepository → fetchReceipts: $orderId');
-      final data = await _supabase
-          .from('receipts')
-          .select('order_item_id, image_url')
-          .eq('order_id', orderId);
-      final map = <String, String>{};
-      for (final row in data as List) {
-        map[row['order_item_id'] as String] = row['image_url'] as String;
-      }
-      logger.i('ManagerRepository → ${map.length} receipts for order $orderId');
-      return AppSuccess(map);
-    } catch (e, st) {
-      logger.e('ManagerRepository → fetchReceipts failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

@@ -5,7 +5,9 @@ import '../../../core/logging/app_logger.dart';
 import '../data/order_repository.dart';
 import 'orders_state.dart';
 
-class OrdersCubit extends Cubit<OrdersState> {
+import '../../../core/logic/safe_emit.dart';
+
+class OrdersCubit extends Cubit<OrdersState> with SafeEmit<OrdersState> {
   final OrderRepository _repo;
   RealtimeChannel? _channel;
 
@@ -13,7 +15,7 @@ class OrdersCubit extends Cubit<OrdersState> {
 
   Future<void> loadOrders() async {
     logger.d('OrdersCubit → loadOrders');
-    emit(OrdersLoading());
+    safeEmit(OrdersLoading());
     await _fetchOrders();
   }
 
@@ -21,7 +23,7 @@ class OrdersCubit extends Cubit<OrdersState> {
     final result = await _repo.fetchAllOrders();
     switch (result) {
       case AppSuccess(:final data):
-        emit(OrdersLoaded(data));
+        safeEmit(OrdersLoaded(data));
         _channel ??= Supabase.instance.client
             .channel('orders-cubit-$hashCode')
             .onPostgresChanges(
@@ -33,7 +35,7 @@ class OrdersCubit extends Cubit<OrdersState> {
             .subscribe();
       case AppFailure(:final error):
         logger.e('OrdersCubit → loadOrders failed: ${error.message}');
-        emit(OrdersError(error.message));
+        safeEmit(OrdersError(error.message));
     }
   }
 

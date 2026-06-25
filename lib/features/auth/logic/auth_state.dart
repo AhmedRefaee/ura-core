@@ -32,6 +32,14 @@ class AuthAuthenticated extends AuthState {
   List<Object?> get props => [profile];
 }
 
+/// Authenticated session exists but the user has no profile row yet — they must
+/// create or join an organization before they can use the app.
+class AuthNeedsOnboarding extends AuthState {}
+
+/// Hidden platform/developer admin — identified by the server-set
+/// `platform_admin` claim in the JWT app_metadata. Has no profile row.
+class AuthPlatformAdmin extends AuthState {}
+
 class AuthError extends AuthState {
   final String message;
 

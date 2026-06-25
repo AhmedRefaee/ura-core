@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/logging/app_logger.dart';
 import '../data/chat_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ─── State ───────────────────────────────────────────────────────────────────
 
 class OrderChatBadgeState extends Equatable {
@@ -21,7 +22,8 @@ class OrderChatBadgeState extends Equatable {
 
 // ─── Cubit ───────────────────────────────────────────────────────────────────
 
-class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState> {
+class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState>
+    with SafeEmit<OrderChatBadgeState> {
   final ChatRepository _repo;
   StreamSubscription<Map<String, int>>? _sub;
   StreamSubscription? _authStateSub;
@@ -37,11 +39,13 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState> {
     final authState = Supabase.instance.client.auth.currentSession;
     final lifecycleState = _lastLifecycleState?.name ?? 'unknown';
     final subActive = _sub != null ? 'active' : 'inactive';
-    
-    logger.i('OrderChatBadgeCubit DIAGNOSTIC: $message | '
-        'Auth: ${authState != null ? "authenticated" : "unauthenticated"} | '
-        'Lifecycle: $lifecycleState | '
-        'Subscription: $subActive');
+
+    logger.i(
+      'OrderChatBadgeCubit DIAGNOSTIC: $message | '
+      'Auth: ${authState != null ? "authenticated" : "unauthenticated"} | '
+      'Lifecycle: $lifecycleState | '
+      'Subscription: $subActive',
+    );
   }
 
   void _monitorAuthState() {
@@ -49,20 +53,28 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState> {
       (data) {
         _logDiagnostic('Auth state changed: ${data.event}');
         if (data.event == AuthChangeEvent.signedOut) {
-          logger.w('OrderChatBadgeCubit → User signed out, cancelling subscription');
+          logger.w(
+            'OrderChatBadgeCubit → User signed out, cancelling subscription',
+          );
           _sub?.cancel();
           _sub = null;
-          emit(const OrderChatBadgeState({}));
+          safeEmit(const OrderChatBadgeState({}));
         } else if (data.event == AuthChangeEvent.tokenRefreshed) {
           logger.d('OrderChatBadgeCubit → Token refreshed');
           if (_sub == null) {
-            logger.w('OrderChatBadgeCubit → Subscription was gone after token refresh, resubscribing');
+            logger.w(
+              'OrderChatBadgeCubit → Subscription was gone after token refresh, resubscribing',
+            );
             subscribe();
           }
         }
       },
       onError: (e, st) {
-        logger.e('OrderChatBadgeCubit → Auth state error', error: e, stackTrace: st);
+        logger.e(
+          'OrderChatBadgeCubit → Auth state error',
+          error: e,
+          stackTrace: st,
+        );
       },
     );
   }
@@ -74,48 +86,67 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState> {
   void onAppLifecycleChanged(AppLifecycleState state) {
     _lastLifecycleState = state;
     _logDiagnostic('App lifecycle changed to: ${state.name}');
-    
+
     if (state == AppLifecycleState.resumed) {
-      logger.d('OrderChatBadgeCubit → App resumed, checking subscription health');
+      logger.d(
+        'OrderChatBadgeCubit → App resumed, checking subscription health',
+      );
       if (_sub == null) {
-        logger.w('OrderChatBadgeCubit → No active subscription after resume, will resubscribe');
+        logger.w(
+          'OrderChatBadgeCubit → No active subscription after resume, will resubscribe',
+        );
         subscribe();
       } else {
-        logger.d('OrderChatBadgeCubit → Subscription still active after resume');
+        logger.d(
+          'OrderChatBadgeCubit → Subscription still active after resume',
+        );
       }
-    } else if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
-      logger.d('OrderChatBadgeCubit → App paused/inactive, connection may be closed by OS');
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
+      logger.d(
+        'OrderChatBadgeCubit → App paused/inactive, connection may be closed by OS',
+      );
     }
   }
 
   void subscribe() {
     if (_sub != null) {
-      logger.w('OrderChatBadgeCubit → Subscribe called but subscription already exists');
+      logger.w(
+        'OrderChatBadgeCubit → Subscribe called but subscription already exists',
+      );
       return;
     }
-    
+
     _logDiagnostic('Attempting to subscribe to urgent counts');
     logger.d('OrderChatBadgeCubit → subscribe');
-    
+
     try {
       _sub = _repo.subscribeToUrgentCountsByOrder().listen(
         (counts) {
-          logger.d('OrderChatBadgeCubit → ${counts.length} orders with urgent messages');
+          logger.d(
+            'OrderChatBadgeCubit → ${counts.length} orders with urgent messages',
+          );
           _logDiagnostic('Successfully received counts update');
-          emit(OrderChatBadgeState(counts));
+          safeEmit(OrderChatBadgeState(counts));
         },
         onError: (Object e, StackTrace st) {
           _logDiagnostic('Stream error occurred');
-          logger.e('OrderChatBadgeCubit → stream error', error: e, stackTrace: st);
-          
+          logger.e(
+            'OrderChatBadgeCubit → stream error',
+            error: e,
+            stackTrace: st,
+          );
+
           // Log additional error details
           if (e.toString().contains('channelError')) {
-            logger.e('OrderChatBadgeCubit → Channel error detected - connection likely closed');
+            logger.e(
+              'OrderChatBadgeCubit → Channel error detected - connection likely closed',
+            );
           }
           if (e.toString().contains('RealtimeSubscribeException')) {
             logger.e('OrderChatBadgeCubit → Realtime subscription failed');
           }
-          
+
           // Cancel and clear so it can be recreated on next token refresh
           _sub?.cancel();
           _sub = null;
@@ -129,10 +160,14 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState> {
         },
         cancelOnError: false,
       );
-      
+
       _logDiagnostic('Subscription listener attached successfully');
     } catch (e, st) {
-      logger.e('OrderChatBadgeCubit → Exception during subscribe', error: e, stackTrace: st);
+      logger.e(
+        'OrderChatBadgeCubit → Exception during subscribe',
+        error: e,
+        stackTrace: st,
+      );
       _sub = null;
     }
   }
@@ -152,9 +187,9 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState> {
 
 class _LifecycleObserver with WidgetsBindingObserver {
   final OrderChatBadgeCubit _cubit;
-  
+
   _LifecycleObserver(this._cubit);
-  
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     _cubit.onAppLifecycleChanged(state);

@@ -6,6 +6,7 @@ import '../../../shared/models/order.dart';
 import '../../../shared/models/profile.dart';
 import '../data/manager_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class RepListState extends Equatable {
@@ -42,14 +43,14 @@ class RepWithStatus extends Equatable {
 
 // ── Cubit ─────────────────────────────────────────────────────────────────────
 
-class RepListCubit extends Cubit<RepListState> {
+class RepListCubit extends Cubit<RepListState> with SafeEmit<RepListState> {
   final ManagerRepository _repo;
 
   RepListCubit(this._repo) : super(RepListInitial());
 
   Future<void> load() async {
     logger.d('RepListCubit → load');
-    emit(RepListLoading());
+    safeEmit(RepListLoading());
 
     final results = await Future.wait([
       _repo.fetchUsersByRole('rep'),
@@ -61,21 +62,27 @@ class RepListCubit extends Cubit<RepListState> {
     final repsError = results[0].failureOrNull;
     if (repsError != null) {
       logger.e('RepListCubit → load failed: ${repsError.message}');
-      emit(RepListError(repsError.message));
+      safeEmit(RepListError(repsError.message));
       return;
     }
     final statusError = results[1].failureOrNull;
     if (statusError != null) {
       logger.e('RepListCubit → load failed: ${statusError.message}');
-      emit(RepListError(statusError.message));
+      safeEmit(RepListError(statusError.message));
       return;
     }
 
     final reps = (results[0] as AppSuccess<List<Profile>>).data;
     final statusMap = (results[1] as AppSuccess<Map<String, OrderStatus>>).data;
 
-    emit(RepListLoaded(
-      reps.map((r) => RepWithStatus(profile: r, latestStatus: statusMap[r.id])).toList(),
-    ));
+    safeEmit(
+      RepListLoaded(
+        reps
+            .map(
+              (r) => RepWithStatus(profile: r, latestStatus: statusMap[r.id]),
+            )
+            .toList(),
+      ),
+    );
   }
 }

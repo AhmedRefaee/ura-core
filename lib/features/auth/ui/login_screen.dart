@@ -106,6 +106,13 @@ class _LoginScreenState extends State<LoginScreen> {
                         variant: AppButtonVariant.text,
                       ),
                       AppButton(
+                        text: 'إنشاء مؤسسة جديدة',
+                        onPressed: isLoading
+                            ? null
+                            : () => context.go(AppRoutes.createOrgName),
+                        variant: AppButtonVariant.text,
+                      ),
+                      AppButton(
                         text: 'نسيت كلمة المرور؟',
                         onPressed: isLoading
                             ? null

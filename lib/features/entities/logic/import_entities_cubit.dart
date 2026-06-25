@@ -14,16 +14,17 @@ import '../../verifier/data/entity_repository.dart';
 import '../data/models/imported_entity_model.dart';
 import '../data/models/entity_import_error_model.dart';
 import 'import_entities_state.dart';
-import 'web_download_stub.dart'
-    if (dart.library.html) 'web_download_web.dart';
+import '../../../core/logic/safe_emit.dart';
+import 'web_download_stub.dart' if (dart.library.html) 'web_download_web.dart';
 
-class ImportEntitiesCubit extends Cubit<ImportEntitiesState> {
+class ImportEntitiesCubit extends Cubit<ImportEntitiesState>
+    with SafeEmit<ImportEntitiesState> {
   final EntityRepository _repo;
 
   ImportEntitiesCubit(this._repo) : super(ImportEntitiesInitial());
 
   Future<void> exportEntities() async {
-    emit(ImportEntitiesExporting());
+    safeEmit(ImportEntitiesExporting());
     try {
       final result = await _repo.fetchEntities();
       final List<Entity> entities;
@@ -31,12 +32,12 @@ class ImportEntitiesCubit extends Cubit<ImportEntitiesState> {
         case AppSuccess(:final data):
           entities = data;
         case AppFailure(:final error):
-          emit(ImportEntitiesError('فشل تحميل البيانات: ${error.message}'));
+          safeEmit(ImportEntitiesError('فشل تحميل البيانات: ${error.message}'));
           return;
       }
       final bytes = _buildExportBytes(entities);
       if (bytes == null) {
-        emit(ImportEntitiesError('فشل إنشاء الملف'));
+        safeEmit(ImportEntitiesError('فشل إنشاء الملف'));
         return;
       }
 
@@ -52,10 +53,10 @@ class ImportEntitiesCubit extends Cubit<ImportEntitiesState> {
         }
       }
 
-      emit(ImportEntitiesInitial());
+      safeEmit(ImportEntitiesInitial());
     } catch (e, st) {
       logger.e('exportEntities failed', error: e, stackTrace: st);
-      emit(ImportEntitiesError('فشل التصدير: ${e.toString()}'));
+      safeEmit(ImportEntitiesError('فشل التصدير: ${e.toString()}'));
     }
   }
 
@@ -74,7 +75,8 @@ class ImportEntitiesCubit extends Cubit<ImportEntitiesState> {
     ];
     for (var i = 0; i < headers.length; i++) {
       final cell = sheet.cell(
-          CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0));
+        CellIndex.indexByColumnRow(columnIndex: i, rowIndex: 0),
+      );
       cell.value = TextCellValue(headers[i]);
       cell.cellStyle = CellStyle(bold: true);
     }
@@ -91,7 +93,8 @@ class ImportEntitiesCubit extends Cubit<ImportEntitiesState> {
       ];
       for (var col = 0; col < row.length; col++) {
         final cell = sheet.cell(
-            CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIdx + 1));
+          CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIdx + 1),
+        );
         cell.value = TextCellValue(row[col]);
       }
     }
@@ -100,7 +103,7 @@ class ImportEntitiesCubit extends Cubit<ImportEntitiesState> {
   }
 
   Future<void> pickAndParse() async {
-    emit(ImportEntitiesParsing());
+    safeEmit(ImportEntitiesParsing());
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
@@ -109,13 +112,13 @@ class ImportEntitiesCubit extends Cubit<ImportEntitiesState> {
       );
 
       if (result == null || result.files.isEmpty) {
-        emit(ImportEntitiesInitial());
+        safeEmit(ImportEntitiesInitial());
         return;
       }
 
       final bytes = result.files.first.bytes;
       if (bytes == null) {
-        emit(ImportEntitiesError('تعذر قراءة الملف'));
+        safeEmit(ImportEntitiesError('تعذر قراءة الملف'));
         return;
       }
 
@@ -123,7 +126,7 @@ class ImportEntitiesCubit extends Cubit<ImportEntitiesState> {
       final sheetName = excel.tables.keys.first;
       final sheet = excel.tables[sheetName];
       if (sheet == null || sheet.rows.isEmpty) {
-        emit(ImportEntitiesError('الملف فارغ أو لا يحتوي على بيانات'));
+        safeEmit(ImportEntitiesError('الملف فارغ أو لا يحتوي على بيانات'));
         return;
       }
 
@@ -165,32 +168,36 @@ class ImportEntitiesCubit extends Cubit<ImportEntitiesState> {
           }
           validItems.add(item);
         } else {
-          invalidItems.add(EntityImportErrorModel(
-            rowNumber: item.rowNumber,
-            errors: errors,
-            rawData: item,
-          ));
+          invalidItems.add(
+            EntityImportErrorModel(
+              rowNumber: item.rowNumber,
+              errors: errors,
+              rawData: item,
+            ),
+          );
         }
       }
 
       if (totalRows == 0) {
-        emit(ImportEntitiesError('لم يتم العثور على صفوف بيانات في الملف'));
+        safeEmit(ImportEntitiesError('لم يتم العثور على صفوف بيانات في الملف'));
         return;
       }
 
-      emit(ImportEntitiesParsed(
-        validItems: validItems,
-        invalidItems: invalidItems,
-        totalRows: totalRows,
-      ));
+      safeEmit(
+        ImportEntitiesParsed(
+          validItems: validItems,
+          invalidItems: invalidItems,
+          totalRows: totalRows,
+        ),
+      );
     } catch (e, st) {
       logger.e('pickAndParse failed', error: e, stackTrace: st);
-      emit(ImportEntitiesError('فشل تحليل الملف: ${e.toString()}'));
+      safeEmit(ImportEntitiesError('فشل تحليل الملف: ${e.toString()}'));
     }
   }
 
   Future<void> applyChanges(List<ImportedEntityModel> items) async {
-    emit(ImportEntitiesSaving());
+    safeEmit(ImportEntitiesSaving());
     try {
       final updatedCount = items.where((e) => e.isExistingRow).length;
       final insertedCount = items.where((e) => !e.isExistingRow).length;
@@ -199,16 +206,18 @@ class ImportEntitiesCubit extends Cubit<ImportEntitiesState> {
       final result = await _repo.upsertEntities(rows);
       switch (result) {
         case AppSuccess():
-          emit(ImportEntitiesDone(
-            updatedCount: updatedCount,
-            insertedCount: insertedCount,
-          ));
+          safeEmit(
+            ImportEntitiesDone(
+              updatedCount: updatedCount,
+              insertedCount: insertedCount,
+            ),
+          );
         case AppFailure(:final error):
-          emit(ImportEntitiesError(error.message));
+          safeEmit(ImportEntitiesError(error.message));
       }
     } catch (e, st) {
       logger.e('applyChanges failed', error: e, stackTrace: st);
-      emit(ImportEntitiesError('فشل تطبيق التغييرات: ${e.toString()}'));
+      safeEmit(ImportEntitiesError('فشل تطبيق التغييرات: ${e.toString()}'));
     }
   }
 

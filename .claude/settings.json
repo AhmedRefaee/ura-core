@@ -1,7 +1,16 @@
 {
   "permissions": {
     "allow": [
-      "Bash(find /c/MSOC/flutter_projects/ura_core -type f -name \"*.dart\" -path \"*/features/*\" -exec grep -l \"OrderStatus\\\\|OrderDirection\" {} \\\\;)"
+
+
+      "Bash(find /c/MSOC/flutter_projects/ura_core -type f -name \"*.dart\" -path \"*/features/*\" -exec grep -l \"OrderStatus\\\\|OrderDirection\" {} \\\\;)",
+      "Bash(git commit -m ' *)",
+      "Bash(grep -E \"\\\\.\\(dart\\)$\")",
+      "Bash(powershell -NoProfile -Command \"\\(Get-Content 'c:\\\\MSOC\\\\flutter_projects\\\\ura_core\\\\lib\\\\features\\\\storage\\\\ui\\\\storage_order_detail_screen.dart' | Measure-Object -Line\\).Lines\")",
+      "mcp__plugin_supabase_supabase__list_migrations",
+      "Bash(findstr /C:\"http \" /C:\"http-\")",
+      "Bash(findstr /R \"^- http\")",
+      "Bash(findstr \"http\")"
     ]
   }
 }

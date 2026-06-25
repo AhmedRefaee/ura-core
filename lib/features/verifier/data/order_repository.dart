@@ -11,6 +11,10 @@ import '../../../shared/models/profile.dart';
 class OrderRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
 
+  // Safety cap: fetchAllOrders has no pagination, so without a bound this
+  // query (and its nested joins) grows unbounded with order volume.
+  static const _maxOrdersFetch = 2000;
+
   static const _orderSelect =
       '*, '
       'entity:entities(*), '
@@ -27,7 +31,8 @@ class OrderRepository {
       final data = await _supabase
           .from('orders')
           .select(_orderSelect)
-          .order('created_at', ascending: false);
+          .order('created_at', ascending: false)
+          .limit(_maxOrdersFetch);
       final orders = (data as List)
           .map((e) => Order.fromMap(e as Map<String, dynamic>))
           .toList();
@@ -321,29 +326,6 @@ class OrderRepository {
     } catch (e, st) {
       logger.e(
         'OrderRepository → fetchEditLog failed',
-        error: e,
-        stackTrace: st,
-      );
-      return AppFailure(ErrorHandler.handle(e));
-    }
-  }
-
-  Future<AppResult<Map<String, String>>> fetchReceipts(String orderId) async {
-    try {
-      logger.d('OrderRepository → fetchReceipts: $orderId');
-      final data = await _supabase
-          .from('receipts')
-          .select('order_item_id, image_url')
-          .eq('order_id', orderId);
-      final map = <String, String>{};
-      for (final row in data as List) {
-        map[row['order_item_id'] as String] = row['image_url'] as String;
-      }
-      logger.i('OrderRepository → ${map.length} receipts for order $orderId');
-      return AppSuccess(map);
-    } catch (e, st) {
-      logger.e(
-        'OrderRepository → fetchReceipts failed',
         error: e,
         stackTrace: st,
       );

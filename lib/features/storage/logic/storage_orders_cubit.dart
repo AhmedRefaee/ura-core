@@ -6,6 +6,8 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/order.dart';
 import '../data/storage_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
+
 abstract class StorageOrdersState extends Equatable {
   const StorageOrdersState();
   @override
@@ -36,7 +38,8 @@ class StorageOrdersError extends StorageOrdersState {
   List<Object?> get props => [message];
 }
 
-class StorageOrdersCubit extends Cubit<StorageOrdersState> {
+class StorageOrdersCubit extends Cubit<StorageOrdersState>
+    with SafeEmit<StorageOrdersState> {
   final StorageRepository _repo;
   RealtimeChannel? _channel;
 
@@ -44,7 +47,7 @@ class StorageOrdersCubit extends Cubit<StorageOrdersState> {
 
   Future<void> loadOrders() async {
     logger.d('StorageOrdersCubit → loadOrders');
-    emit(StorageOrdersLoading());
+    safeEmit(StorageOrdersLoading());
     await _fetchOrders();
   }
 
@@ -59,20 +62,22 @@ class StorageOrdersCubit extends Cubit<StorageOrdersState> {
     final activeError = results[0].failureOrNull;
     if (activeError != null) {
       logger.e('StorageOrdersCubit → load failed: ${activeError.message}');
-      emit(StorageOrdersError(activeError.message));
+      safeEmit(StorageOrdersError(activeError.message));
       return;
     }
     final doneError = results[1].failureOrNull;
     if (doneError != null) {
       logger.e('StorageOrdersCubit → load failed: ${doneError.message}');
-      emit(StorageOrdersError(doneError.message));
+      safeEmit(StorageOrdersError(doneError.message));
       return;
     }
 
-    emit(StorageOrdersLoaded(
-      activeOrders: (results[0] as AppSuccess<List<Order>>).data,
-      doneOrders: (results[1] as AppSuccess<List<Order>>).data,
-    ));
+    safeEmit(
+      StorageOrdersLoaded(
+        activeOrders: (results[0] as AppSuccess<List<Order>>).data,
+        doneOrders: (results[1] as AppSuccess<List<Order>>).data,
+      ),
+    );
     _channel ??= Supabase.instance.client
         .channel('storage-orders-$hashCode')
         .onPostgresChanges(

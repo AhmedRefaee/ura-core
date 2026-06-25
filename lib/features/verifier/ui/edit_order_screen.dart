@@ -3,7 +3,6 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
-import '../../../shared/widgets/receipt_viewer_screen.dart';
 import '../logic/edit_order_cubit.dart';
 import 'widgets/add_item_sheet.dart';
 import '../../../core/design_system/theme/theme.dart';
@@ -106,7 +105,6 @@ class EditOrderScreen extends StatelessWidget {
                           isRemoved: ready.pendingActions.any(
                               (a) => a is RemoveItemAction && a.itemId == item.id),
                           inventory: ready.inventory,
-                          receipts: ready.receipts,
                           onQuantityChanged: (qty) => context
                               .read<EditOrderCubit>()
                               .updateItemQuantity(item.id, qty),
@@ -270,7 +268,6 @@ class _EditableItemTile extends StatelessWidget {
   final OrderItem item;
   final bool isRemoved;
   final List<InventoryItem> inventory;
-  final Map<String, String> receipts;
   final ValueChanged<int> onQuantityChanged;
   final VoidCallback onRemove;
 
@@ -278,7 +275,6 @@ class _EditableItemTile extends StatelessWidget {
     required this.item,
     required this.isRemoved,
     required this.inventory,
-    required this.receipts,
     required this.onQuantityChanged,
     required this.onRemove,
   });
@@ -359,8 +355,6 @@ class _EditableItemTile extends StatelessWidget {
               onChanged: onQuantityChanged,
             ),
           ),
-          if (item.isCustom)
-            _ReceiptIcon(receiptUrl: receipts[item.id]),
           IconButton(
             icon: const Icon(Icons.delete_outline, color: Colors.red, size: 20),
             onPressed: onRemove,
@@ -368,31 +362,6 @@ class _EditableItemTile extends StatelessWidget {
           ),
         ],
       ),
-    );
-  }
-}
-
-class _ReceiptIcon extends StatelessWidget {
-  final String? receiptUrl;
-  const _ReceiptIcon({this.receiptUrl});
-
-  @override
-  Widget build(BuildContext context) {
-    if (receiptUrl != null) {
-      return IconButton(
-        icon: const Icon(Icons.receipt_long, color: Colors.green, size: 20),
-        tooltip: 'عرض الإيصال',
-        onPressed: () => Navigator.push(
-          context,
-          MaterialPageRoute(builder: (_) => ReceiptViewerScreen(url: receiptUrl!)),
-        ),
-        visualDensity: VisualDensity.compact,
-      );
-    }
-    return const Icon(
-      Icons.receipt_long_outlined,
-      color: Colors.grey,
-      size: 20,
     );
   }
 }

@@ -15,45 +15,26 @@ class RegisterScreen extends StatefulWidget {
 }
 
 class _RegisterScreenState extends State<RegisterScreen> {
-  final _nameController = TextEditingController();
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
-  final _phoneController = TextEditingController();
-  final _nameFocusNode = FocusNode();
   final _emailFocusNode = FocusNode();
   final _passwordFocusNode = FocusNode();
-  final _phoneFocusNode = FocusNode();
   String? _errorMessage;
 
   @override
   void dispose() {
-    _nameController.dispose();
     _emailController.dispose();
     _passwordController.dispose();
-    _phoneController.dispose();
-    _nameFocusNode.dispose();
     _emailFocusNode.dispose();
     _passwordFocusNode.dispose();
-    _phoneFocusNode.dispose();
     super.dispose();
   }
 
   void _submit() {
-    final phone = _phoneController.text.trim();
-    if (phone.isEmpty) {
-      setState(() => _errorMessage = 'رقم الواتساب مطلوب');
-      return;
-    }
-    if (!RegExp(r'^05\d{8}$').hasMatch(phone)) {
-      setState(() => _errorMessage = 'الرقم يجب أن يبدأ بـ 05 ويتكون من 10 أرقام');
-      return;
-    }
     setState(() => _errorMessage = null);
     context.read<AuthCubit>().signUp(
           _emailController.text.trim(),
           _passwordController.text,
-          _nameController.text.trim(),
-          phone,
         );
   }
 
@@ -82,14 +63,13 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         style: AppTextStyles.headlineMedium,
                         textAlign: TextAlign.center,
                       ),
-                      SizedBox(height: AppSpacing.verticalXXXLarge),
-                      AppTextField(
-                        controller: _nameController,
-                        enabled: !isLoading,
-                        label: 'الاسم الكامل',
-                        focusNode: _nameFocusNode,
+                      SizedBox(height: AppSpacing.verticalSmall),
+                      Text(
+                        'بعد إنشاء الحساب ستختار إنشاء مؤسسة جديدة أو الانضمام لمؤسسة قائمة',
+                        style: AppTextStyles.bodySmall,
+                        textAlign: TextAlign.center,
                       ),
-                      SizedBox(height: AppSpacing.verticalLarge),
+                      SizedBox(height: AppSpacing.verticalXXLarge),
                       AppTextField(
                         controller: _emailController,
                         enabled: !isLoading,
@@ -104,16 +84,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         keyboardType: TextInputType.visiblePassword,
                         label: 'كلمة المرور',
                         focusNode: _passwordFocusNode,
-                      ),
-                      SizedBox(height: AppSpacing.verticalLarge),
-                      AppTextField(
-                        controller: _phoneController,
-                        enabled: !isLoading,
-                        keyboardType: TextInputType.phone,
-                        label: 'رقم الواتساب *',
-                        hintText: '05XXXXXXXX',
-                        prefixIcon: Icons.phone,
-                        focusNode: _phoneFocusNode,
                       ),
                       if (_errorMessage != null) ...[
                         SizedBox(height: AppSpacing.verticalMedium),

@@ -5,6 +5,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../data/inventory_management_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ── States ──────────────────────────────────────────────────────────────────
 
 abstract class InventoryFormState extends Equatable {
@@ -28,13 +29,15 @@ class InventoryFormError extends InventoryFormState {
 
 // ── Cubit ────────────────────────────────────────────────────────────────────
 
-class InventoryFormCubit extends Cubit<InventoryFormState> {
+class InventoryFormCubit extends Cubit<InventoryFormState>
+    with SafeEmit<InventoryFormState> {
   final InventoryManagementRepository _repo;
   final InventoryItem? initialItem;
 
   bool get isEditing => initialItem != null;
 
-  InventoryFormCubit(this._repo, {this.initialItem}) : super(InventoryFormIdle());
+  InventoryFormCubit(this._repo, {this.initialItem})
+    : super(InventoryFormIdle());
 
   Future<void> submit({
     required String name,
@@ -46,7 +49,7 @@ class InventoryFormCubit extends Cubit<InventoryFormState> {
     String? description,
     String? notes,
   }) async {
-    emit(InventoryFormSaving());
+    safeEmit(InventoryFormSaving());
 
     final AppResult<void> result;
     if (isEditing) {
@@ -76,11 +79,13 @@ class InventoryFormCubit extends Cubit<InventoryFormState> {
 
     switch (result) {
       case AppSuccess():
-        logger.i('InventoryFormCubit ${isEditing ? "updated" : "created"}: $name');
-        emit(InventoryFormSuccess());
+        logger.i(
+          'InventoryFormCubit ${isEditing ? "updated" : "created"}: $name',
+        );
+        safeEmit(InventoryFormSuccess());
       case AppFailure(:final error):
         logger.e('InventoryFormCubit submit failed: ${error.message}');
-        emit(InventoryFormError(error.message));
+        safeEmit(InventoryFormError(error.message));
     }
   }
 }

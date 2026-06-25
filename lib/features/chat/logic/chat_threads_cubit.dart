@@ -6,6 +6,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/chat_thread.dart';
 import '../data/chat_repository.dart';
 
+import '../../../core/logic/safe_emit.dart';
 // ─── States ──────────────────────────────────────────────────────────────────
 
 abstract class ChatThreadsState extends Equatable {
@@ -34,7 +35,8 @@ class ChatThreadsError extends ChatThreadsState {
 
 // ─── Cubit ───────────────────────────────────────────────────────────────────
 
-class ChatThreadsCubit extends Cubit<ChatThreadsState> {
+class ChatThreadsCubit extends Cubit<ChatThreadsState>
+    with SafeEmit<ChatThreadsState> {
   final ChatRepository _repo;
   RealtimeChannel? _channel;
 
@@ -42,20 +44,25 @@ class ChatThreadsCubit extends Cubit<ChatThreadsState> {
 
   Future<void> loadThreads() async {
     logger.d('ChatThreadsCubit → loadThreads');
-    emit(ChatThreadsLoading());
+    safeEmit(ChatThreadsLoading());
     final result = await _repo.getThreads();
     if (!isClosed) {
       switch (result) {
         case AppSuccess(:final data):
           final sorted = [...data]
-            ..sort((a, b) => (b.lastMessageAt ?? b.createdAt)
-                .compareTo(a.lastMessageAt ?? a.createdAt));
-          final withMessages = sorted.where((t) => t.lastMessageAt != null).toList();
-          emit(ChatThreadsLoaded(withMessages));
+            ..sort(
+              (a, b) => (b.lastMessageAt ?? b.createdAt).compareTo(
+                a.lastMessageAt ?? a.createdAt,
+              ),
+            );
+          final withMessages = sorted
+              .where((t) => t.lastMessageAt != null)
+              .toList();
+          safeEmit(ChatThreadsLoaded(withMessages));
           _subscribeToChanges();
         case AppFailure(:final error):
           logger.e('ChatThreadsCubit → loadThreads failed: ${error.message}');
-          emit(ChatThreadsError(error.message));
+          safeEmit(ChatThreadsError(error.message));
       }
     }
   }
@@ -82,10 +89,15 @@ class ChatThreadsCubit extends Cubit<ChatThreadsState> {
     final result = await _repo.getThreads();
     if (!isClosed && result is AppSuccess<List<ChatThread>>) {
       final sorted = [...result.data]
-        ..sort((a, b) => (b.lastMessageAt ?? b.createdAt)
-            .compareTo(a.lastMessageAt ?? a.createdAt));
-      final withMessages = sorted.where((t) => t.lastMessageAt != null).toList();
-      emit(ChatThreadsLoaded(withMessages));
+        ..sort(
+          (a, b) => (b.lastMessageAt ?? b.createdAt).compareTo(
+            a.lastMessageAt ?? a.createdAt,
+          ),
+        );
+      final withMessages = sorted
+          .where((t) => t.lastMessageAt != null)
+          .toList();
+      safeEmit(ChatThreadsLoaded(withMessages));
     }
   }
 
@@ -98,7 +110,7 @@ class ChatThreadsCubit extends Cubit<ChatThreadsState> {
         return data;
       case AppFailure(:final error):
         logger.e('ChatThreadsCubit → createThread failed: ${error.message}');
-        if (!isClosed) emit(ChatThreadsError(error.message));
+        if (!isClosed) safeEmit(ChatThreadsError(error.message));
         return null;
     }
   }

@@ -51,7 +51,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyClGCSv60dNWWWPYuz14aA8lPZQD9daCnM',
-    appId: '1:624182997032:android:8e0f7572d743fc7a7c051d',
+    appId: '1:624182997032:android:4fe9a4c3a2ed1ce67c051d',
     messagingSenderId: '624182997032',
     projectId: 'ura-core-9981c',
     storageBucket: 'ura-core-9981c.firebasestorage.app',

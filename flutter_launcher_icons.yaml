@@ -1,12 +1,12 @@
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/icons/app_icon.png"
+  image_path: "assets/icons/ura_app_icon.png"
   # Adaptive icon layers (Android 8.0+ / API 26+)
   # Background: solid white color XML — memory-efficient, resolution-independent
   # Foreground: logo scaled to fit the 66dp safe zone inside the 108dp canvas
   adaptive_icon_background: "#FFFFFF"
-  adaptive_icon_foreground: "assets/icons/app_icon.png"
+  adaptive_icon_foreground: "assets/icons/ura_app_icon.png"
   # Source PNG has alpha channel — iOS App Store requires fully opaque icons
   remove_alpha_ios: true
   web:

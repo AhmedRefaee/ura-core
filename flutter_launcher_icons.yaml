@@ -10,7 +10,10 @@ flutter_launcher_icons:
   # Source PNG has alpha channel — iOS App Store requires fully opaque icons
   remove_alpha_ios: true
   web:
-    generate: false
+    generate: true
+    image_path: "assets/icons/ura_app_icon.png"
+    background_color: "#0175C2"
+    theme_color: "#0175C2"
   macos:
     generate: false
   windows:

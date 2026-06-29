@@ -1,6 +1,6 @@
 import 'package:equatable/equatable.dart';
 
-enum UserRole { verifier, rep, storageActor, manager }
+enum UserRole { verifier, rep, storageActor, manager, admin }
 
 class Profile extends Equatable {
   final String id;
@@ -57,6 +57,8 @@ class Profile extends Equatable {
         return 'storage_actor';
       case UserRole.manager:
         return 'manager';
+      case UserRole.admin:
+        return 'admin';
       case null:
         return null;
     }
@@ -72,6 +74,8 @@ class Profile extends Equatable {
         return UserRole.storageActor;
       case 'manager':
         return UserRole.manager;
+      case 'admin':
+        return UserRole.admin;
       default:
         return null;
     }

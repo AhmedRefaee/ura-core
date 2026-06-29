@@ -21,7 +21,8 @@ class SettingsScreen extends StatelessWidget {
             final isDarkMode = state.isDarkMode;
             final authState = context.watch<AuthCubit>().state;
             final isManager = authState is AuthAuthenticated &&
-                authState.profile.role == UserRole.manager;
+                (authState.profile.role == UserRole.manager ||
+                    authState.profile.role == UserRole.admin);
 
             return SingleChildScrollView(
               child: Column(

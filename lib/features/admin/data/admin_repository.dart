@@ -77,6 +77,18 @@ class AdminRepository {
   Future<AppResult<void>> approveUser(String userId, String role) =>
       _rpc('approve_user', {'target_user_id': userId, 'assigned_role': role});
 
+  Future<AppResult<void>> changeMemberRole(String userId, String newRole) =>
+      _rpc('admin_change_member_role', {
+        'p_user_id': userId,
+        'p_new_role': newRole,
+      });
+
+  Future<AppResult<void>> removeMember(String userId) =>
+      _rpc('admin_remove_member', {'p_user_id': userId});
+
+  Future<AppResult<void>> deleteOrganization(String orgId) =>
+      _rpc('admin_delete_organization', {'p_org_id': orgId});
+
   Future<AppResult<void>> _rpc(String fn, Map<String, dynamic> params) async {
     try {
       final result = await _supabase.rpc(fn, params: params);

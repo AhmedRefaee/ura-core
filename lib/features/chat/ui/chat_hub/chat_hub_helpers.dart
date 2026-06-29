@@ -50,6 +50,7 @@ String _roleSectionLabel(UserRole role) => switch (role) {
   UserRole.verifier => 'موظفو التحقق',
   UserRole.storageActor => 'عمال المخزن',
   UserRole.rep => 'المندوبون',
+  UserRole.admin => 'المدراء العامون',
 };
 
 String _roleLabel(UserRole? role) => switch (role) {
@@ -57,6 +58,7 @@ String _roleLabel(UserRole? role) => switch (role) {
   UserRole.verifier => 'موظف تحقق',
   UserRole.storageActor => 'مخزن',
   UserRole.rep => 'مندوب',
+  UserRole.admin => 'مدير عام',
   null => '',
 };
 

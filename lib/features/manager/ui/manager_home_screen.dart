@@ -217,6 +217,8 @@ class _AllUsersTabState extends State<_AllUsersTab> {
                 ButtonSegment(
                     value: 'storage_actor', label: Text('أمناء المخزن')),
                 ButtonSegment(value: 'verifier', label: Text('مشرفون')),
+                ButtonSegment(value: 'manager', label: Text('مديرون')),
+                ButtonSegment(value: 'admin', label: Text('مديرون عامون')),
               ],
               selected: {_role},
               onSelectionChanged: (s) {

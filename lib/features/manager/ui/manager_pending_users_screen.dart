@@ -116,6 +116,10 @@ class _ManagerPendingUsersScreenState
                   title: Text('مدير'),
                   value: 'manager',
                 ),
+                RadioListTile<String>(
+                  title: Text('مدير عام (صلاحيات كاملة)'),
+                  value: 'admin',
+                ),
               ],
             ),
           ),

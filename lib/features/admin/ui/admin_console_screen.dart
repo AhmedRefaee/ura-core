@@ -8,7 +8,7 @@ import '../../../core/design_system/theme/theme.dart';
 import '../data/admin_repository.dart';
 import '../logic/admin_cubit.dart';
 
-const _roles = ['rep', 'storage_actor', 'verifier', 'manager'];
+const _roles = ['rep', 'storage_actor', 'verifier', 'manager', 'admin'];
 
 /// Hidden platform-admin console: cross-org overview and controls. Reachable
 /// only by accounts carrying the platform_admin JWT claim.
@@ -127,6 +127,17 @@ class _OrgCard extends StatelessWidget {
                 ),
               ],
             ),
+            Row(
+              children: [
+                TextButton.icon(
+                  icon: Icon(Icons.delete_forever,
+                      size: 18, color: AppColors.error),
+                  label: Text('حذف المؤسسة',
+                      style: TextStyle(color: AppColors.error)),
+                  onPressed: () => _confirmDeleteOrg(context, cubit, org),
+                ),
+              ],
+            ),
           ],
         ),
       ),
@@ -138,6 +149,72 @@ class _OrgCard extends StatelessWidget {
       context: context,
       isScrollControlled: true,
       builder: (_) => _MembersSheet(cubit: cubit, org: org),
+    );
+  }
+
+  Future<void> _confirmDeleteOrg(
+      BuildContext context, AdminCubit cubit, AdminOrg org) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => _DeleteOrgDialog(org: org),
+    );
+    if (confirmed != true) return;
+    final result = await cubit.deleteOrganization(org.id);
+    if (result is AppFailure<void> && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error.message)),
+      );
+    }
+  }
+}
+
+class _DeleteOrgDialog extends StatefulWidget {
+  final AdminOrg org;
+  const _DeleteOrgDialog({required this.org});
+
+  @override
+  State<_DeleteOrgDialog> createState() => _DeleteOrgDialogState();
+}
+
+class _DeleteOrgDialogState extends State<_DeleteOrgDialog> {
+  final _controller = TextEditingController();
+  bool _matches = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('حذف المؤسسة'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'هذا الإجراء لا يمكن التراجع عنه. للتأكيد، اكتب اسم المؤسسة بالضبط:\n"${widget.org.name}"',
+          ),
+          SizedBox(height: AppSpacing.verticalMedium),
+          TextField(
+            controller: _controller,
+            onChanged: (v) =>
+                setState(() => _matches = v.trim() == widget.org.name),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('إلغاء'),
+        ),
+        TextButton(
+          onPressed: _matches ? () => Navigator.pop(context, true) : null,
+          child: Text('حذف', style: TextStyle(color: AppColors.error)),
+        ),
+      ],
     );
   }
 }
@@ -163,8 +240,8 @@ class _MembersSheetState extends State<_MembersSheet> {
   void _reload() =>
       setState(() => _future = widget.cubit.members(widget.org.id));
 
-  Future<void> _approve(AdminMember m) async {
-    final role = await showDialog<String>(
+  Future<String?> _pickRole() {
+    return showDialog<String>(
       context: context,
       builder: (_) => SimpleDialog(
         title: const Text('تعيين الدور'),
@@ -176,8 +253,54 @@ class _MembersSheetState extends State<_MembersSheet> {
             .toList(),
       ),
     );
+  }
+
+  Future<void> _approve(AdminMember m) async {
+    final role = await _pickRole();
     if (role == null) return;
     await widget.cubit.approveUser(m.id, role);
+    if (mounted) _reload();
+  }
+
+  Future<void> _changeRole(AdminMember m) async {
+    final role = await _pickRole();
+    if (role == null) return;
+    final result = await widget.cubit.changeMemberRole(m.id, role);
+    if (result is AppFailure<void> && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error.message)),
+      );
+    }
+    if (mounted) _reload();
+  }
+
+  Future<void> _remove(AdminMember m) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('إزالة العضو'),
+        content: Text(
+          'هل تريد إزالة "${m.fullName}"؟ سيحتاج إلى موافقة جديدة للوصول مرة أخرى.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text('إزالة', style: TextStyle(color: AppColors.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final result = await widget.cubit.removeMember(m.id);
+    if (result is AppFailure<void> && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.error.message)),
+      );
+    }
     if (mounted) _reload();
   }
 
@@ -208,7 +331,22 @@ class _MembersSheetState extends State<_MembersSheet> {
                     ? (m.role ?? '—')
                     : 'بانتظار الموافقة'),
                 trailing: m.isApproved
-                    ? null
+                    ? Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.edit, size: 20),
+                            tooltip: 'تغيير الدور',
+                            onPressed: () => _changeRole(m),
+                          ),
+                          IconButton(
+                            icon: Icon(Icons.person_remove,
+                                size: 20, color: AppColors.error),
+                            tooltip: 'إزالة',
+                            onPressed: () => _remove(m),
+                          ),
+                        ],
+                      )
                     : TextButton(
                         onPressed: () => _approve(m),
                         child: const Text('موافقة'),

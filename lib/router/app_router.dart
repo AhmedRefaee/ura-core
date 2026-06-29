@@ -22,6 +22,7 @@ import '../features/storage/ui/storage_order_detail_screen.dart';
 import '../features/storage/logic/storage_order_detail_cubit.dart';
 import '../features/manager/ui/manager_home_screen.dart';
 import '../features/manager/ui/task_detail_screen.dart';
+import '../features/org_admin/ui/org_admin_home_screen.dart';
 import '../core/di/injection.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../features/chat/ui/chat_hub_screen.dart';
@@ -47,6 +48,7 @@ class AppRoutes {
   static const String repHome = '/rep';
   static const String storageHome = '/storage';
   static const String managerHome = '/manager';
+  static const String adminHome = '/admin-home';
   static const String chat = '/chat';
   static const String notifications = '/notifications';
   static const String entities = '/entities';
@@ -164,6 +166,10 @@ GoRouter createRouter(AuthCubit authCubit) {
       GoRoute(
         path: AppRoutes.managerHome,
         builder: (_, _) => const ManagerHomeScreen(),
+      ),
+      GoRoute(
+        path: AppRoutes.adminHome,
+        builder: (_, _) => const OrgAdminHomeScreen(),
       ),
       GoRoute(
         path: AppRoutes.chat,
@@ -326,6 +332,8 @@ String _roleRoute(UserRole? role) {
       return AppRoutes.storageHome;
     case UserRole.manager:
       return AppRoutes.managerHome;
+    case UserRole.admin:
+      return AppRoutes.adminHome;
     default:
       return AppRoutes.pending;
   }

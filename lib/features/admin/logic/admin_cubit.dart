@@ -54,4 +54,18 @@ class AdminCubit extends Cubit<AdminState> with SafeEmit<AdminState> {
 
   Future<AppResult<void>> approveUser(String userId, String role) =>
       _repo.approveUser(userId, role);
+
+  Future<AppResult<void>> changeMemberRole(String userId, String newRole) =>
+      _repo.changeMemberRole(userId, newRole);
+
+  Future<AppResult<void>> removeMember(String userId) =>
+      _repo.removeMember(userId);
+
+  Future<AppResult<void>> deleteOrganization(String orgId) async {
+    final result = await _repo.deleteOrganization(orgId);
+    if (result is AppSuccess<void>) {
+      await load();
+    }
+    return result;
+  }
 }

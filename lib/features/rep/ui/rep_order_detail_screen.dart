@@ -5,6 +5,7 @@ import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
@@ -359,7 +360,7 @@ class _ItemTile extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('الكمية: ${item.effectiveQuantity}'),
+            Text('الكمية: ${formatQty(item.effectiveQuantity)}'),
             if (showWarning)
               Chip(
                 avatar: const Icon(

@@ -42,10 +42,10 @@ class InventoryFormCubit extends Cubit<InventoryFormState>
   Future<void> submit({
     required String name,
     required String unit,
-    required int quantity,
+    required double quantity,
     String? sku,
     String? category,
-    int minQuantity = 0,
+    double minQuantity = 0,
     String? description,
     String? notes,
   }) async {

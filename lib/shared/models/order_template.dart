@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import '../utils/quantity_format.dart';
 import 'order.dart';
 
 class OrderTemplateItem extends Equatable {
@@ -6,7 +7,7 @@ class OrderTemplateItem extends Equatable {
   final String templateId;
   final String? inventoryId;
   final String? inventoryName;
-  final int quantity;
+  final double quantity;
   final bool isCustom;
   final String? customDescription;
   final String? sourceInventoryId;
@@ -30,7 +31,7 @@ class OrderTemplateItem extends Equatable {
         templateId: m['template_id'] as String,
         inventoryId: m['inventory_id'] as String?,
         inventoryName: m['inventory_name'] as String?,
-        quantity: m['quantity'] as int,
+        quantity: (m['quantity'] as num).toDouble(),
         isCustom: m['is_custom'] as bool,
         customDescription: m['custom_description'] as String?,
         sourceInventoryId: m['source_inventory_id'] as String?,
@@ -78,7 +79,7 @@ class OrderTemplate extends Equatable {
   String get itemsSummary {
     if (items.isEmpty) return 'لا أصناف';
     if (items.length == 1) {
-      return '${items.first.displayName} × ${items.first.quantity}';
+      return '${items.first.displayName} × ${formatQty(items.first.quantity)}';
     }
     return '${items.length} أصناف';
   }

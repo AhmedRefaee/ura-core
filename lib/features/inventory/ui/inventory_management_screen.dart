@@ -4,6 +4,7 @@ import '../../../core/design_system/theme/theme.dart';
 import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../logic/inventory_list_cubit.dart';
 import 'inventory_bulk_edit_screen.dart';
 import 'inventory_form_screen.dart';
@@ -737,7 +738,7 @@ class _InventoryManagementGridCard extends StatelessWidget {
                   Icon(Icons.inventory_2_outlined, color: stockColor, size: 24),
                   const Spacer(),
                   Text(
-                    '${item.quantity}',
+                    formatQty(item.quantity),
                     style: AppTextStyles.headlineSmall.copyWith(
                       color: stockColor,
                       fontWeight: FontWeight.bold,
@@ -765,7 +766,7 @@ class _InventoryManagementGridCard extends StatelessWidget {
               ),
               SizedBox(height: AppSpacing.verticalXSmall),
               Text(
-                'الحد الأدنى: ${item.minQuantity}',
+                'الحد الأدنى: ${formatQty(item.minQuantity)}',
                 style: AppTextStyles.bodySmall.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),

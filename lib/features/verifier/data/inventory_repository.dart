@@ -45,7 +45,7 @@ class InventoryRepository {
     }
   }
 
-  Future<AppResult<void>> incrementStockBulk(Map<String, int> deltas) async {
+  Future<AppResult<void>> incrementStockBulk(Map<String, double> deltas) async {
     if (deltas.isEmpty) return const AppSuccess(null);
     try {
       logger.d('InventoryRepository → incrementStockBulk: ${deltas.length} items');

@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../shared/models/inventory_item.dart';
 import '../../../../shared/models/order.dart';
+import '../../../../shared/utils/quantity_format.dart';
 import '../../../../core/design_system/theme/theme.dart';
 
 /// Shared widget for adding items to an order.
@@ -9,8 +11,8 @@ import '../../../../core/design_system/theme/theme.dart';
 class AddItemSheet extends StatefulWidget {
   final List<InventoryItem> inventory;
   final OrderDirection orderDirection;
-  final void Function(List<({InventoryItem item, int quantity})> items) onAddInventoryItems;
-  final void Function(String description, int quantity, {String? sourceInventoryId}) onAddCustomItem;
+  final void Function(List<({InventoryItem item, double quantity})> items) onAddInventoryItems;
+  final void Function(String description, double quantity, {String? sourceInventoryId}) onAddCustomItem;
 
   const AddItemSheet({
     super.key,
@@ -74,16 +76,16 @@ class _AddItemSheetState extends State<AddItemSheet> {
       }).toList();
 
   void _submit() {
-    final inventoryItems = <({InventoryItem item, int quantity})>[];
+    final inventoryItems = <({InventoryItem item, double quantity})>[];
     for (final item in widget.inventory) {
-      final qty = int.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
+      final qty = double.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
       if (qty > 0) inventoryItems.add((item: item, quantity: qty));
     }
     if (inventoryItems.isNotEmpty) widget.onAddInventoryItems(inventoryItems);
 
     if (_isCustom) {
       final name = _descController.text.trim();
-      final qty = int.tryParse(_customQtyController.text) ?? 0;
+      final qty = double.tryParse(_customQtyController.text) ?? 0;
       if (name.isNotEmpty && qty > 0) {
         final payload = jsonEncode({
           'name': name,
@@ -91,7 +93,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
           'unit': _unitCtrl.text.trim().isEmpty ? 'قطعة' : _unitCtrl.text.trim(),
           if (_skuCtrl.text.trim().isNotEmpty) 'sku': _skuCtrl.text.trim(),
           if (_categoryCtrl.text.trim().isNotEmpty) 'category': _categoryCtrl.text.trim(),
-          'minQty': int.tryParse(_minQtyCtrl.text) ?? 0,
+          'minQty': double.tryParse(_minQtyCtrl.text) ?? 0,
           if (_extraDescCtrl.text.trim().isNotEmpty) 'description': _extraDescCtrl.text.trim(),
         });
         widget.onAddCustomItem(payload, qty, sourceInventoryId: _convertSourceInventoryId);
@@ -198,10 +200,10 @@ class _AddItemSheetState extends State<AddItemSheet> {
   bool get _hasAnySelection {
     if (_isCustom) {
       return _descController.text.trim().isNotEmpty &&
-          (int.tryParse(_customQtyController.text) ?? 0) > 0;
+          (double.tryParse(_customQtyController.text) ?? 0) > 0;
     }
     for (final item in _filtered) {
-      final qty = int.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
+      final qty = double.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
       if (qty > 0) return true;
     }
     return false;
@@ -210,10 +212,10 @@ class _AddItemSheetState extends State<AddItemSheet> {
   /// Inbound orders restock — no depletion warning applies.
   String? _quantityWarning(InventoryItem item) {
     if (_isInbound) return null;
-    final qty = int.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
+    final qty = double.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
     if (qty <= 0) return null;
     final result = item.checkStock(qty);
-    if (result == StockCheckResult.partial) return 'المتوفر فقط: ${item.quantity}';
+    if (result == StockCheckResult.partial) return 'المتوفر فقط: ${formatQty(item.quantity)}';
     if (result == StockCheckResult.outOfStock) return 'غير متوفر في المخزون';
     return null;
   }
@@ -221,7 +223,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
   /// True when an inbound order is actively restocking an out-of-stock item.
   bool _isRestocking(InventoryItem item) {
     if (!_isInbound) return false;
-    final qty = int.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
+    final qty = double.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
     return qty > 0 && item.availabilityStatus == AvailabilityStatus.outOfStock;
   }
 
@@ -307,7 +309,8 @@ class _AddItemSheetState extends State<AddItemSheet> {
                           child: _CustomField(
                             controller: _customQtyController,
                             label: 'الكمية *',
-                            keyboardType: TextInputType.number,
+                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [quantityInputFormatter],
                             onChanged: (_) => setState(() {}),
                           ),
                         ),
@@ -334,7 +337,8 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     _CustomField(
                       controller: _minQtyCtrl,
                       label: 'حد التنبيه (اختياري)',
-                      keyboardType: TextInputType.number,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [quantityInputFormatter],
                     ),
                     SizedBox(height: AppSpacing.verticalMedium),
                     _CustomField(
@@ -425,7 +429,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                         Row(
                                           children: [
                                             Text(
-                                              'المتوفر: ${item.quantity}',
+                                              'المتوفر: ${formatQty(item.quantity)}',
                                               style: TextStyle(
                                                 fontSize: 14,
                                                 fontWeight: FontWeight.bold,
@@ -466,7 +470,8 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                         SizedBox(height: AppSpacing.verticalXSmall),
                                         TextField(
                                           controller: _quantityControllers[item.id],
-                                          keyboardType: TextInputType.number,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          inputFormatters: [quantityInputFormatter],
                                           textAlign: TextAlign.center,
                                           style: const TextStyle(
                                             fontSize: 20,
@@ -560,6 +565,7 @@ class _CustomField extends StatelessWidget {
   final TextEditingController controller;
   final String label;
   final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
   final int maxLines;
   final ValueChanged<String>? onChanged;
 
@@ -567,6 +573,7 @@ class _CustomField extends StatelessWidget {
     required this.controller,
     required this.label,
     this.keyboardType,
+    this.inputFormatters,
     this.maxLines = 1,
     this.onChanged,
   });
@@ -576,6 +583,7 @@ class _CustomField extends StatelessWidget {
     return TextField(
       controller: controller,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       maxLines: maxLines,
       onChanged: onChanged,
       decoration: InputDecoration(

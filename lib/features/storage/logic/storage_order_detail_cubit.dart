@@ -24,7 +24,7 @@ class StorageOrderDetailLoaded extends StorageOrderDetailState {
   final Order order;
   final List<AuditLogEntry> auditLog;
   final Map<String, ItemCheckStatus> pendingStatuses;
-  final Map<String, int> editedQuantities;
+  final Map<String, double> editedQuantities;
   final bool isActing;
 
   const StorageOrderDetailLoaded({
@@ -38,7 +38,7 @@ class StorageOrderDetailLoaded extends StorageOrderDetailState {
   ItemCheckStatus effectiveStatus(OrderItem item) =>
       pendingStatuses[item.id] ?? item.checkStatus;
 
-  int effectiveQuantity(OrderItem item) =>
+  double effectiveQuantity(OrderItem item) =>
       editedQuantities[item.id] ?? item.effectiveQuantity;
 
   bool get allItemsReviewed {
@@ -53,7 +53,7 @@ class StorageOrderDetailLoaded extends StorageOrderDetailState {
     Order? order,
     List<AuditLogEntry>? auditLog,
     Map<String, ItemCheckStatus>? pendingStatuses,
-    Map<String, int>? editedQuantities,
+    Map<String, double>? editedQuantities,
     bool? isActing,
   }) {
     return StorageOrderDetailLoaded(
@@ -158,11 +158,11 @@ class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState>
     }
   }
 
-  Future<void> editQuantity(String itemId, int quantity) async {
+  Future<void> editQuantity(String itemId, double quantity) async {
     final s = state;
     if (s is! StorageOrderDetailLoaded) return;
 
-    final updated = Map<String, int>.from(s.editedQuantities)
+    final updated = Map<String, double>.from(s.editedQuantities)
       ..[itemId] = quantity;
     safeEmit(s.copyWith(editedQuantities: updated));
 
@@ -178,7 +178,7 @@ class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState>
         );
         final current = state;
         if (current is StorageOrderDetailLoaded) {
-          final rolledBack = Map<String, int>.from(current.editedQuantities)
+          final rolledBack = Map<String, double>.from(current.editedQuantities)
             ..remove(itemId);
           safeEmit(current.copyWith(editedQuantities: rolledBack));
         }

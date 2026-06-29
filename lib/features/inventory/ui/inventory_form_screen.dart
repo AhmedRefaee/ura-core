@@ -1,18 +1,20 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/design_system/theme/theme.dart';
 import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../logic/inventory_form_cubit.dart';
 
 class CustomItemPrefill {
   final String name;
-  final int quantity;
+  final double quantity;
   final String unit;
   final String? sku;
   final String? category;
-  final int minQuantity;
+  final double minQuantity;
   final String? description;
 
   const CustomItemPrefill({
@@ -70,10 +72,10 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
     _skuCtrl = TextEditingController(text: item?.sku ?? pre?.sku ?? '');
     _unitCtrl = TextEditingController(text: item?.unit ?? pre?.unit ?? 'قطعة');
     _quantityCtrl = TextEditingController(
-        text: item != null ? '${item.quantity}' : pre != null ? '${pre.quantity}' : '');
+        text: item != null ? formatQty(item.quantity) : pre != null ? formatQty(pre.quantity) : '');
     _categoryCtrl = TextEditingController(text: item?.category ?? pre?.category ?? '');
     _minQuantityCtrl = TextEditingController(
-        text: '${item?.minQuantity ?? pre?.minQuantity ?? 0}');
+        text: formatQty(item?.minQuantity ?? pre?.minQuantity ?? 0));
     _descriptionCtrl = TextEditingController(text: item?.description ?? pre?.description ?? '');
     _notesCtrl = TextEditingController();
   }
@@ -137,11 +139,13 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
                         controller: _quantityCtrl,
                         label: 'الكمية',
                         required: true,
-                        keyboardType: TextInputType.number,
+                        keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                        inputFormatters: [quantityInputFormatter],
                         enabled: !isSaving,
                         validator: (v) {
                           if (v == null || v.isEmpty) return 'مطلوب';
-                          if (int.tryParse(v) == null || int.parse(v) < 0) {
+                          final n = double.tryParse(v);
+                          if (n == null || n < 0) {
                             return 'رقم غير صالح';
                           }
                           return null;
@@ -180,11 +184,13 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
                   controller: _minQuantityCtrl,
                   label: 'حد التنبيه (كمية منخفضة)',
                   required: false,
-                  keyboardType: TextInputType.number,
+                  keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [quantityInputFormatter],
                   enabled: !isSaving,
                   validator: (v) {
                     if (v != null && v.isNotEmpty) {
-                      if (int.tryParse(v) == null || int.parse(v) < 0) {
+                      final n = double.tryParse(v);
+                      if (n == null || n < 0) {
                         return 'رقم غير صالح';
                       }
                     }
@@ -228,12 +234,12 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
     context.read<InventoryFormCubit>().submit(
           name: _nameCtrl.text.trim(),
           unit: _unitCtrl.text.trim(),
-          quantity: int.parse(_quantityCtrl.text.trim()),
+          quantity: double.parse(_quantityCtrl.text.trim()),
           sku: _skuCtrl.text.trim().isEmpty ? null : _skuCtrl.text.trim(),
           category: _categoryCtrl.text.trim().isEmpty
               ? null
               : _categoryCtrl.text.trim(),
-          minQuantity: int.tryParse(_minQuantityCtrl.text.trim()) ?? 0,
+          minQuantity: double.tryParse(_minQuantityCtrl.text.trim()) ?? 0,
           description: _descriptionCtrl.text.trim().isEmpty
               ? null
               : _descriptionCtrl.text.trim(),
@@ -265,6 +271,7 @@ class _Field extends StatelessWidget {
   final bool required;
   final bool enabled;
   final TextInputType? keyboardType;
+  final List<TextInputFormatter>? inputFormatters;
   final int maxLines;
   final String? Function(String?)? validator;
 
@@ -274,6 +281,7 @@ class _Field extends StatelessWidget {
     required this.required,
     required this.enabled,
     this.keyboardType,
+    this.inputFormatters,
     this.maxLines = 1,
     this.validator,
   });
@@ -284,6 +292,7 @@ class _Field extends StatelessWidget {
       controller: controller,
       enabled: enabled,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       maxLines: maxLines,
       style: AppTextStyles.bodyLarge,
       decoration: InputDecoration(

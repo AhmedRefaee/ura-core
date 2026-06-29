@@ -138,7 +138,7 @@ class StorageRepository {
 
   // ── Final quantity edit ───────────────────────────────────────────────────
 
-  Future<AppResult<void>> updateFinalQuantity(String itemId, int quantity) async {
+  Future<AppResult<void>> updateFinalQuantity(String itemId, double quantity) async {
     try {
       logger.d('StorageRepository → updateFinalQuantity: $itemId → $quantity');
       await _supabase

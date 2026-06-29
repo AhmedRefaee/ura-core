@@ -20,7 +20,7 @@ class InventoryBulkLoading extends InventoryBulkState {}
 
 class InventoryBulkReady extends InventoryBulkState {
   final List<InventoryItem> items;
-  final Map<String, int> pendingQuantities;
+  final Map<String, double> pendingQuantities;
 
   const InventoryBulkReady({
     required this.items,
@@ -32,12 +32,12 @@ class InventoryBulkReady extends InventoryBulkState {
   List<InventoryItem> get changedItems =>
       items.where((i) => pendingQuantities.containsKey(i.id)).toList();
 
-  int effectiveQuantity(InventoryItem item) =>
+  double effectiveQuantity(InventoryItem item) =>
       pendingQuantities[item.id] ?? item.quantity;
 
   InventoryBulkReady copyWith({
     List<InventoryItem>? items,
-    Map<String, int>? pendingQuantities,
+    Map<String, double>? pendingQuantities,
   }) {
     return InventoryBulkReady(
       items: items ?? this.items,
@@ -81,10 +81,10 @@ class InventoryBulkCubit extends Cubit<InventoryBulkState>
     }
   }
 
-  void setQuantity(String itemId, int quantity) {
+  void setQuantity(String itemId, double quantity) {
     final current = state;
     if (current is! InventoryBulkReady) return;
-    final updated = Map<String, int>.from(current.pendingQuantities);
+    final updated = Map<String, double>.from(current.pendingQuantities);
     final originalItem = current.items.firstWhere((i) => i.id == itemId);
     if (quantity == originalItem.quantity) {
       updated.remove(itemId);
@@ -97,7 +97,7 @@ class InventoryBulkCubit extends Cubit<InventoryBulkState>
   void resetItem(String itemId) {
     final current = state;
     if (current is! InventoryBulkReady) return;
-    final updated = Map<String, int>.from(current.pendingQuantities)
+    final updated = Map<String, double>.from(current.pendingQuantities)
       ..remove(itemId);
     safeEmit(current.copyWith(pendingQuantities: updated));
   }

@@ -5,6 +5,7 @@ import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_audit_log_entry.dart';
 import '../../../shared/models/inventory_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../logic/inventory_detail_cubit.dart';
 import 'inventory_form_screen.dart';
 import 'widgets/availability_badge.dart';
@@ -174,7 +175,7 @@ class _DetailBody extends StatelessWidget {
                 Divider(height: AppSpacing.verticalXXLarge),
                 _InfoRow(
                   label: 'الكمية',
-                  value: '${item.quantity} ${item.unit}',
+                  value: '${formatQty(item.quantity)} ${item.unit}',
                 ),
                 if (item.sku != null)
                   _InfoRow(label: 'رمز SKU', value: item.sku!),
@@ -182,7 +183,7 @@ class _DetailBody extends StatelessWidget {
                   _InfoRow(label: 'الفئة', value: item.category!),
                 _InfoRow(
                   label: 'حد التنبيه',
-                  value: '${item.minQuantity} ${item.unit}',
+                  value: '${formatQty(item.minQuantity)} ${item.unit}',
                 ),
                 if (item.description != null && item.description!.isNotEmpty)
                   _InfoRow(label: 'الوصف', value: item.description!),
@@ -275,7 +276,7 @@ class _AuditLogTile extends StatelessWidget {
           children: [
             if (hasQuantityChange)
               Text(
-                '${entry.oldQuantity} → ${entry.newQuantity}',
+                '${formatQty(entry.oldQuantity!)} → ${formatQty(entry.newQuantity!)}',
                 style: AppTextStyles.bodySmall,
               ),
             if (entry.performer != null)

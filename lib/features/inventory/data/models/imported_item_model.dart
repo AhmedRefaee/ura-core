@@ -35,12 +35,12 @@ class ImportedItemModel {
   Map<String, dynamic> toInsertMap() => {
         'item_name': name!.trim(),
         'unit': unit!.trim(),
-        'quantity': int.parse(rawQuantity!.trim()),
+        'quantity': double.parse(rawQuantity!.trim()),
         'sku': _nullIfEmpty(sku),
         'category': _nullIfEmpty(category),
         'min_quantity': rawAlarmLimit == null || rawAlarmLimit!.trim().isEmpty
             ? 0
-            : int.parse(rawAlarmLimit!.trim()),
+            : double.parse(rawAlarmLimit!.trim()),
         'description': _nullIfEmpty(description),
         'notes': _nullIfEmpty(notes),
       };

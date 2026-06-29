@@ -8,6 +8,7 @@ import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_edit_log_entry.dart';
 import '../../../shared/models/order_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
@@ -457,8 +458,8 @@ class _ItemRow extends StatelessWidget {
                 ),
                 Text(
                   item.finalQuantity != null
-                      ? 'الكمية: ${item.finalQuantity} (مطلوب: ${item.quantity})'
-                      : 'الكمية: ${item.quantity}',
+                      ? 'الكمية: ${formatQty(item.finalQuantity!)} (مطلوب: ${formatQty(item.quantity)})'
+                      : 'الكمية: ${formatQty(item.quantity)}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
                 if (!item.isCustom &&
@@ -564,17 +565,19 @@ class _EditHistorySectionState extends State<_EditHistorySection> {
     return '${l.day}/${l.month}/${l.year}  $h:$m';
   }
 
+  String _fmtQty(dynamic v) => v is num ? formatQty(v) : '$v';
+
   String _changeLabel(Map<String, dynamic> change) {
     final action = change['action'] as String? ?? '';
     final name = change['item_name'] as String? ?? '';
     switch (action) {
       case 'update_quantity':
-        return '$name: ${change['old_quantity']} → ${change['new_quantity']}';
+        return '$name: ${_fmtQty(change['old_quantity'])} → ${_fmtQty(change['new_quantity'])}';
       case 'remove_item':
-        return 'حذف $name (كمية: ${change['quantity']})';
+        return 'حذف $name (كمية: ${_fmtQty(change['quantity'])})';
       case 'add_item':
         final custom = change['is_custom'] == true ? ' (مخصص)' : '';
-        return 'إضافة $name$custom (كمية: ${change['quantity']})';
+        return 'إضافة $name$custom (كمية: ${_fmtQty(change['quantity'])})';
       default:
         return action;
     }

@@ -8,10 +8,10 @@ class InventoryItem extends Equatable {
   final String id;
   final String itemName;
   final String? sku;
-  final int quantity;
+  final double quantity;
   final String unit;
   final String? category;
-  final int minQuantity;
+  final double minQuantity;
   final String? description;
   final String? notes;
   // Number of distinct orders that include this item; null means not yet loaded.
@@ -36,7 +36,7 @@ class InventoryItem extends Equatable {
     return AvailabilityStatus.available;
   }
 
-  StockCheckResult checkStock(int requestedQuantity) {
+  StockCheckResult checkStock(double requestedQuantity) {
     if (quantity == 0) return StockCheckResult.outOfStock;
     if (quantity < requestedQuantity) return StockCheckResult.partial;
     return StockCheckResult.sufficient;
@@ -60,10 +60,10 @@ class InventoryItem extends Equatable {
       id: map['id'] as String,
       itemName: map['item_name'] as String,
       sku: map['sku'] as String?,
-      quantity: map['quantity'] as int,
+      quantity: (map['quantity'] as num).toDouble(),
       unit: map['unit'] as String? ?? 'قطعة',
       category: map['category'] as String?,
-      minQuantity: map['min_quantity'] as int? ?? 0,
+      minQuantity: (map['min_quantity'] as num?)?.toDouble() ?? 0,
       description: map['description'] as String?,
       notes: map['notes'] as String?,
     );

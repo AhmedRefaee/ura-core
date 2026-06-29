@@ -208,7 +208,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState>
     safeEmit(s.copyWith(selectedRep: rep));
   }
 
-  void addInventoryItem(InventoryItem item, int quantity) {
+  void addInventoryItem(InventoryItem item, double quantity) {
     final s = state;
     if (s is! CreateOrderReady) return;
     final updated = List<DraftOrderItem>.from(s.items)
@@ -225,7 +225,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState>
 
   void addCustomItem(
     String description,
-    int quantity, {
+    double quantity, {
     String? sourceInventoryId,
   }) {
     final s = state;
@@ -243,7 +243,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState>
   }
 
   void addMultipleItems(
-    List<({InventoryItem item, int quantity})> itemsWithQuantities,
+    List<({InventoryItem item, double quantity})> itemsWithQuantities,
   ) {
     final s = state;
     if (s is! CreateOrderReady) return;

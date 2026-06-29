@@ -226,16 +226,16 @@ class ImportItemsCubit extends Cubit<ImportItemsState>
     if (item.rawQuantity == null || item.rawQuantity!.trim().isEmpty) {
       errors.add('الكمية مطلوبة');
     } else {
-      final qty = int.tryParse(item.rawQuantity!.trim());
+      final qty = double.tryParse(item.rawQuantity!.trim());
       if (qty == null) {
-        errors.add('الكمية يجب أن تكون رقماً صحيحاً');
+        errors.add('الكمية يجب أن تكون رقماً');
       } else if (qty < 0) {
         errors.add('الكمية لا يمكن أن تكون سالبة');
       }
     }
 
     if (item.rawAlarmLimit != null && item.rawAlarmLimit!.trim().isNotEmpty) {
-      final limit = int.tryParse(item.rawAlarmLimit!.trim());
+      final limit = double.tryParse(item.rawAlarmLimit!.trim());
       if (limit == null) {
         errors.add('حد التنبيه يجب أن يكون رقماً');
       } else if (limit < 0) {

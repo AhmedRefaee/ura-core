@@ -98,12 +98,12 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState>
         );
       }
 
-      void setInt(int col, int value) {
+      void setNum(int col, double value) {
         sheet
             .cell(
               CellIndex.indexByColumnRow(columnIndex: col, rowIndex: rowIndex),
             )
-            .value = IntCellValue(
+            .value = DoubleCellValue(
           value,
         );
       }
@@ -111,10 +111,10 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState>
       setStr(0, item.id);
       setStr(1, item.itemName);
       setStr(2, item.unit);
-      setInt(3, item.quantity);
+      setNum(3, item.quantity);
       setStr(4, item.sku);
       setStr(5, item.category);
-      setInt(6, item.minQuantity);
+      setNum(6, item.minQuantity);
       setStr(7, item.description);
       setStr(8, item.notes);
     }
@@ -270,16 +270,16 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState>
     if (item.rawQuantity == null || item.rawQuantity!.trim().isEmpty) {
       errors.add('الكمية مطلوبة');
     } else {
-      final qty = int.tryParse(item.rawQuantity!.trim());
+      final qty = double.tryParse(item.rawQuantity!.trim());
       if (qty == null) {
-        errors.add('الكمية يجب أن تكون رقماً صحيحاً');
+        errors.add('الكمية يجب أن تكون رقماً');
       } else if (qty < 0) {
         errors.add('الكمية لا يمكن أن تكون سالبة');
       }
     }
 
     if (item.rawAlarmLimit != null && item.rawAlarmLimit!.trim().isNotEmpty) {
-      final limit = int.tryParse(item.rawAlarmLimit!.trim());
+      final limit = double.tryParse(item.rawAlarmLimit!.trim());
       if (limit == null) {
         errors.add('حد التنبيه يجب أن يكون رقماً');
       } else if (limit < 0) {

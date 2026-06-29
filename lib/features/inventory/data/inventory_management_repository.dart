@@ -77,10 +77,10 @@ class InventoryManagementRepository {
   Future<AppResult<void>> createItem({
     required String name,
     required String unit,
-    required int quantity,
+    required double quantity,
     String? sku,
     String? category,
-    int minQuantity = 0,
+    double minQuantity = 0,
     String? description,
     String? notes,
   }) async {
@@ -111,10 +111,10 @@ class InventoryManagementRepository {
     String itemId, {
     required String name,
     required String unit,
-    required int quantity,
+    required double quantity,
     String? sku,
     String? category,
-    int minQuantity = 0,
+    double minQuantity = 0,
     String? description,
     String? notes,
   }) async {
@@ -160,7 +160,7 @@ class InventoryManagementRepository {
   }
 
   Future<AppResult<void>> bulkUpdateQuantities(
-    List<({String itemId, int quantity})> updates,
+    List<({String itemId, double quantity})> updates,
   ) async {
     try {
       final payload = updates

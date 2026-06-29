@@ -5,8 +5,8 @@ class InventoryAuditLogEntry extends Equatable {
   final String id;
   final String itemId;
   final String action;
-  final int? oldQuantity;
-  final int? newQuantity;
+  final double? oldQuantity;
+  final double? newQuantity;
   final String? performedBy;
   final Profile? performer;
   final String? notes;
@@ -30,8 +30,8 @@ class InventoryAuditLogEntry extends Equatable {
       id: map['id'] as String,
       itemId: map['item_id'] as String,
       action: map['action'] as String,
-      oldQuantity: map['old_quantity'] as int?,
-      newQuantity: map['new_quantity'] as int?,
+      oldQuantity: (map['old_quantity'] as num?)?.toDouble(),
+      newQuantity: (map['new_quantity'] as num?)?.toDouble(),
       performedBy: map['performed_by'] as String?,
       performer: performerMap != null ? Profile.fromMap(performerMap) : null,
       notes: map['notes'] as String?,

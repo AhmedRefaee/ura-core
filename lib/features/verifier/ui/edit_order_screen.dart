@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../logic/edit_order_cubit.dart';
 import 'widgets/add_item_sheet.dart';
 import '../../../core/design_system/theme/theme.dart';
@@ -127,7 +128,7 @@ class EditOrderScreen extends StatelessWidget {
                                 size: 20,
                               ),
                               title: Text(draft.displayName),
-                              subtitle: Text('الكمية: ${draft.quantity}'),
+                              subtitle: Text('الكمية: ${formatQty(draft.quantity)}'),
                               trailing: Container(
                                 padding: EdgeInsets.symmetric(
                                     horizontal: AppSpacing.horizontalXSmall, vertical: AppSpacing.verticalXSmall),
@@ -268,7 +269,7 @@ class _EditableItemTile extends StatelessWidget {
   final OrderItem item;
   final bool isRemoved;
   final List<InventoryItem> inventory;
-  final ValueChanged<int> onQuantityChanged;
+  final ValueChanged<double> onQuantityChanged;
   final VoidCallback onRemove;
 
   const _EditableItemTile({
@@ -292,7 +293,7 @@ class _EditableItemTile extends StatelessWidget {
             color: Colors.grey,
           ),
         ),
-        subtitle: Text('الكمية: ${item.quantity}',
+        subtitle: Text('الكمية: ${formatQty(item.quantity)}',
             style: const TextStyle(color: Colors.grey)),
         trailing: Container(
           padding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalXSmall, vertical: AppSpacing.verticalXSmall),
@@ -335,7 +336,7 @@ class _EditableItemTile extends StatelessWidget {
                     style: const TextStyle(fontWeight: FontWeight.w500)),
                 if (invItem != null)
                   Text(
-                    'المتوفر: ${invItem.quantity}',
+                    'المتوفر: ${formatQty(invItem.quantity)}',
                     style: TextStyle(
                       fontSize: 12,
                       color: invItem.availabilityStatus == AvailabilityStatus.outOfStock
@@ -367,8 +368,8 @@ class _EditableItemTile extends StatelessWidget {
 }
 
 class _QuantityField extends StatefulWidget {
-  final int initialValue;
-  final ValueChanged<int> onChanged;
+  final double initialValue;
+  final ValueChanged<double> onChanged;
 
   const _QuantityField({
     required this.initialValue,
@@ -385,7 +386,7 @@ class _QuantityFieldState extends State<_QuantityField> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.initialValue.toString());
+    _controller = TextEditingController(text: formatQty(widget.initialValue));
   }
 
   @override
@@ -398,7 +399,8 @@ class _QuantityFieldState extends State<_QuantityField> {
   Widget build(BuildContext context) {
     return TextField(
       controller: _controller,
-      keyboardType: TextInputType.number,
+      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+      inputFormatters: [quantityInputFormatter],
       textAlign: TextAlign.center,
       style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
       decoration: const InputDecoration(
@@ -407,7 +409,7 @@ class _QuantityFieldState extends State<_QuantityField> {
         isDense: true,
       ),
       onChanged: (v) {
-        final qty = int.tryParse(v);
+        final qty = double.tryParse(v);
         if (qty != null && qty > 0) {
           widget.onChanged(qty);
         }
@@ -471,11 +473,11 @@ class _ChangesSummaryCard extends StatelessWidget {
   String _actionLabel(EditAction action) {
     switch (action) {
       case UpdateQuantityAction(:final itemName, :final oldQuantity, :final newQuantity):
-        return '📝 $itemName: $oldQuantity → $newQuantity';
+        return '📝 $itemName: ${formatQty(oldQuantity)} → ${formatQty(newQuantity)}';
       case RemoveItemAction(:final itemName, :final quantity):
-        return '🗑️ حذف $itemName (كمية: $quantity)';
+        return '🗑️ حذف $itemName (كمية: ${formatQty(quantity)})';
       case AddItemAction(:final item):
-        return '➕ إضافة ${item.displayName} (كمية: ${item.quantity})';
+        return '➕ إضافة ${item.displayName} (كمية: ${formatQty(item.quantity)})';
     }
   }
 }

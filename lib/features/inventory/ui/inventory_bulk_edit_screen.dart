@@ -4,6 +4,7 @@ import '../../../core/design_system/theme/theme.dart';
 import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../logic/inventory_bulk_cubit.dart';
 
 class InventoryBulkEditScreen extends StatelessWidget {
@@ -139,7 +140,7 @@ class _BulkItemRowState extends State<_BulkItemRow> {
   void initState() {
     super.initState();
     _ctrl = TextEditingController(
-      text: '${widget.state.effectiveQuantity(widget.item)}',
+      text: formatQty(widget.state.effectiveQuantity(widget.item)),
     );
   }
 
@@ -147,7 +148,7 @@ class _BulkItemRowState extends State<_BulkItemRow> {
   void didUpdateWidget(_BulkItemRow old) {
     super.didUpdateWidget(old);
     if (!_editing) {
-      final newVal = '${widget.state.effectiveQuantity(widget.item)}';
+      final newVal = formatQty(widget.state.effectiveQuantity(widget.item));
       if (_ctrl.text != newVal) _ctrl.text = newVal;
     }
   }
@@ -196,7 +197,7 @@ class _BulkItemRowState extends State<_BulkItemRow> {
               Padding(
                 padding: EdgeInsets.only(left: AppSpacing.horizontalSmall),
                 child: Text(
-                  '(أصلي: ${widget.item.quantity})',
+                  '(أصلي: ${formatQty(widget.item.quantity)})',
                   style: AppTextStyles.bodySmall.copyWith(
                     color: AppColors.textSecondary,
                   ),
@@ -206,7 +207,8 @@ class _BulkItemRowState extends State<_BulkItemRow> {
               width: 80,
               child: TextField(
                 controller: _ctrl,
-                keyboardType: TextInputType.number,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [quantityInputFormatter],
                 textAlign: TextAlign.center,
                 style: AppTextStyles.bodyMedium,
                 decoration: InputDecoration(
@@ -237,12 +239,12 @@ class _BulkItemRowState extends State<_BulkItemRow> {
 
   void _commit(String value) {
     setState(() => _editing = false);
-    final qty = int.tryParse(value.trim());
+    final qty = double.tryParse(value.trim());
     if (qty != null && qty >= 0) {
       context.read<InventoryBulkCubit>().setQuantity(widget.item.id, qty);
     } else {
       // revert to current effective quantity
-      _ctrl.text = '${widget.state.effectiveQuantity(widget.item)}';
+      _ctrl.text = formatQty(widget.state.effectiveQuantity(widget.item));
     }
   }
 }

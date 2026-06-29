@@ -9,8 +9,8 @@ class OrderItem extends Equatable {
   final String orderId;
   final String? inventoryId;
   final String? inventoryName;
-  final int quantity;
-  final int? finalQuantity;
+  final double quantity;
+  final double? finalQuantity;
   final bool isCustom;
   final String? customDescription;
   final String? sourceInventoryId;
@@ -39,7 +39,7 @@ class OrderItem extends Equatable {
 
   /// The quantity that should be used for inventory changes.
   /// Storage actor may override this before confirming.
-  int get effectiveQuantity => finalQuantity ?? quantity;
+  double get effectiveQuantity => finalQuantity ?? quantity;
 
   factory OrderItem.fromMap(Map<String, dynamic> map) {
     ItemCheckStatus status;
@@ -60,8 +60,8 @@ class OrderItem extends Equatable {
       orderId: map['order_id'] as String,
       inventoryId: map['inventory_id'] as String?,
       inventoryName: inventoryMap?['item_name'] as String?,
-      quantity: map['quantity'] as int,
-      finalQuantity: map['final_quantity'] as int?,
+      quantity: (map['quantity'] as num).toDouble(),
+      finalQuantity: (map['final_quantity'] as num?)?.toDouble(),
       isCustom: map['is_custom'] as bool,
       customDescription: map['custom_description'] as String?,
       sourceInventoryId: map['source_inventory_id'] as String?,

@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../../inventory/ui/inventory_form_screen.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
@@ -352,7 +353,7 @@ class _ItemTile extends StatelessWidget {
               )
             else
               Text(
-                'الكمية: $effectiveQty',
+                'الكمية: ${formatQty(effectiveQty)}',
                 style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
             if (showWarning)
@@ -400,7 +401,7 @@ class _ItemTile extends StatelessWidget {
       unit: json?['unit'] as String? ?? 'قطعة',
       sku: json?['sku'] as String?,
       category: json?['category'] as String?,
-      minQuantity: (json?['minQty'] as num?)?.toInt() ?? 0,
+      minQuantity: (json?['minQty'] as num?)?.toDouble() ?? 0,
       description: json?['description'] as String?,
     );
 
@@ -422,8 +423,8 @@ class _ItemTile extends StatelessWidget {
 
 class _QuantityEditor extends StatefulWidget {
   final String itemId;
-  final int currentQty;
-  final int originalQty;
+  final double currentQty;
+  final double originalQty;
 
   const _QuantityEditor({
     required this.itemId,
@@ -442,7 +443,7 @@ class _QuantityEditorState extends State<_QuantityEditor> {
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(text: widget.currentQty.toString());
+    _controller = TextEditingController(text: formatQty(widget.currentQty));
     _focusNode = FocusNode()..addListener(_onFocusChange);
   }
 
@@ -451,7 +452,7 @@ class _QuantityEditorState extends State<_QuantityEditor> {
   }
 
   void _submit(String val) {
-    final qty = int.tryParse(val);
+    final qty = double.tryParse(val);
     if (qty != null && qty > 0) {
       context.read<StorageOrderDetailCubit>().editQuantity(widget.itemId, qty);
     }
@@ -461,8 +462,8 @@ class _QuantityEditorState extends State<_QuantityEditor> {
   void didUpdateWidget(_QuantityEditor old) {
     super.didUpdateWidget(old);
     if (old.currentQty != widget.currentQty &&
-        _controller.text != widget.currentQty.toString()) {
-      _controller.text = widget.currentQty.toString();
+        _controller.text != formatQty(widget.currentQty)) {
+      _controller.text = formatQty(widget.currentQty);
     }
   }
 
@@ -491,8 +492,8 @@ class _QuantityEditorState extends State<_QuantityEditor> {
           child: TextField(
             controller: _controller,
             focusNode: _focusNode,
-            keyboardType: TextInputType.number,
-            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [quantityInputFormatter],
             style: const TextStyle(fontSize: 13),
             decoration: InputDecoration(
               isDense: true,
@@ -501,7 +502,7 @@ class _QuantityEditorState extends State<_QuantityEditor> {
                 vertical: 6,
               ),
               border: const OutlineInputBorder(),
-              hintText: widget.originalQty.toString(),
+              hintText: formatQty(widget.originalQty),
               suffixText: edited ? '✎' : null,
             ),
             onSubmitted: _submit,
@@ -509,7 +510,7 @@ class _QuantityEditorState extends State<_QuantityEditor> {
         ),
         const SizedBox(width: 8),
         Text(
-          '(الأصلية: ${widget.originalQty})',
+          '(الأصلية: ${formatQty(widget.originalQty)})',
           style: const TextStyle(fontSize: 11, color: Colors.grey),
         ),
       ],

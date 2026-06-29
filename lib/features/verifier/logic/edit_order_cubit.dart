@@ -19,8 +19,8 @@ sealed class EditAction extends Equatable {
 class UpdateQuantityAction extends EditAction {
   final String itemId;
   final String itemName;
-  final int oldQuantity;
-  final int newQuantity;
+  final double oldQuantity;
+  final double newQuantity;
 
   const UpdateQuantityAction({
     required this.itemId,
@@ -36,7 +36,7 @@ class UpdateQuantityAction extends EditAction {
 class RemoveItemAction extends EditAction {
   final String itemId;
   final String itemName;
-  final int quantity;
+  final double quantity;
 
   const RemoveItemAction({
     required this.itemId,
@@ -203,7 +203,7 @@ class EditOrderCubit extends Cubit<EditOrderState>
     logger.i('EditOrderCubit → order loaded for editing');
   }
 
-  void updateItemQuantity(String itemId, int newQuantity) {
+  void updateItemQuantity(String itemId, double newQuantity) {
     final s = state;
     if (s is! EditOrderReady) return;
     final item = s.originalOrder.items.firstWhere((i) => i.id == itemId);
@@ -240,7 +240,7 @@ class EditOrderCubit extends Cubit<EditOrderState>
     safeEmit(s.copyWith(pendingActions: updated, stockError: null));
   }
 
-  void addInventoryItem(InventoryItem item, int quantity) {
+  void addInventoryItem(InventoryItem item, double quantity) {
     final s = state;
     if (s is! EditOrderReady) return;
     final updated = List<EditAction>.from(s.pendingActions)
@@ -259,7 +259,7 @@ class EditOrderCubit extends Cubit<EditOrderState>
 
   void addCustomItem(
     String description,
-    int quantity, {
+    double quantity, {
     String? sourceInventoryId,
   }) {
     final s = state;
@@ -345,8 +345,8 @@ class EditOrderCubit extends Cubit<EditOrderState>
     safeEmit(EditOrderSuccess());
   }
 
-  Map<String, int> _computeInventoryDeltas(EditOrderReady s) {
-    final Map<String, int> deltas = {};
+  Map<String, double> _computeInventoryDeltas(EditOrderReady s) {
+    final Map<String, double> deltas = {};
     for (final action in s.pendingActions) {
       switch (action) {
         case UpdateQuantityAction(

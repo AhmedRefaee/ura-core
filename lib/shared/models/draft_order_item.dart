@@ -3,7 +3,7 @@ import 'package:equatable/equatable.dart';
 class DraftOrderItem extends Equatable {
   final String? inventoryId;
   final String? inventoryName;
-  final int quantity;
+  final double quantity;
   final bool isCustom;
   final String? customDescription;
   final String? sourceInventoryId;

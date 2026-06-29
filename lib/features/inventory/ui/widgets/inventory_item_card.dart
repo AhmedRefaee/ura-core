@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../core/design_system/theme/theme.dart';
 import '../../../../shared/models/inventory_item.dart';
+import '../../../../shared/utils/quantity_format.dart';
 import 'availability_badge.dart';
 
 Color _stockColor(AvailabilityStatus status) {
@@ -72,7 +73,7 @@ class InventoryItemCard extends StatelessWidget {
                     Expanded(
                       child: _InfoColumn(
                         label: 'الكمية المتوفرة',
-                        value: '${item.quantity}',
+                        value: formatQty(item.quantity),
                         valueStyle: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.bold,

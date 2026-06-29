@@ -5,6 +5,7 @@ import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/profile.dart';
 import '../../../shared/order_status_theme.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../logic/create_order_cubit.dart';
 import '../../inventory/ui/inventory_item_detail_screen.dart';
 import 'widgets/add_item_sheet.dart';
@@ -274,7 +275,7 @@ class _OrderItemsList extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('الكمية: ${item.quantity}'),
+          Text('الكمية: ${formatQty(item.quantity)}'),
           if (isOverStock)
             GestureDetector(
               onTap: () => Navigator.push(
@@ -290,7 +291,7 @@ class _OrderItemsList extends StatelessWidget {
                   size: 16,
                 ),
                 label: Text(
-                  'المتوفر فقط: ${invItem.quantity}',
+                  'المتوفر فقط: ${formatQty(invItem.quantity)}',
                   style: const TextStyle(fontSize: 11, color: Colors.orange),
                 ),
                 backgroundColor: Colors.orange.withValues(alpha: 0.1),

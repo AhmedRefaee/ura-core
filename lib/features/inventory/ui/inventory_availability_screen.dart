@@ -4,6 +4,7 @@ import '../../../core/design_system/theme/theme.dart';
 import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../logic/inventory_list_cubit.dart';
 import 'widgets/inventory_item_card.dart';
 
@@ -535,7 +536,7 @@ class _InventoryGridCard extends StatelessWidget {
                 Icon(Icons.inventory_2_outlined, color: stockColor, size: 24),
                 const Spacer(),
                 Text(
-                  '${item.quantity}',
+                  formatQty(item.quantity),
                   style: AppTextStyles.headlineSmall.copyWith(
                     color: stockColor,
                     fontWeight: FontWeight.bold,

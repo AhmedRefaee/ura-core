@@ -435,6 +435,13 @@ class _SettingsTab extends StatelessWidget {
                 ),
                 const Divider(),
                 ListTile(
+                  leading: const Icon(Icons.business_outlined),
+                  title: const Text('إدارة الجهات'),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () => context.push('/entities'),
+                ),
+                const Divider(),
+                ListTile(
                   leading: const Icon(Icons.settings),
                   title: const Text('الإعدادات'),
                   trailing: const Icon(Icons.chevron_right),

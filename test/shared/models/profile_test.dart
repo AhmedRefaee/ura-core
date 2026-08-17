@@ -60,20 +60,29 @@ void main() {
 
     // ─── Role parsing ─────────────────────────────────────────────────────────
     group('role parsing', () {
-      for (final entry in const {
+      const wireNames = {
         'verifier': UserRole.verifier,
         'rep': UserRole.rep,
         'storage_actor': UserRole.storageActor,
         'manager': UserRole.manager,
-      }.entries) {
+        'admin': UserRole.admin,
+      };
+
+      for (final entry in wireNames.entries) {
         test('"${entry.key}" → ${entry.value}', () {
           final p = Profile.fromMap({...baseMap, 'role': entry.key});
           expect(p.role, entry.value);
         });
       }
 
-      test('unknown role string → null', () {
-        final p = Profile.fromMap({...baseMap, 'role': 'admin'});
+      // Guards against adding a UserRole without teaching Profile.fromMap the
+      // wire string for it, which would silently parse that role as null.
+      test('every UserRole has a wire name covered above', () {
+        expect(wireNames.values.toSet(), UserRole.values.toSet());
+      });
+
+      test('unrecognized role string → null', () {
+        final p = Profile.fromMap({...baseMap, 'role': 'not_a_real_role'});
         expect(p.role, isNull);
       });
 

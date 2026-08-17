@@ -241,8 +241,9 @@ class ImportEntitiesCubit extends Cubit<ImportEntitiesState>
       errors.add('التصنيف مطلوب');
     } else {
       final cat = item.rawCategory!.trim();
-      if (cat != 'وارد' && cat != 'صادر' && cat != 'غير محدد') {
-        errors.add('التصنيف يجب أن يكون: وارد أو صادر أو غير محدد');
+      if (EntityCategoryX.tryParseLabel(cat) == null) {
+        final validLabels = EntityCategory.values.map((c) => c.label).join(' أو ');
+        errors.add('التصنيف يجب أن يكون: $validLabels');
       }
     }
 

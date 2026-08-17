@@ -24,9 +24,9 @@ extension OrderSortModeLabel on OrderSortMode {
 extension OrderDirectionFilterLabel on OrderDirectionFilter {
   String get label => switch (this) {
     OrderDirectionFilter.all => 'الكل',
-    OrderDirectionFilter.inboundRep => 'وارد عبر مندوب',
-    OrderDirectionFilter.inboundExternal => 'وارد خارجي',
-    OrderDirectionFilter.outbound => 'صادر عبر مندوب',
+    OrderDirectionFilter.inboundRep => OrderDirection.inboundRep.label,
+    OrderDirectionFilter.inboundExternal => OrderDirection.inboundExternal.label,
+    OrderDirectionFilter.outbound => OrderDirection.outbound.label,
   };
 }
 
@@ -547,7 +547,7 @@ class _OrderSortFilterBarState extends State<OrderSortFilterBar> {
             transitionBuilder: (child, animation) {
               return SizeTransition(
                 sizeFactor: animation,
-                axisAlignment: -1,
+                alignment: const AlignmentDirectional(-1.0, -1.0),
                 child: FadeTransition(opacity: animation, child: child),
               );
             },

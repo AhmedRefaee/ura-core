@@ -653,9 +653,13 @@ class _EntityFilterChips extends StatelessWidget {
       children: [
         _FilterChip(label: 'الكل', value: 'all', selected: selected, onChanged: onChanged),
         const SizedBox(width: 6),
-        _FilterChip(label: 'صادر', value: 'outbound', selected: selected, onChanged: onChanged, color: Colors.blue),
+        // These labels aggregate both inbound sub-types (rep + external) into
+        // one bucket, so they can't delegate to OrderDirection.label directly —
+        // 'توريد' matches OrderDirection.outbound.label; 'مشتريات' is the shared
+        // prefix of both inbound labels since this stat doesn't split further.
+        _FilterChip(label: 'توريد', value: 'outbound', selected: selected, onChanged: onChanged, color: Colors.blue),
         const SizedBox(width: 6),
-        _FilterChip(label: 'وارد', value: 'inbound', selected: selected, onChanged: onChanged, color: Colors.green),
+        _FilterChip(label: 'مشتريات', value: 'inbound', selected: selected, onChanged: onChanged, color: Colors.green),
       ],
     );
   }
@@ -767,10 +771,10 @@ class _EntityFrequencyBar extends StatelessWidget {
         Row(
           children: [
             _DirectionBadge(
-                label: 'صادر', count: entity.outboundCount, color: Colors.blue),
+                label: 'توريد', count: entity.outboundCount, color: Colors.blue),
             const SizedBox(width: 8),
             _DirectionBadge(
-                label: 'وارد', count: entity.inboundCount, color: Colors.green),
+                label: 'مشتريات', count: entity.inboundCount, color: Colors.green),
           ],
         ),
       ],

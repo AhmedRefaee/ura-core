@@ -1,3 +1,5 @@
+import '../../../../shared/models/entity.dart';
+
 class ImportedEntityModel {
   final int rowNumber;
   final String? id; // present for existing rows; null/empty for new rows
@@ -34,16 +36,8 @@ class ImportedEntityModel {
         if (_nullIfEmpty(address) != null) 'address': address!.trim(),
       };
 
-  static String _categoryDbValue(String arabic) {
-    switch (arabic) {
-      case 'وارد':
-        return 'incoming';
-      case 'صادر':
-        return 'outgoing';
-      default:
-        return 'unassigned';
-    }
-  }
+  static String _categoryDbValue(String arabic) =>
+      (EntityCategoryX.tryParseLabel(arabic) ?? EntityCategory.unassigned).dbValue;
 
   static String? _nullIfEmpty(String? v) =>
       v == null || v.trim().isEmpty ? null : v.trim();

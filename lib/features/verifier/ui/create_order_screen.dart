@@ -61,7 +61,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
             body: Center(child: CircularProgressIndicator()),
           );
         }
-        if (state is CreateOrderError && state is! CreateOrderReady) {
+        if (state is CreateOrderError) {
           return Scaffold(
             appBar: AppBar(title: const Text('طلب جديد')),
             body: Center(
@@ -333,16 +333,9 @@ class _DirectionSelector extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SegmentedButton<OrderDirection>(
-      segments: const [
-        ButtonSegment(value: OrderDirection.outbound, label: Text('صادر')),
-        ButtonSegment(
-          value: OrderDirection.inboundRep,
-          label: Text('وارد (مندوب)'),
-        ),
-        ButtonSegment(
-          value: OrderDirection.inboundExternal,
-          label: Text('وارد (خارجي)'),
-        ),
+      segments: [
+        for (final direction in OrderDirection.values)
+          ButtonSegment(value: direction, label: Text(direction.label)),
       ],
       selected: {selected},
       onSelectionChanged: (s) => onChanged(s.first),
@@ -534,24 +527,27 @@ class _EntitySheetState extends State<_EntitySheet> {
             Expanded(
               child: _filtered.isEmpty
                   ? const Center(child: Text('لا توجد نتائج'))
-                  : ListView.builder(
-                      controller: scrollController,
-                      itemCount: _filtered.length,
-                      itemBuilder: (context, index) {
-                        final entity = _filtered[index];
-                        final isSelected = widget.selected?.id == entity.id;
-                        return ListTile(
-                          title: Text(entity.name),
-                          trailing: isSelected
-                              ? const Icon(Icons.check, color: Colors.green)
-                              : null,
-                          selected: isSelected,
-                          selectedTileColor: Colors.green.withValues(
-                            alpha: 0.1,
-                          ),
-                          onTap: () => widget.onSelected(entity),
-                        );
-                      },
+                  : Material(
+                      color: Colors.transparent,
+                      child: ListView.builder(
+                        controller: scrollController,
+                        itemCount: _filtered.length,
+                        itemBuilder: (context, index) {
+                          final entity = _filtered[index];
+                          final isSelected = widget.selected?.id == entity.id;
+                          return ListTile(
+                            title: Text(entity.name),
+                            trailing: isSelected
+                                ? const Icon(Icons.check, color: Colors.green)
+                                : null,
+                            selected: isSelected,
+                            selectedTileColor: Colors.green.withValues(
+                              alpha: 0.1,
+                            ),
+                            onTap: () => widget.onSelected(entity),
+                          );
+                        },
+                      ),
                     ),
             ),
           ],
@@ -581,13 +577,13 @@ class _FilterChips extends StatelessWidget {
           ),
           SizedBox(width: AppSpacing.horizontalSmall),
           _FilterChip(
-            label: 'وارد',
+            label: EntityCategory.incoming.label,
             isSelected: selectedFilter == EntityCategory.incoming,
             onTap: () => onChanged(EntityCategory.incoming),
           ),
           SizedBox(width: AppSpacing.horizontalSmall),
           _FilterChip(
-            label: 'صادر',
+            label: EntityCategory.outgoing.label,
             isSelected: selectedFilter == EntityCategory.outgoing,
             onTap: () => onChanged(EntityCategory.outgoing),
           ),
@@ -802,31 +798,34 @@ class _RepSheetState extends State<_RepSheet> {
             Expanded(
               child: _filtered.isEmpty
                   ? const Center(child: Text('لا توجد نتائج'))
-                  : ListView.builder(
-                      controller: scrollController,
-                      itemCount: _filtered.length,
-                      itemBuilder: (context, index) {
-                        final rep = _filtered[index];
-                        final isSelected = widget.selected?.id == rep.id;
-                        final latestStatus = widget.repLatestStatuses[rep.id];
-                        return ListTile(
-                          leading: _RepStatusAvatar(status: latestStatus),
-                          title: Text(rep.fullName),
-                          subtitle: Text(
-                            latestStatus == null
-                                ? 'لا يوجد طلب سابق'
-                                : 'آخر طلب: ${_repStatusLabel(latestStatus)}',
-                          ),
-                          trailing: isSelected
-                              ? const Icon(Icons.check, color: Colors.green)
-                              : null,
-                          selected: isSelected,
-                          selectedTileColor: Colors.green.withValues(
-                            alpha: 0.1,
-                          ),
-                          onTap: () => widget.onSelected(rep),
-                        );
-                      },
+                  : Material(
+                      color: Colors.transparent,
+                      child: ListView.builder(
+                        controller: scrollController,
+                        itemCount: _filtered.length,
+                        itemBuilder: (context, index) {
+                          final rep = _filtered[index];
+                          final isSelected = widget.selected?.id == rep.id;
+                          final latestStatus = widget.repLatestStatuses[rep.id];
+                          return ListTile(
+                            leading: _RepStatusAvatar(status: latestStatus),
+                            title: Text(rep.fullName),
+                            subtitle: Text(
+                              latestStatus == null
+                                  ? 'لا يوجد طلب سابق'
+                                  : 'آخر طلب: ${_repStatusLabel(latestStatus)}',
+                            ),
+                            trailing: isSelected
+                                ? const Icon(Icons.check, color: Colors.green)
+                                : null,
+                            selected: isSelected,
+                            selectedTileColor: Colors.green.withValues(
+                              alpha: 0.1,
+                            ),
+                            onTap: () => widget.onSelected(rep),
+                          );
+                        },
+                      ),
                     ),
             ),
           ],

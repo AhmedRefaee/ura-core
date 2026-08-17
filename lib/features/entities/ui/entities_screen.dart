@@ -127,13 +127,13 @@ class _FilterBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'وارد',
+                  label: EntityCategory.incoming.label,
                   isSelected: selectedFilter == EntityCategory.incoming,
                   onTap: () => context.read<EntitiesCubit>().filterByCategory(EntityCategory.incoming),
                 ),
                 const SizedBox(width: 8),
                 _FilterChip(
-                  label: 'صادر',
+                  label: EntityCategory.outgoing.label,
                   isSelected: selectedFilter == EntityCategory.outgoing,
                   onTap: () => context.read<EntitiesCubit>().filterByCategory(EntityCategory.outgoing),
                 ),

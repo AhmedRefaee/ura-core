@@ -37,3 +37,36 @@ jobs:
 
       - name: Test
         run: flutter test --reporter=github
+  deploy-web:
+    name: Deploy web app
+    # Only the real main branch ships. PR runs and feature branches stop at
+    # analyze-and-test, so a green PR never touches the live site.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: analyze-and-test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: 3.47.0
+          channel: stable
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build web
+        run: flutter build web --release
+
+      # Serves build/web to ura-core-9981c.web.app, per the hosting block in
+      # firebase.json. Until v1.1.0 this was a manual step and the site sat two
+      # months behind the APK.
+      - name: Deploy to Firebase Hosting
+        uses: FirebaseExtended/action-hosting-deploy@v0
+        with:
+          firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          projectId: ura-core-9981c
+          channelId: live

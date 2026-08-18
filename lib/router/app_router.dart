@@ -31,6 +31,8 @@ import '../features/notifications/logic/notifications_cubit.dart';
 import '../features/notifications/ui/notifications_screen.dart';
 import '../features/entities/logic/entities_cubit.dart';
 import '../features/entities/ui/entities_screen.dart';
+import '../features/templates/logic/template_management_cubit.dart';
+import '../features/templates/ui/template_management_screen.dart';
 import '../features/settings/ui/settings_screen.dart';
 import '../shared/models/profile.dart';
 
@@ -52,6 +54,7 @@ class AppRoutes {
   static const String chat = '/chat';
   static const String notifications = '/notifications';
   static const String entities = '/entities';
+  static const String templates = '/templates';
   static const String settings = '/settings';
 }
 
@@ -215,6 +218,14 @@ GoRouter createRouter(AuthCubit authCubit) {
         builder: (_, _) => BlocProvider(
           create: (_) => sl<EntitiesCubit>()..load(),
           child: const EntitiesScreen(),
+        ),
+      ),
+      GoRoute(
+        path: AppRoutes.templates,
+        builder: (_, state) => BlocProvider(
+          create: (_) => sl<TemplateManagementCubit>()
+            ..load(focusEntityId: state.extra as String?),
+          child: const TemplateManagementScreen(),
         ),
       ),
       GoRoute(

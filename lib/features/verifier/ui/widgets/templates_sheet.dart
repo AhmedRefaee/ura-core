@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/di/injection.dart';
+import '../../../../router/app_router.dart';
 import '../../../../shared/models/order_template.dart';
 import '../../logic/order_templates_cubit.dart';
 import '../../../../core/design_system/theme/theme.dart';
@@ -80,6 +82,14 @@ class _TemplatesSheetContent extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.edit_outlined, size: 20),
+                    tooltip: 'إدارة القوالب',
+                    onPressed: () {
+                      Navigator.pop(context);
+                      context.push(AppRoutes.templates, extra: entityId);
+                    },
                   ),
                 ],
               ),
@@ -207,7 +217,7 @@ class _TemplateCard extends StatelessWidget {
           template.isManual ? Icons.bookmark : Icons.replay,
           color: template.isManual ? Colors.amber[700] : Colors.grey[600],
         ),
-        title: Text(template.itemsSummary,
+        title: Text(template.displayTitle,
             style: const TextStyle(fontWeight: FontWeight.w500)),
         subtitle: Text(template.directionLabel),
         trailing: Column(

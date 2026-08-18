@@ -20,6 +20,8 @@ import '../../features/verifier/logic/order_templates_cubit.dart';
 import '../../features/verifier/logic/edit_order_cubit.dart';
 import '../../features/verifier/logic/orders_cubit.dart';
 import '../../features/verifier/logic/voice_add_item_cubit.dart';
+import '../../features/templates/logic/template_editor_cubit.dart';
+import '../../features/templates/logic/template_management_cubit.dart';
 import '../../features/rep/data/rep_orders_repository.dart';
 import '../../features/rep/logic/rep_orders_cubit.dart';
 import '../../features/rep/logic/rep_order_detail_cubit.dart';
@@ -51,6 +53,7 @@ import '../../features/entities/logic/import_entities_cubit.dart';
 import '../../features/admin/data/admin_repository.dart';
 import '../../features/admin/logic/admin_cubit.dart';
 import '../../shared/models/inventory_item.dart';
+import '../../shared/models/order_template.dart';
 
 final sl = GetIt.instance;
 
@@ -106,6 +109,21 @@ Future<void> setupDependencies() async {
       ));
   sl.registerFactory<OrderTemplatesCubit>(
     () => OrderTemplatesCubit(sl<OrderTemplateRepository>()),
+  );
+  sl.registerFactory<TemplateManagementCubit>(
+    () => TemplateManagementCubit(
+      sl<OrderTemplateRepository>(),
+      sl<EntityRepository>(),
+    ),
+  );
+  sl.registerFactoryParam<TemplateEditorCubit, OrderTemplate?, void>(
+    (template, _) => TemplateEditorCubit(
+      sl<EntityRepository>(),
+      sl<OrderRepository>(),
+      sl<InventoryRepository>(),
+      sl<OrderTemplateRepository>(),
+      template,
+    ),
   );
   sl.registerFactoryParam<EditOrderCubit, String, void>(
     (orderId, _) => EditOrderCubit(

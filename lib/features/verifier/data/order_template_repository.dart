@@ -32,6 +32,88 @@ class OrderTemplateRepository {
     }
   }
 
+  /// Every template in the org, unfiltered — the management page shows
+  /// low-usage drafts that [fetchForEntity]'s curation deliberately hides.
+  Future<AppResult<List<OrderTemplate>>> fetchAll() async {
+    try {
+      logger.d('OrderTemplateRepository → fetchAll');
+      final data = await _supabase
+          .from('order_templates')
+          .select(_select)
+          .order('usage_count', ascending: false);
+      final templates = (data as List)
+          .map((e) => OrderTemplate.fromMap(e as Map<String, dynamic>))
+          .toList();
+      logger.i('OrderTemplateRepository → loaded ${templates.length} templates');
+      return AppSuccess(templates);
+    } catch (e, st) {
+      logger.e('OrderTemplateRepository → fetchAll failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<void>> createTemplate({
+    required String entityId,
+    required OrderDirection direction,
+    String? repId,
+    String? notes,
+    String? name,
+    String? description,
+    required List<DraftOrderItem> items,
+  }) async {
+    try {
+      logger.d('OrderTemplateRepository → createTemplate');
+      await _insertTemplate(
+        entityId: entityId,
+        direction: direction,
+        repId: repId,
+        notes: notes,
+        name: name,
+        description: description,
+        items: items,
+        isManual: true,
+        fingerprint: _fingerprint(direction, items),
+      );
+      logger.i('OrderTemplateRepository → created template');
+      return const AppSuccess(null);
+    } catch (e, st) {
+      logger.e('OrderTemplateRepository → createTemplate failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<void>> updateTemplate({
+    required String id,
+    required String entityId,
+    required OrderDirection direction,
+    String? repId,
+    String? notes,
+    String? name,
+    String? description,
+    required List<DraftOrderItem> items,
+  }) async {
+    try {
+      logger.d('OrderTemplateRepository → updateTemplate $id');
+      // Set unconditionally: null here means "clear this field", not "leave alone".
+      await _supabase.from('order_templates').update({
+        'direction': _directionToString(direction),
+        'rep_id': repId,
+        'notes': notes,
+        'name': name,
+        'description': description,
+        'is_manual': true,
+        'fingerprint': _fingerprint(direction, items),
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', id);
+      await _replaceItems(id, items);
+      logger.i('OrderTemplateRepository → updated template $id');
+      return const AppSuccess(null);
+    } catch (e, st) {
+      logger.e('OrderTemplateRepository → updateTemplate failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
   Future<AppResult<void>> trackUsage({
     required String entityId,
     required OrderDirection direction,
@@ -156,11 +238,42 @@ class OrderTemplateRepository {
     }
   }
 
-  Future<void> _insertTemplate({
+  List<Map<String, dynamic>> _itemRows(
+    String templateId,
+    List<DraftOrderItem> items,
+  ) =>
+      items
+          .map((i) => {
+                'template_id': templateId,
+                if (i.inventoryId != null) 'inventory_id': i.inventoryId,
+                if (i.inventoryName != null) 'inventory_name': i.inventoryName,
+                'quantity': i.quantity,
+                'is_custom': i.isCustom,
+                if (i.customDescription != null)
+                  'custom_description': i.customDescription,
+                if (i.sourceInventoryId != null)
+                  'source_inventory_id': i.sourceInventoryId,
+              })
+          .toList();
+
+  Future<void> _replaceItems(String templateId, List<DraftOrderItem> items) async {
+    await _supabase
+        .from('order_template_items')
+        .delete()
+        .eq('template_id', templateId);
+    if (items.isEmpty) return;
+    await _supabase
+        .from('order_template_items')
+        .insert(_itemRows(templateId, items));
+  }
+
+  Future<String> _insertTemplate({
     required String entityId,
     required OrderDirection direction,
     required String? repId,
     required String? notes,
+    String? name,
+    String? description,
     required List<DraftOrderItem> items,
     required bool isManual,
     required String fingerprint,
@@ -172,6 +285,8 @@ class OrderTemplateRepository {
           'direction': _directionToString(direction),
           'rep_id': repId,
           'notes': notes,
+          'name': ?name,
+          'description': ?description,
           'is_manual': isManual,
           'fingerprint': fingerprint,
           'created_by': _supabase.auth.currentUser?.id,
@@ -179,22 +294,10 @@ class OrderTemplateRepository {
         .select('id')
         .single();
 
-    if (items.isEmpty) return;
+    final id = row['id'] as String;
+    if (items.isEmpty) return id;
 
-    await _supabase.from('order_template_items').insert(
-          items
-              .map((i) => {
-                    'template_id': row['id'] as String,
-                    if (i.inventoryId != null) 'inventory_id': i.inventoryId,
-                    if (i.inventoryName != null) 'inventory_name': i.inventoryName,
-                    'quantity': i.quantity,
-                    'is_custom': i.isCustom,
-                    if (i.customDescription != null)
-                      'custom_description': i.customDescription,
-                    if (i.sourceInventoryId != null)
-                      'source_inventory_id': i.sourceInventoryId,
-                  })
-              .toList(),
-        );
+    await _supabase.from('order_template_items').insert(_itemRows(id, items));
+    return id;
   }
 }

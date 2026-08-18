@@ -6,7 +6,7 @@ class MonitorUsersScreen extends StatelessWidget {
   const MonitorUsersScreen({super.key});
 
   static const _types = [
-    (key: 'rep', label: 'المندوبون', icon: Icons.delivery_dining, color: Colors.orange),
+    (key: 'rep', label: 'المناديب', icon: Icons.delivery_dining, color: Colors.orange),
     (key: 'storage_actor', label: 'أمناء المخزن', icon: Icons.warehouse, color: Colors.teal),
     (key: 'verifier', label: 'المشرفون', icon: Icons.manage_accounts, color: Colors.indigo),
   ];

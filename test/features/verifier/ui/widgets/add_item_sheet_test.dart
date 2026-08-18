@@ -1,5 +1,5 @@
 // Full DI/Supabase-backed navigation (tapping the mic button, which
-// resolves VoiceAddItemCubit via `sl`) is exercised manually on-device per
+// resolves AiAddItemCubit via `sl`) is exercised manually on-device per
 // the verification steps in the voice-add-item plan — see test/widget_test.dart
 // for why this repo doesn't spin up Firebase/Supabase for widget tests.
 import 'package:flutter/material.dart';

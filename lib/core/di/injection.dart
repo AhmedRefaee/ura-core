@@ -14,12 +14,12 @@ import '../../features/verifier/data/entity_repository.dart';
 import '../../features/verifier/data/inventory_repository.dart';
 import '../../features/verifier/data/order_repository.dart';
 import '../../features/verifier/data/order_template_repository.dart';
-import '../../features/verifier/data/voice_match_repository.dart';
+import '../../features/verifier/data/item_match_repository.dart';
 import '../../features/verifier/logic/create_order_cubit.dart';
 import '../../features/verifier/logic/order_templates_cubit.dart';
 import '../../features/verifier/logic/edit_order_cubit.dart';
 import '../../features/verifier/logic/orders_cubit.dart';
-import '../../features/verifier/logic/voice_add_item_cubit.dart';
+import '../../features/verifier/logic/ai_add_item_cubit.dart';
 import '../../features/templates/logic/template_editor_cubit.dart';
 import '../../features/templates/logic/template_management_cubit.dart';
 import '../../features/rep/data/rep_orders_repository.dart';
@@ -83,7 +83,7 @@ Future<void> setupDependencies() async {
   sl.registerLazySingleton<OrderTemplateRepository>(() => OrderTemplateRepository());
   sl.registerLazySingleton<RepOrdersRepository>(() => RepOrdersRepository());
   sl.registerLazySingleton<ChatRepository>(() => ChatRepository());
-  sl.registerLazySingleton<VoiceMatchRepository>(() => VoiceMatchRepository());
+  sl.registerLazySingleton<ItemMatchRepository>(() => ItemMatchRepository());
 
   // Chat cubits (singleton badge cubit; factory threads + directory cubits)
   sl.registerLazySingleton<OrderChatBadgeCubit>(
@@ -132,8 +132,8 @@ Future<void> setupDependencies() async {
       orderId,
     ),
   );
-  sl.registerFactory<VoiceAddItemCubit>(
-    () => VoiceAddItemCubit(sl<VoiceMatchRepository>()),
+  sl.registerFactory<AiAddItemCubit>(
+    () => AiAddItemCubit(sl<ItemMatchRepository>()),
   );
 
   // Rep

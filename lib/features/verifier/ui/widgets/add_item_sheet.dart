@@ -7,7 +7,7 @@ import '../../../../shared/models/order.dart';
 import '../../../../shared/utils/quantity_format.dart';
 import '../../../../core/design_system/theme/theme.dart';
 import '../../../../core/di/injection.dart';
-import '../../logic/voice_add_item_cubit.dart';
+import '../../logic/ai_add_item_cubit.dart';
 import 'voice_add_item_view.dart';
 
 /// Shared widget for adding items to an order.
@@ -110,7 +110,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
       context,
       MaterialPageRoute(
         builder: (_) => BlocProvider(
-          create: (_) => sl<VoiceAddItemCubit>(),
+          create: (_) => sl<AiAddItemCubit>(),
           child: VoiceAddItemView(
             inventory: widget.inventory,
             onAddInventoryItems: widget.onAddInventoryItems,

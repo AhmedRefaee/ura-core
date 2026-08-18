@@ -5,23 +5,23 @@ import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../core/logic/safe_emit.dart';
 import '../../../shared/models/inventory_item.dart';
-import '../../../shared/models/voice_match_result.dart';
-import '../data/voice_match_repository.dart';
+import '../../../shared/models/item_match_result.dart';
+import '../data/item_match_repository.dart';
 
-/// A voice-matched inventory row, editable in the review step before it's
+/// An AI-matched inventory row, editable in the review step before it's
 /// handed off to AddItemSheet's existing onAddInventoryItems callback.
-class VoiceReviewMatch extends Equatable {
+class ReviewMatch extends Equatable {
   final InventoryItem item;
   final double quantity;
   final double confidence;
 
-  const VoiceReviewMatch({
+  const ReviewMatch({
     required this.item,
     required this.quantity,
     required this.confidence,
   });
 
-  VoiceReviewMatch copyWith({double? quantity}) => VoiceReviewMatch(
+  ReviewMatch copyWith({double? quantity}) => ReviewMatch(
         item: item,
         quantity: quantity ?? this.quantity,
         confidence: confidence,
@@ -31,30 +31,30 @@ class VoiceReviewMatch extends Equatable {
   List<Object?> get props => [item, quantity, confidence];
 }
 
-/// A spoken phrase with no confident inventory match, editable in the
+/// A requested phrase with no confident inventory match, editable in the
 /// review step before it's handed off to AddItemSheet's existing
 /// onAddCustomItem callback (same JSON-payload convention as manual entry).
-/// Defaults to excluded — voice mode should only add real inventory items
+/// Defaults to excluded — AI entry should only add real inventory items
 /// unless the user explicitly opts a phrase into custom-item creation.
-class VoiceReviewUnmatched extends Equatable {
+class ReviewUnmatched extends Equatable {
   final String name;
   final double quantity;
   final String unit;
   final bool includeAsCustom;
 
-  const VoiceReviewUnmatched({
+  const ReviewUnmatched({
     required this.name,
     required this.quantity,
     required this.unit,
     this.includeAsCustom = false,
   });
 
-  VoiceReviewUnmatched copyWith({
+  ReviewUnmatched copyWith({
     double? quantity,
     String? unit,
     bool? includeAsCustom,
   }) =>
-      VoiceReviewUnmatched(
+      ReviewUnmatched(
         name: name,
         quantity: quantity ?? this.quantity,
         unit: unit ?? this.unit,
@@ -65,17 +65,17 @@ class VoiceReviewUnmatched extends Equatable {
   List<Object?> get props => [name, quantity, unit, includeAsCustom];
 }
 
-/// A spoken phrase that names a real product but is missing an attribute
+/// A requested phrase that names a real product but is missing an attribute
 /// (size, packaging, flavor, etc.) needed to pick one specific inventory
 /// row out of several candidates — e.g. "Nova water" when both a 330ml and
-/// 500ml row exist. Resolved via [VoiceAddItemCubit.resolveAmbiguous].
-class VoiceReviewAmbiguous extends Equatable {
+/// 500ml row exist. Resolved via [AiAddItemCubit.resolveAmbiguous].
+class ReviewAmbiguous extends Equatable {
   final String text;
   final double quantity;
   final String unit;
   final List<InventoryItem> candidates;
 
-  const VoiceReviewAmbiguous({
+  const ReviewAmbiguous({
     required this.text,
     required this.quantity,
     required this.unit,
@@ -86,31 +86,31 @@ class VoiceReviewAmbiguous extends Equatable {
   List<Object?> get props => [text, quantity, unit, candidates];
 }
 
-sealed class VoiceAddItemState extends Equatable {
-  const VoiceAddItemState();
+sealed class AiAddItemState extends Equatable {
+  const AiAddItemState();
   @override
   List<Object?> get props => [];
 }
 
-class VoiceAddItemIdle extends VoiceAddItemState {}
+class AiAddItemIdle extends AiAddItemState {}
 
-class VoiceAddItemRecording extends VoiceAddItemState {
+class AiAddItemRecording extends AiAddItemState {
   final int elapsedSeconds;
-  const VoiceAddItemRecording({this.elapsedSeconds = 0});
+  const AiAddItemRecording({this.elapsedSeconds = 0});
 
   @override
   List<Object?> get props => [elapsedSeconds];
 }
 
-class VoiceAddItemMatching extends VoiceAddItemState {}
+class AiAddItemMatching extends AiAddItemState {}
 
-class VoiceAddItemReviewing extends VoiceAddItemState {
-  final List<VoiceReviewMatch> matches;
-  final List<VoiceReviewUnmatched> unmatched;
-  final List<VoiceReviewAmbiguous> ambiguous;
+class AiAddItemReviewing extends AiAddItemState {
+  final List<ReviewMatch> matches;
+  final List<ReviewUnmatched> unmatched;
+  final List<ReviewAmbiguous> ambiguous;
   final String? heardSummary;
 
-  const VoiceAddItemReviewing({
+  const AiAddItemReviewing({
     required this.matches,
     required this.unmatched,
     this.ambiguous = const [],
@@ -123,12 +123,12 @@ class VoiceAddItemReviewing extends VoiceAddItemState {
       ambiguous.isEmpty &&
       (matches.isNotEmpty || unmatched.any((u) => u.includeAsCustom));
 
-  VoiceAddItemReviewing copyWith({
-    List<VoiceReviewMatch>? matches,
-    List<VoiceReviewUnmatched>? unmatched,
-    List<VoiceReviewAmbiguous>? ambiguous,
+  AiAddItemReviewing copyWith({
+    List<ReviewMatch>? matches,
+    List<ReviewUnmatched>? unmatched,
+    List<ReviewAmbiguous>? ambiguous,
   }) =>
-      VoiceAddItemReviewing(
+      AiAddItemReviewing(
         matches: matches ?? this.matches,
         unmatched: unmatched ?? this.unmatched,
         ambiguous: ambiguous ?? this.ambiguous,
@@ -139,22 +139,22 @@ class VoiceAddItemReviewing extends VoiceAddItemState {
   List<Object?> get props => [matches, unmatched, ambiguous, heardSummary];
 }
 
-class VoiceAddItemError extends VoiceAddItemState {
+class AiAddItemError extends AiAddItemState {
   final String message;
-  const VoiceAddItemError(this.message);
+  const AiAddItemError(this.message);
 
   @override
   List<Object?> get props => [message];
 }
 
-class VoiceAddItemCubit extends Cubit<VoiceAddItemState> with SafeEmit<VoiceAddItemState> {
-  final VoiceMatchRepository _repository;
+class AiAddItemCubit extends Cubit<AiAddItemState> with SafeEmit<AiAddItemState> {
+  final ItemMatchRepository _repository;
 
-  VoiceAddItemCubit(this._repository) : super(VoiceAddItemIdle());
+  AiAddItemCubit(this._repository) : super(AiAddItemIdle());
 
-  void startRecording() => safeEmit(const VoiceAddItemRecording());
+  void startRecording() => safeEmit(const AiAddItemRecording());
 
-  void updateElapsed(int seconds) => safeEmit(VoiceAddItemRecording(elapsedSeconds: seconds));
+  void updateElapsed(int seconds) => safeEmit(AiAddItemRecording(elapsedSeconds: seconds));
 
   Future<void> finishRecording(
     Uint8List audioBytes,
@@ -162,41 +162,41 @@ class VoiceAddItemCubit extends Cubit<VoiceAddItemState> with SafeEmit<VoiceAddI
     List<InventoryItem> inventory,
   ) async {
     if (audioBytes.isEmpty) {
-      safeEmit(const VoiceAddItemReviewing(matches: [], unmatched: []));
+      safeEmit(const AiAddItemReviewing(matches: [], unmatched: []));
       return;
     }
 
-    safeEmit(VoiceAddItemMatching());
+    safeEmit(AiAddItemMatching());
 
-    final result = await _repository.matchVoiceAudio(audioBytes, mimeType);
+    final result = await _repository.matchAudio(audioBytes, mimeType);
     switch (result) {
       case AppSuccess(data: final matchResult):
         safeEmit(_toReviewingState(matchResult, inventory));
       case AppFailure(error: final error):
-        logger.w('VoiceAddItemCubit → matching failed: ${error.message}');
-        safeEmit(VoiceAddItemError(error.message));
+        logger.w('AiAddItemCubit → matching failed: ${error.message}');
+        safeEmit(AiAddItemError(error.message));
     }
   }
 
-  VoiceAddItemReviewing _toReviewingState(VoiceMatchResult result, List<InventoryItem> inventory) {
+  AiAddItemReviewing _toReviewingState(ItemMatchResult result, List<InventoryItem> inventory) {
     final byId = {for (final item in inventory) item.id: item};
-    final matches = <VoiceReviewMatch>[];
+    final matches = <ReviewMatch>[];
     for (final match in result.matches) {
       final item = byId[match.itemId];
       // Defense in depth: only trust matches against inventory we actually
       // have loaded, even though the backend already validated the id.
       if (item == null || match.quantity <= 0) continue;
-      matches.add(VoiceReviewMatch(item: item, quantity: match.quantity, confidence: match.confidence));
+      matches.add(ReviewMatch(item: item, quantity: match.quantity, confidence: match.confidence));
     }
     final unmatched = result.unmatched
-        .map((u) => VoiceReviewUnmatched(
+        .map((u) => ReviewUnmatched(
               name: u.text,
               quantity: (u.quantity == null || u.quantity! <= 0) ? 1 : u.quantity!,
               unit: u.unit?.trim().isNotEmpty == true ? u.unit!.trim() : 'قطعة',
             ))
         .toList();
 
-    final ambiguous = <VoiceReviewAmbiguous>[];
+    final ambiguous = <ReviewAmbiguous>[];
     for (final entry in result.ambiguous) {
       final quantity = (entry.quantity == null || entry.quantity! <= 0) ? 1.0 : entry.quantity!;
       final unit = entry.unit?.trim().isNotEmpty == true ? entry.unit!.trim() : 'قطعة';
@@ -204,17 +204,17 @@ class VoiceAddItemCubit extends Cubit<VoiceAddItemState> with SafeEmit<VoiceAddI
       // against inventory we actually have loaded.
       final candidates = entry.candidateItemIds.map((id) => byId[id]).whereType<InventoryItem>().toList();
       if (candidates.length >= 2) {
-        ambiguous.add(VoiceReviewAmbiguous(text: entry.text, quantity: quantity, unit: unit, candidates: candidates));
+        ambiguous.add(ReviewAmbiguous(text: entry.text, quantity: quantity, unit: unit, candidates: candidates));
       } else if (candidates.length == 1) {
         // Nothing left to disambiguate — it's a real match.
-        matches.add(VoiceReviewMatch(item: candidates.single, quantity: quantity, confidence: 1.0));
+        matches.add(ReviewMatch(item: candidates.single, quantity: quantity, confidence: 1.0));
       } else {
         // No valid candidates survived — falls back to unmatched.
-        unmatched.add(VoiceReviewUnmatched(name: entry.text, quantity: quantity, unit: unit));
+        unmatched.add(ReviewUnmatched(name: entry.text, quantity: quantity, unit: unit));
       }
     }
 
-    return VoiceAddItemReviewing(
+    return AiAddItemReviewing(
       matches: matches,
       unmatched: unmatched,
       ambiguous: ambiguous,
@@ -224,7 +224,7 @@ class VoiceAddItemCubit extends Cubit<VoiceAddItemState> with SafeEmit<VoiceAddI
 
   void updateMatchQuantity(int index, double quantity) {
     final current = state;
-    if (current is! VoiceAddItemReviewing) return;
+    if (current is! AiAddItemReviewing) return;
     final updated = [...current.matches];
     updated[index] = updated[index].copyWith(quantity: quantity);
     safeEmit(current.copyWith(matches: updated));
@@ -232,14 +232,14 @@ class VoiceAddItemCubit extends Cubit<VoiceAddItemState> with SafeEmit<VoiceAddI
 
   void removeMatch(int index) {
     final current = state;
-    if (current is! VoiceAddItemReviewing) return;
+    if (current is! AiAddItemReviewing) return;
     final updated = [...current.matches]..removeAt(index);
     safeEmit(current.copyWith(matches: updated));
   }
 
   void updateUnmatched(int index, {double? quantity, String? unit, bool? includeAsCustom}) {
     final current = state;
-    if (current is! VoiceAddItemReviewing) return;
+    if (current is! AiAddItemReviewing) return;
     final updated = [...current.unmatched];
     updated[index] = updated[index].copyWith(
       quantity: quantity,
@@ -251,12 +251,12 @@ class VoiceAddItemCubit extends Cubit<VoiceAddItemState> with SafeEmit<VoiceAddI
 
   void resolveAmbiguous(int index, InventoryItem chosen) {
     final current = state;
-    if (current is! VoiceAddItemReviewing) return;
+    if (current is! AiAddItemReviewing) return;
     final entry = current.ambiguous[index];
     final updatedAmbiguous = [...current.ambiguous]..removeAt(index);
     final updatedMatches = [
       ...current.matches,
-      VoiceReviewMatch(item: chosen, quantity: entry.quantity, confidence: 1.0),
+      ReviewMatch(item: chosen, quantity: entry.quantity, confidence: 1.0),
     ];
     safeEmit(current.copyWith(matches: updatedMatches, ambiguous: updatedAmbiguous));
   }
@@ -266,17 +266,17 @@ class VoiceAddItemCubit extends Cubit<VoiceAddItemState> with SafeEmit<VoiceAddI
   /// item already has (opt-in custom-item checkbox, unchecked by default).
   void dismissAmbiguous(int index) {
     final current = state;
-    if (current is! VoiceAddItemReviewing) return;
+    if (current is! AiAddItemReviewing) return;
     final entry = current.ambiguous[index];
     final updatedAmbiguous = [...current.ambiguous]..removeAt(index);
     final updatedUnmatched = [
       ...current.unmatched,
-      VoiceReviewUnmatched(name: entry.text, quantity: entry.quantity, unit: entry.unit),
+      ReviewUnmatched(name: entry.text, quantity: entry.quantity, unit: entry.unit),
     ];
     safeEmit(current.copyWith(unmatched: updatedUnmatched, ambiguous: updatedAmbiguous));
   }
 
-  void retry() => safeEmit(VoiceAddItemIdle());
+  void retry() => safeEmit(AiAddItemIdle());
 
-  void reset() => safeEmit(VoiceAddItemIdle());
+  void reset() => safeEmit(AiAddItemIdle());
 }

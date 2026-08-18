@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:record/record.dart';
 import '../../../../core/design_system/theme/theme.dart';
 import '../../../../shared/models/inventory_item.dart';
-import '../../logic/voice_add_item_cubit.dart';
+import '../../logic/ai_add_item_cubit.dart';
 
 const _maxRecordingSeconds = 5 * 60;
 // 'audio/aac' is one of Gemini's officially documented inline-audio MIME
@@ -64,7 +64,7 @@ class _VoiceAddItemViewState extends State<VoiceAddItemView> {
   Future<void> _startRecording() async {
     _finished = false;
     _elapsedSeconds = 0;
-    final cubit = context.read<VoiceAddItemCubit>();
+    final cubit = context.read<AiAddItemCubit>();
 
     final hasPermission = await _recorder.hasPermission();
     if (!hasPermission) {
@@ -105,17 +105,17 @@ class _VoiceAddItemViewState extends State<VoiceAddItemView> {
   Future<void> _finish(String? path) async {
     if (_finished || !mounted) return;
     _finished = true;
-    final cubit = context.read<VoiceAddItemCubit>();
+    final cubit = context.read<AiAddItemCubit>();
     final bytes = path == null ? Uint8List(0) : await File(path).readAsBytes();
     cubit.finishRecording(bytes, _audioMimeType, widget.inventory);
   }
 
   void _showError(String message) {
-    context.read<VoiceAddItemCubit>().retry();
+    context.read<AiAddItemCubit>().retry();
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
   }
 
-  void _confirm(VoiceAddItemReviewing state) {
+  void _confirm(AiAddItemReviewing state) {
     if (state.matches.isNotEmpty) {
       widget.onAddInventoryItems(
         state.matches.map((m) => (item: m.item, quantity: m.quantity)).toList(),
@@ -146,22 +146,22 @@ class _VoiceAddItemViewState extends State<VoiceAddItemView> {
       body: SafeArea(
         child: Padding(
           padding: AppSpacing.allLarge,
-          child: BlocBuilder<VoiceAddItemCubit, VoiceAddItemState>(
+          child: BlocBuilder<AiAddItemCubit, AiAddItemState>(
             builder: (context, state) {
               return switch (state) {
-                VoiceAddItemIdle() => const _CenteredMessage(text: 'جاري التحضير...'),
-                VoiceAddItemRecording(:final elapsedSeconds) => _RecordingView(
+                AiAddItemIdle() => const _CenteredMessage(text: 'جاري التحضير...'),
+                AiAddItemRecording(:final elapsedSeconds) => _RecordingView(
                     elapsedSeconds: elapsedSeconds,
                     onStop: _stopRecording,
                   ),
-                VoiceAddItemMatching() =>
+                AiAddItemMatching() =>
                   const _CenteredMessage(text: 'جاري تحليل الصوت ومطابقته مع المخزون...'),
-                VoiceAddItemReviewing() => _ReviewView(
+                AiAddItemReviewing() => _ReviewView(
                     state: state,
                     onConfirm: () => _confirm(state),
                     onRetry: _startRecording,
                   ),
-                VoiceAddItemError() => _ErrorView(
+                AiAddItemError() => _ErrorView(
                     message: state.message,
                     onRetry: _startRecording,
                   ),
@@ -265,7 +265,7 @@ class _ErrorView extends StatelessWidget {
 }
 
 class _ReviewView extends StatelessWidget {
-  final VoiceAddItemReviewing state;
+  final AiAddItemReviewing state;
   final VoidCallback onConfirm;
   final VoidCallback onRetry;
 
@@ -273,7 +273,7 @@ class _ReviewView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final cubit = context.read<VoiceAddItemCubit>();
+    final cubit = context.read<AiAddItemCubit>();
     final theme = Theme.of(context);
 
     if (state.matches.isEmpty && state.unmatched.isEmpty && state.ambiguous.isEmpty) {
@@ -376,7 +376,7 @@ class _ReviewView extends StatelessWidget {
 }
 
 class _AmbiguousTile extends StatelessWidget {
-  final VoiceReviewAmbiguous ambiguous;
+  final ReviewAmbiguous ambiguous;
   final ValueChanged<InventoryItem> onChoose;
   final VoidCallback onDismiss;
 
@@ -431,7 +431,7 @@ class _AmbiguousTile extends StatelessWidget {
 }
 
 class _MatchTile extends StatelessWidget {
-  final VoiceReviewMatch match;
+  final ReviewMatch match;
   final ValueChanged<double> onQuantityChanged;
   final VoidCallback onRemove;
 
@@ -485,7 +485,7 @@ class _MatchTile extends StatelessWidget {
 }
 
 class _UnmatchedTile extends StatelessWidget {
-  final VoiceReviewUnmatched unmatched;
+  final ReviewUnmatched unmatched;
   final ValueChanged<bool> onToggle;
   final ValueChanged<double> onQuantityChanged;
 

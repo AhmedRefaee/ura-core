@@ -1,21 +1,21 @@
 import 'package:equatable/equatable.dart';
 
-/// A spoken item phrase the backend matched to a real inventory row.
+/// A requested item phrase the backend matched to a real inventory row.
 /// [itemId] is only ever an id the backend re-validated against the
 /// organization's actual inventory — never an id invented by the model.
-class VoiceItemMatch extends Equatable {
+class MatchedItem extends Equatable {
   final String itemId;
   final double quantity;
   final double confidence;
 
-  const VoiceItemMatch({
+  const MatchedItem({
     required this.itemId,
     required this.quantity,
     required this.confidence,
   });
 
-  factory VoiceItemMatch.fromMap(Map<String, dynamic> map) {
-    return VoiceItemMatch(
+  factory MatchedItem.fromMap(Map<String, dynamic> map) {
+    return MatchedItem(
       itemId: map['item_id'] as String,
       quantity: (map['quantity'] as num).toDouble(),
       confidence: (map['confidence'] as num?)?.toDouble() ?? 0,
@@ -26,22 +26,22 @@ class VoiceItemMatch extends Equatable {
   List<Object?> get props => [itemId, quantity, confidence];
 }
 
-/// A spoken item phrase that could not be confidently matched to any
+/// A requested item phrase that could not be confidently matched to any
 /// real inventory row. Carries whatever quantity/unit the model parsed
 /// so it can be prefilled into the existing custom-item flow.
-class VoiceUnmatchedItem extends Equatable {
+class UnmatchedItem extends Equatable {
   final String text;
   final double? quantity;
   final String? unit;
 
-  const VoiceUnmatchedItem({
+  const UnmatchedItem({
     required this.text,
     this.quantity,
     this.unit,
   });
 
-  factory VoiceUnmatchedItem.fromMap(Map<String, dynamic> map) {
-    return VoiceUnmatchedItem(
+  factory UnmatchedItem.fromMap(Map<String, dynamic> map) {
+    return UnmatchedItem(
       text: map['text'] as String,
       quantity: (map['quantity'] as num?)?.toDouble(),
       unit: map['unit'] as String?,
@@ -52,26 +52,26 @@ class VoiceUnmatchedItem extends Equatable {
   List<Object?> get props => [text, quantity, unit];
 }
 
-/// A spoken item phrase that names a real product/brand but is missing an
+/// A requested item phrase that names a real product/brand but is missing an
 /// attribute (size, packaging, flavor, etc.) that distinguishes multiple
 /// real inventory rows — e.g. "Nova water" when both a 330ml and 500ml
 /// inventory row exist. [candidateItemIds] are only ever ids the backend
 /// re-validated against the organization's actual inventory.
-class VoiceAmbiguousItem extends Equatable {
+class AmbiguousItem extends Equatable {
   final String text;
   final double? quantity;
   final String? unit;
   final List<String> candidateItemIds;
 
-  const VoiceAmbiguousItem({
+  const AmbiguousItem({
     required this.text,
     this.quantity,
     this.unit,
     required this.candidateItemIds,
   });
 
-  factory VoiceAmbiguousItem.fromMap(Map<String, dynamic> map) {
-    return VoiceAmbiguousItem(
+  factory AmbiguousItem.fromMap(Map<String, dynamic> map) {
+    return AmbiguousItem(
       text: map['text'] as String,
       quantity: (map['quantity'] as num?)?.toDouble(),
       unit: map['unit'] as String?,
@@ -85,31 +85,31 @@ class VoiceAmbiguousItem extends Equatable {
   List<Object?> get props => [text, quantity, unit, candidateItemIds];
 }
 
-class VoiceMatchResult extends Equatable {
-  final List<VoiceItemMatch> matches;
-  final List<VoiceUnmatchedItem> unmatched;
-  final List<VoiceAmbiguousItem> ambiguous;
+class ItemMatchResult extends Equatable {
+  final List<MatchedItem> matches;
+  final List<UnmatchedItem> unmatched;
+  final List<AmbiguousItem> ambiguous;
   // Short natural-language recap of what the model understood from the
-  // audio, shown in the review screen so the result isn't a black box.
+  // request, shown in the review screen so the result isn't a black box.
   final String? heardSummary;
 
-  const VoiceMatchResult({
+  const ItemMatchResult({
     required this.matches,
     required this.unmatched,
     this.ambiguous = const [],
     this.heardSummary,
   });
 
-  factory VoiceMatchResult.fromMap(Map<String, dynamic> map) {
-    return VoiceMatchResult(
+  factory ItemMatchResult.fromMap(Map<String, dynamic> map) {
+    return ItemMatchResult(
       matches: (map['matches'] as List? ?? [])
-          .map((e) => VoiceItemMatch.fromMap(e as Map<String, dynamic>))
+          .map((e) => MatchedItem.fromMap(e as Map<String, dynamic>))
           .toList(),
       unmatched: (map['unmatched'] as List? ?? [])
-          .map((e) => VoiceUnmatchedItem.fromMap(e as Map<String, dynamic>))
+          .map((e) => UnmatchedItem.fromMap(e as Map<String, dynamic>))
           .toList(),
       ambiguous: (map['ambiguous'] as List? ?? [])
-          .map((e) => VoiceAmbiguousItem.fromMap(e as Map<String, dynamic>))
+          .map((e) => AmbiguousItem.fromMap(e as Map<String, dynamic>))
           .toList(),
       heardSummary: map['heard_summary'] as String?,
     );

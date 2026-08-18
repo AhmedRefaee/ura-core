@@ -5,6 +5,17 @@ const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 // we send the recording itself, not a pre-transcribed string.
 const GEMINI_MODEL = 'gemini-3.6-flash';
 
+// Generous enough for a long forwarded WhatsApp thread, small enough that a
+// pasted novel can't run up a Gemini bill. This function still has no rate
+// limiting, so the cap is the only guard on the text surface.
+const MAX_TEXT_CHARS = 4000;
+
+/// The request being matched: either a recording to listen to, or a written
+/// message to read. Everything downstream of the Gemini call is identical.
+type MatchInput =
+  | { kind: 'audio'; audioBase64: string; mimeType: string }
+  | { kind: 'text'; text: string };
+
 interface InventoryRow {
   id: string;
   item_name: string;
@@ -27,13 +38,29 @@ Deno.serve(async (req) => {
 
   const t0 = Date.now();
   try {
-    const { audio_base64: audioBase64, mime_type: mimeType } = await req.json();
-    if (!audioBase64 || typeof audioBase64 !== 'string' || !audioBase64.trim()) {
+    const payload = await req.json();
+    const audioBase64 = typeof payload.audio_base64 === 'string' ? payload.audio_base64.trim() : '';
+    const text = typeof payload.text === 'string' ? payload.text.trim() : '';
+    const mimeType = payload.mime_type;
+
+    if (audioBase64 && text) {
+      return jsonResponse({ error: 'Provide either audio_base64 or text, not both' }, 400);
+    }
+    // No usable input at all is not an error — an empty recording already
+    // returned an empty result, and the paste screen relies on the same.
+    if (!audioBase64 && !text) {
       return jsonResponse({ matches: [], unmatched: [] });
     }
-    if (!mimeType || typeof mimeType !== 'string') {
+    if (audioBase64 && (!mimeType || typeof mimeType !== 'string')) {
       return jsonResponse({ error: 'Missing mime_type' }, 400);
     }
+    if (text.length > MAX_TEXT_CHARS) {
+      return jsonResponse({ error: `Text exceeds ${MAX_TEXT_CHARS} characters` }, 400);
+    }
+
+    const input: MatchInput = text
+      ? { kind: 'text', text }
+      : { kind: 'audio', audioBase64, mimeType };
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -60,10 +87,10 @@ Deno.serve(async (req) => {
     }
     const t1 = Date.now();
 
-    const result = await matchWithGemini(audioBase64, mimeType, inventory as InventoryRow[]);
+    const result = await matchWithGemini(input, inventory as InventoryRow[]);
     const t2 = Date.now();
     // Temporary instrumentation to find where request latency actually goes —
-    // surfaces in the client's debug log via VoiceMatchRepository, since that's
+    // surfaces in the client's debug log via ItemMatchRepository, since that's
     // the only practical log visibility available without extra tooling.
     const debugTimingMs = {
       inventory_fetch: t1 - t0,
@@ -110,9 +137,62 @@ Deno.serve(async (req) => {
   }
 });
 
+const AUDIO_OPENING =
+  'You listen to an audio recording of someone dictating an order request, ' +
+  'and match what they say to items in a fixed inventory list. The speech is ' +
+  'primarily Arabic (Modern Standard Arabic or a regional dialect such as ' +
+  'Gulf, Levantine, or Egyptian), and may include some English item or brand ' +
+  'names mixed in — do not assume the audio is in English. Listen to the ' +
+  'ENTIRE recording from start to finish and extract every distinct item and ' +
+  'quantity mentioned, not just the first one; the speaker may list many items ' +
+  'in one recording. ';
+
+// Written requests reach the verifier as forwarded chat messages, so the
+// model has to do something the audio path never needed: throw away the
+// conversation around the order before it starts matching.
+const TEXT_OPENING =
+  'You read a written order request — typically a WhatsApp message from ' +
+  'someone at an outside entity, pasted in by the person handling it — and ' +
+  'match what it asks for to items in a fixed inventory list. The message is ' +
+  'primarily Arabic (Modern Standard Arabic or a regional dialect such as ' +
+  'Gulf, Levantine, or Egyptian), and may include some English item or brand ' +
+  'names mixed in — do not assume it is in English. Read the ENTIRE message ' +
+  'and extract every distinct item and quantity it requests, not just the ' +
+  'first one; one message may list many items. ' +
+  'Real messages are messy. IGNORE everything that is not part of the order: ' +
+  'greetings and pleasantries, thanks and sign-offs, sender names, phone ' +
+  'numbers, addresses, timestamps, forwarded-message headers, quoted replies, ' +
+  'emoji, and any line that does not name a product. Do not treat a person, ' +
+  'a company, or a place as an item. ' +
+  'Quantities may be written as Western digits (3), Arabic-Indic digits (٣), ' +
+  'or words (ثلاثة); numbering that is only a list marker (1. 2. 3.) is NOT a ' +
+  'quantity. A requested item with no quantity anywhere means 1. ';
+
+const SHARED_RULES =
+  'You MUST only return item_id values that appear in the provided inventory ' +
+  'list below — never invent an id or a name that is not in the list. Parse a ' +
+  'quantity for each requested item. If a phrase does not clearly correspond ' +
+  'to any item in the list, put it in "unmatched" with the raw phrase instead of ' +
+  'forcing a bad match. ' +
+  'If a phrase does not fully specify which of several distinct ' +
+  'inventory rows is meant, do NOT guess one of them and do NOT put it in ' +
+  '"unmatched" — instead put it in "ambiguous" with the raw phrase, the ' +
+  'parsed quantity/unit, and the item_id of every plausible candidate row ' +
+  '(2 to 4 candidates, most-likely-first). This applies to ANY missing ' +
+  'distinguishing attribute, not just size — for example: (a) the request ' +
+  'names a brand but not a size/packaging (e.g. "Nova water" when the ' +
+  'inventory has both a 330ml and a 500ml Nova water row); (b) the request ' +
+  'names a size/type but not a brand (e.g. "250ml water" when the inventory ' +
+  'has 250ml water rows from more than one brand); or any other case where ' +
+  'the words alone do not narrow it down to one specific row. Only ' +
+  'use "ambiguous" when multiple rows genuinely match what was requested; a ' +
+  'single clear match still goes in "matches". ' +
+  'Also return a short natural-language "heard_summary" (in ' +
+  'Arabic) recapping everything you understood from the request, so the person ' +
+  'reviewing it can sanity-check it.';
+
 async function matchWithGemini(
-  audioBase64: string,
-  mimeType: string,
+  input: MatchInput,
   inventory: InventoryRow[],
 ): Promise<MatchResponse> {
   if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured');
@@ -125,36 +205,7 @@ async function matchWithGemini(
     unit: i.unit,
   }));
 
-  const systemInstruction =
-    'You listen to an audio recording of someone dictating an order request, ' +
-    'and match what they say to items in a fixed inventory list. The speech is ' +
-    'primarily Arabic (Modern Standard Arabic or a regional dialect such as ' +
-    'Gulf, Levantine, or Egyptian), and may include some English item or brand ' +
-    'names mixed in — do not assume the audio is in English. Listen to the ' +
-    'ENTIRE recording from start to finish and extract every distinct item and ' +
-    'quantity mentioned, not just the first one; the speaker may list many items ' +
-    'in one recording. ' +
-    'You MUST only return item_id values that appear in the provided inventory ' +
-    'list below — never invent an id or a name that is not in the list. Parse a ' +
-    'quantity for each spoken item. If a spoken phrase does not clearly correspond ' +
-    'to any item in the list, put it in "unmatched" with the raw phrase instead of ' +
-    'forcing a bad match. ' +
-    'If a spoken phrase does not fully specify which of several distinct ' +
-    'inventory rows is meant, do NOT guess one of them and do NOT put it in ' +
-    '"unmatched" — instead put it in "ambiguous" with the raw phrase, the ' +
-    'parsed quantity/unit, and the item_id of every plausible candidate row ' +
-    '(2 to 4 candidates, most-likely-first). This applies to ANY missing ' +
-    'distinguishing attribute, not just size — for example: (a) the speaker ' +
-    'names a brand but not a size/packaging (e.g. "Nova water" when the ' +
-    'inventory has both a 330ml and a 500ml Nova water row); (b) the speaker ' +
-    'names a size/type but not a brand (e.g. "250ml water" when the inventory ' +
-    'has 250ml water rows from more than one brand); or any other case where ' +
-    'the spoken words alone do not narrow it down to one specific row. Only ' +
-    'use "ambiguous" when multiple rows genuinely match what was said; a ' +
-    'single clear match still goes in "matches". ' +
-    'Also return a short natural-language "heard_summary" (in ' +
-    'Arabic) recapping everything you understood from the recording, so the person ' +
-    'who spoke can sanity-check it.';
+  const systemInstruction = (input.kind === 'audio' ? AUDIO_OPENING : TEXT_OPENING) + SHARED_RULES;
 
   const body = {
     systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -167,12 +218,9 @@ async function matchWithGemini(
               'Inventory (JSON array of {id, name, sku, category, unit}):\n' +
               JSON.stringify(inventoryContext),
           },
-          {
-            inlineData: {
-              mimeType,
-              data: audioBase64,
-            },
-          },
+          input.kind === 'text'
+            ? { text: 'Request message:\n' + input.text }
+            : { inlineData: { mimeType: input.mimeType, data: input.audioBase64 } },
         ],
       },
     ],

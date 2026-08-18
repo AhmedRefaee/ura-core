@@ -48,6 +48,8 @@ class OrderTemplate extends Equatable {
   final OrderDirection direction;
   final String? repId;
   final String? notes;
+  final String? name;
+  final String? description;
   final bool isManual;
   final int usageCount;
   final List<OrderTemplateItem> items;
@@ -58,12 +60,17 @@ class OrderTemplate extends Equatable {
     required this.direction,
     this.repId,
     this.notes,
+    this.name,
+    this.description,
     required this.isManual,
     required this.usageCount,
     required this.items,
   });
 
   bool get isVisible => isManual || usageCount >= 3;
+
+  String get displayTitle =>
+      (name != null && name!.trim().isNotEmpty) ? name! : itemsSummary;
 
   String get directionLabel => direction.label;
 
@@ -94,6 +101,8 @@ class OrderTemplate extends Equatable {
       direction: _parseDirection(m['direction'] as String),
       repId: m['rep_id'] as String?,
       notes: m['notes'] as String?,
+      name: m['name'] as String?,
+      description: m['description'] as String?,
       isManual: m['is_manual'] as bool,
       usageCount: m['usage_count'] as int,
       items: rawItems
@@ -104,5 +113,5 @@ class OrderTemplate extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, entityId, direction, repId, isManual, usageCount, items];
+      [id, entityId, direction, repId, name, description, isManual, usageCount, items];
 }

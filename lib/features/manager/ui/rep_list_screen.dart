@@ -89,7 +89,7 @@ class _RepListView extends StatelessWidget {
                   slivers: [
                     SliverFillRemaining(
                       hasScrollBody: false,
-                      child: Center(child: Text('لا يوجد مندوبون مسجلون')),
+                      child: Center(child: Text('لا يوجد مناديب مسجلون')),
                     ),
                   ],
                 ),

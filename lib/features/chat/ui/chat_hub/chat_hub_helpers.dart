@@ -49,7 +49,7 @@ String _roleSectionLabel(UserRole role) => switch (role) {
   UserRole.manager => 'المدراء',
   UserRole.verifier => 'موظفو التحقق',
   UserRole.storageActor => 'عمال المخزن',
-  UserRole.rep => 'المندوبون',
+  UserRole.rep => 'المناديب',
   UserRole.admin => 'المدراء العامون',
 };
 

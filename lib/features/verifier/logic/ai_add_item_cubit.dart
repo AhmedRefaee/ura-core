@@ -178,6 +178,28 @@ class AiAddItemCubit extends Cubit<AiAddItemState> with SafeEmit<AiAddItemState>
     }
   }
 
+  /// Matches a pasted written request — e.g. a WhatsApp message forwarded
+  /// from an outside entity — against the inventory. Produces exactly the
+  /// same review state the audio path does; only the input differs.
+  Future<void> submitText(String text, List<InventoryItem> inventory) async {
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) {
+      safeEmit(const AiAddItemReviewing(matches: [], unmatched: []));
+      return;
+    }
+
+    safeEmit(AiAddItemMatching());
+
+    final result = await _repository.matchText(trimmed);
+    switch (result) {
+      case AppSuccess(data: final matchResult):
+        safeEmit(_toReviewingState(matchResult, inventory));
+      case AppFailure(error: final error):
+        logger.w('AiAddItemCubit → text matching failed: ${error.message}');
+        safeEmit(AiAddItemError(error.message));
+    }
+  }
+
   AiAddItemReviewing _toReviewingState(ItemMatchResult result, List<InventoryItem> inventory) {
     final byId = {for (final item in inventory) item.id: item};
     final matches = <ReviewMatch>[];

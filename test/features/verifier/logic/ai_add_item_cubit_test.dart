@@ -108,6 +108,97 @@ void main() {
     );
 
     blocTest<AiAddItemCubit, AiAddItemState>(
+      'submitText with blank text emits an empty Reviewing state without calling the repository',
+      build: () => AiAddItemCubit(repository),
+      act: (cubit) => cubit.submitText('     ', inventory),
+      expect: () => [
+        isA<AiAddItemReviewing>()
+            .having((s) => s.matches, 'matches', isEmpty)
+            .having((s) => s.unmatched, 'unmatched', isEmpty),
+      ],
+      verify: (_) => verifyNever(() => repository.matchText(any())),
+    );
+
+    blocTest<AiAddItemCubit, AiAddItemState>(
+      'submitText sends the trimmed message and resolves matches the same way audio does',
+      build: () {
+        when(() => repository.matchText(any())).thenAnswer(
+          (_) async => AppSuccess(
+            ItemMatchResult(
+              matches: const [
+                MatchedItem(itemId: 'item-water', quantity: 3, confidence: 0.9),
+                MatchedItem(itemId: 'item-unknown', quantity: 1, confidence: 0.5),
+              ],
+              unmatched: const [
+                UnmatchedItem(text: 'صابون فاخر', quantity: 2, unit: 'علبة'),
+              ],
+              heardSummary: 'فهمت طلب ٣ كراتين مياه وعلبتين صابون فاخر',
+            ),
+          ),
+        );
+        return AiAddItemCubit(repository);
+      },
+      act: (cubit) => cubit.submitText('  السلام عليكم، محتاج ٣ كراتين مياه نوفا  ', inventory),
+      expect: () => [
+        isA<AiAddItemMatching>(),
+        isA<AiAddItemReviewing>()
+            .having((s) => s.matches, 'matches', hasLength(1))
+            .having((s) => s.matches.first.item, 'matched item', water)
+            .having((s) => s.matches.first.quantity, 'quantity', 3)
+            .having((s) => s.unmatched, 'unmatched', hasLength(1))
+            .having((s) => s.heardSummary, 'heardSummary', isNotNull),
+      ],
+      verify: (_) =>
+          verify(() => repository.matchText('السلام عليكم، محتاج ٣ كراتين مياه نوفا')).called(1),
+    );
+
+    blocTest<AiAddItemCubit, AiAddItemState>(
+      'submitText keeps ambiguous entries ambiguous, exactly as the audio path does',
+      build: () {
+        when(() => repository.matchText(any())).thenAnswer(
+          (_) async => AppSuccess(
+            ItemMatchResult(
+              matches: const [],
+              unmatched: const [],
+              ambiguous: [
+                AmbiguousItem(
+                  text: 'مياه نوفا',
+                  quantity: 2,
+                  unit: 'كرتونة',
+                  candidateItemIds: [water.id, water500.id],
+                ),
+              ],
+            ),
+          ),
+        );
+        return AiAddItemCubit(repository);
+      },
+      act: (cubit) => cubit.submitText('محتاج كرتونتين مياه نوفا', inventory),
+      expect: () => [
+        isA<AiAddItemMatching>(),
+        isA<AiAddItemReviewing>()
+            .having((s) => s.matches, 'matches', isEmpty)
+            .having((s) => s.ambiguous, 'ambiguous', hasLength(1))
+            .having((s) => s.ambiguous.single.candidates, 'candidates', [water, water500]),
+      ],
+    );
+
+    blocTest<AiAddItemCubit, AiAddItemState>(
+      'submitText emits Error on repository failure',
+      build: () {
+        when(() => repository.matchText(any())).thenAnswer(
+          (_) async => const AppFailure(AppError(message: 'فشل', type: AppErrorType.server)),
+        );
+        return AiAddItemCubit(repository);
+      },
+      act: (cubit) => cubit.submitText('محتاج مياه', inventory),
+      expect: () => [
+        isA<AiAddItemMatching>(),
+        isA<AiAddItemError>().having((s) => s.message, 'message', 'فشل'),
+      ],
+    );
+
+    blocTest<AiAddItemCubit, AiAddItemState>(
       'updateMatchQuantity and removeMatch mutate the reviewing state',
       build: () => AiAddItemCubit(repository),
       seed: () => const AiAddItemReviewing(

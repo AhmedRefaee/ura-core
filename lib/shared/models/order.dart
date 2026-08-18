@@ -7,6 +7,17 @@ enum OrderDirection { outbound, inboundRep, inboundExternal }
 
 enum OrderStatus { assigned, pickedUp, onTheMove, delivered, deliveredToStorage }
 
+/// Single source of truth for order-type display text — every place in the
+/// app that shows an order's type (direction picker, list tiles, filters,
+/// templates, detail screens) reads this instead of hardcoding its own copy.
+extension OrderDirectionLabel on OrderDirection {
+  String get label => switch (this) {
+        OrderDirection.outbound => 'توريد',
+        OrderDirection.inboundRep => 'مشتريات مندوب داخلي',
+        OrderDirection.inboundExternal => 'مشتريات مندوب خارجي',
+      };
+}
+
 class Order extends Equatable {
   final String id;
   final String? referenceCode;
@@ -132,16 +143,7 @@ class Order extends Equatable {
     }
   }
 
-  String get directionLabel {
-    switch (direction) {
-      case OrderDirection.outbound:
-        return 'صادر';
-      case OrderDirection.inboundRep:
-        return 'وارد (مندوب)';
-      case OrderDirection.inboundExternal:
-        return 'وارد (خارجي)';
-    }
-  }
+  String get directionLabel => direction.label;
 
   static OrderStatus statusFromString(String value) => switch (value) {
         'picked_up' => OrderStatus.pickedUp,

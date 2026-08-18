@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../../../shared/models/entity.dart';
 import '../../data/models/imported_entity_model.dart';
 
 class ImportedEntityRow extends StatelessWidget {
@@ -90,10 +91,11 @@ class ImportedEntityRow extends StatelessWidget {
   }
 
   static Color _categoryColor(String? arabic) {
-    switch (arabic) {
-      case 'وارد':
+    final category = arabic == null ? null : EntityCategoryX.tryParseLabel(arabic);
+    switch (category) {
+      case EntityCategory.incoming:
         return Colors.blue;
-      case 'صادر':
+      case EntityCategory.outgoing:
         return Colors.green;
       default:
         return Colors.grey;

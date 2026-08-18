@@ -311,11 +311,9 @@ class _EditableItemTile extends StatelessWidget {
     }
 
     // Find stock info for inventory items
-    InventoryItem? invItem;
-    if (item.inventoryId != null) {
-      final matches = inventory.where((i) => i.id == item.inventoryId);
-      if (matches.isNotEmpty) invItem = matches.first;
-    }
+    final invItem = item.inventoryId != null
+        ? inventory.where((i) => i.id == item.inventoryId).firstOrNull
+        : null;
 
     return Padding(
       padding: EdgeInsets.symmetric(vertical: AppSpacing.verticalXSmall),

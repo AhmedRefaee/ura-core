@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../shared/models/entity.dart';
 import '../logic/import_entities_cubit.dart';
 import '../logic/import_entities_state.dart';
 import 'import_entities_preview_screen.dart';
@@ -134,7 +135,10 @@ class _InfoBanner extends StatelessWidget {
           const SizedBox(height: 8),
           _step('1', 'صدِّر الجهات الحالية — ستحصل على ملف Excel بكل البيانات'),
           _step('2', 'عدِّل أي صف أو أضف صفوفاً جديدة — لا تعدِّل عمود الرقم التعريفي'),
-          _step('3', 'التصنيف يجب أن يكون: وارد أو صادر أو غير محدد'),
+          _step(
+            '3',
+            'التصنيف يجب أن يكون: ${EntityCategory.values.map((c) => c.label).join(' أو ')}',
+          ),
           _step('4', 'استورد الملف المعدَّل وراجع التغييرات قبل الحفظ'),
           const SizedBox(height: 6),
           Row(

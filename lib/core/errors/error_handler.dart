@@ -14,6 +14,12 @@ class ErrorHandler {
         type: AppErrorType.server,
       );
     }
+    if (error is FunctionException) {
+      return const AppError(
+        message: 'تعذر معالجة الطلب، يرجى المحاولة مجدداً',
+        type: AppErrorType.server,
+      );
+    }
     if (error is SocketException || error is http.ClientException) {
       return const AppError(
         message: 'تحقق من اتصالك بالإنترنت',

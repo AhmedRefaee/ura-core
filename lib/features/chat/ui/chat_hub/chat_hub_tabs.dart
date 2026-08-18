@@ -164,7 +164,7 @@ class _RecentChatsTabState extends State<_RecentChatsTab> {
                 switchOutCurve: Curves.easeIn,
                 transitionBuilder: (child, animation) => SizeTransition(
                   sizeFactor: animation,
-                  axisAlignment: -1,
+                  alignment: const AlignmentDirectional(-1.0, -1.0),
                   child: FadeTransition(opacity: animation, child: child),
                 ),
                 child: _filtersVisible

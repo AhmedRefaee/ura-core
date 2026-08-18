@@ -85,13 +85,16 @@ class CreateOrderReady extends CreateOrderState {
 
   @override
   List<Object?> get props => [
+    entities,
+    reps,
+    repLatestStatuses,
+    inventory,
     direction,
     selectedEntity,
     selectedRep,
     items,
     notes,
     templateSaveSucceeded,
-    repLatestStatuses,
   ];
 }
 

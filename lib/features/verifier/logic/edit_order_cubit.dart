@@ -141,6 +141,7 @@ class EditOrderReady extends EditOrderState {
   @override
   List<Object?> get props => [
     originalOrder,
+    inventory,
     pendingActions,
     reason,
     stockError,
@@ -206,7 +207,8 @@ class EditOrderCubit extends Cubit<EditOrderState>
   void updateItemQuantity(String itemId, double newQuantity) {
     final s = state;
     if (s is! EditOrderReady) return;
-    final item = s.originalOrder.items.firstWhere((i) => i.id == itemId);
+    final item = s.originalOrder.items.where((i) => i.id == itemId).firstOrNull;
+    if (item == null) return;
     final updated = List<EditAction>.from(s.pendingActions)
       ..removeWhere((a) => a is UpdateQuantityAction && a.itemId == itemId);
     if (newQuantity != item.quantity) {
@@ -225,7 +227,8 @@ class EditOrderCubit extends Cubit<EditOrderState>
   void removeItem(String itemId) {
     final s = state;
     if (s is! EditOrderReady) return;
-    final item = s.originalOrder.items.firstWhere((i) => i.id == itemId);
+    final item = s.originalOrder.items.where((i) => i.id == itemId).firstOrNull;
+    if (item == null) return;
     final updated = List<EditAction>.from(s.pendingActions)
       ..removeWhere((a) => a is UpdateQuantityAction && a.itemId == itemId);
     if (!updated.any((a) => a is RemoveItemAction && a.itemId == itemId)) {

@@ -6,9 +6,9 @@ extension EntityCategoryX on EntityCategory {
   String get label {
     switch (this) {
       case EntityCategory.incoming:
-        return 'وارد';
+        return 'مشتريات';
       case EntityCategory.outgoing:
-        return 'صادر';
+        return 'توريد';
       case EntityCategory.unassigned:
         return 'غير محدد';
     }
@@ -34,6 +34,17 @@ extension EntityCategoryX on EntityCategory {
       default:
         return EntityCategory.unassigned;
     }
+  }
+
+  /// Reverse of [label] — parses the display text (e.g. from an imported
+  /// Excel column a user typed/edited by hand) back into an [EntityCategory].
+  /// Single source of truth for that mapping, so import validation/parsing
+  /// never hardcodes its own copy of the label text.
+  static EntityCategory? tryParseLabel(String raw) {
+    for (final category in EntityCategory.values) {
+      if (category.label == raw) return category;
+    }
+    return null;
   }
 }
 

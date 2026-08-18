@@ -65,16 +65,7 @@ class OrderTemplate extends Equatable {
 
   bool get isVisible => isManual || usageCount >= 3;
 
-  String get directionLabel {
-    switch (direction) {
-      case OrderDirection.outbound:
-        return 'صادر';
-      case OrderDirection.inboundRep:
-        return 'وارد (مندوب)';
-      case OrderDirection.inboundExternal:
-        return 'وارد (خارجي)';
-    }
-  }
+  String get directionLabel => direction.label;
 
   String get itemsSummary {
     if (items.isEmpty) return 'لا أصناف';

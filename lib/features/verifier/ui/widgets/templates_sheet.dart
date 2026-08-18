@@ -19,6 +19,7 @@ void showTemplatesSheet({
     builder: (_) => BlocProvider(
       create: (_) => sl<OrderTemplatesCubit>()..load(entityId),
       child: _TemplatesSheetContent(
+        entityId: entityId,
         entityName: entityName,
         onApply: onApply,
       ),
@@ -27,25 +28,28 @@ void showTemplatesSheet({
 }
 
 class _TemplatesSheetContent extends StatelessWidget {
+  final String entityId;
   final String entityName;
   final void Function(OrderTemplate) onApply;
 
   const _TemplatesSheetContent({
+    required this.entityId,
     required this.entityName,
     required this.onApply,
   });
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return DraggableScrollableSheet(
       initialChildSize: 0.6,
       minChildSize: 0.4,
       maxChildSize: 0.92,
       expand: false,
       builder: (ctx, scrollController) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        decoration: BoxDecoration(
+          color: theme.scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: Column(
           children: [
@@ -55,7 +59,7 @@ class _TemplatesSheetContent extends StatelessWidget {
               width: 40,
               height: 4,
               decoration: BoxDecoration(
-                color: Colors.grey[300],
+                color: theme.dividerColor,
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
@@ -99,7 +103,7 @@ class _TemplatesSheetContent extends StatelessWidget {
                           SizedBox(height: AppSpacing.verticalSmall),
                           TextButton(
                             onPressed: () =>
-                                ctx.read<OrderTemplatesCubit>().load(''),
+                                ctx.read<OrderTemplatesCubit>().load(entityId),
                             child: const Text('إعادة المحاولة'),
                           ),
                         ],

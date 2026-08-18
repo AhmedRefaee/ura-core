@@ -242,7 +242,7 @@ class _LoadedViewState extends State<_LoadedView> {
                 switchOutCurve: Curves.easeIn,
                 transitionBuilder: (child, animation) => SizeTransition(
                   sizeFactor: animation,
-                  axisAlignment: -1,
+                  alignment: const AlignmentDirectional(-1.0, -1.0),
                   child: FadeTransition(opacity: animation, child: child),
                 ),
                 child: _filtersVisible

@@ -1,10 +1,14 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../shared/models/inventory_item.dart';
 import '../../../../shared/models/order.dart';
 import '../../../../shared/utils/quantity_format.dart';
 import '../../../../core/design_system/theme/theme.dart';
+import '../../../../core/di/injection.dart';
+import '../../logic/voice_add_item_cubit.dart';
+import 'voice_add_item_view.dart';
 
 /// Shared widget for adding items to an order.
 /// Used by both CreateOrderScreen and EditOrderScreen.
@@ -43,13 +47,11 @@ class _AddItemSheetState extends State<AddItemSheet> {
   // For convert-to-custom flow
   String? _convertSourceInventoryId;
 
-  @override
-  void initState() {
-    super.initState();
-    for (final item in widget.inventory) {
-      _quantityControllers[item.id] = TextEditingController(text: '');
-    }
-  }
+  // Controllers are created lazily (see _controllerFor) rather than one per
+  // inventory item up front, so memory scales with items actually rendered
+  // rather than total inventory size.
+  TextEditingController _controllerFor(String itemId) =>
+      _quantityControllers.putIfAbsent(itemId, TextEditingController.new);
 
   @override
   void dispose() {
@@ -76,13 +78,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
       }).toList();
 
   void _submit() {
-    final inventoryItems = <({InventoryItem item, double quantity})>[];
-    for (final item in widget.inventory) {
-      final qty = double.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
-      if (qty > 0) inventoryItems.add((item: item, quantity: qty));
-    }
-    if (inventoryItems.isNotEmpty) widget.onAddInventoryItems(inventoryItems);
-
     if (_isCustom) {
       final name = _descController.text.trim();
       final qty = double.tryParse(_customQtyController.text) ?? 0;
@@ -98,9 +93,33 @@ class _AddItemSheetState extends State<AddItemSheet> {
         });
         widget.onAddCustomItem(payload, qty, sourceInventoryId: _convertSourceInventoryId);
       }
+    } else {
+      final inventoryItems = <({InventoryItem item, double quantity})>[];
+      for (final item in widget.inventory) {
+        final qty = double.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
+        if (qty > 0) inventoryItems.add((item: item, quantity: qty));
+      }
+      if (inventoryItems.isNotEmpty) widget.onAddInventoryItems(inventoryItems);
     }
 
     Navigator.pop(context);
+  }
+
+  Future<void> _openVoiceAddItem() async {
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<VoiceAddItemCubit>(),
+          child: VoiceAddItemView(
+            inventory: widget.inventory,
+            onAddInventoryItems: widget.onAddInventoryItems,
+            onAddCustomItem: widget.onAddCustomItem,
+          ),
+        ),
+      ),
+    );
+    if (added == true && mounted) Navigator.pop(context);
   }
 
   void _convertToCustom(InventoryItem item) {
@@ -229,6 +248,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
         title: const Text('إضافة أصناف'),
@@ -236,6 +256,13 @@ class _AddItemSheetState extends State<AddItemSheet> {
           icon: const Icon(Icons.close),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.mic),
+            tooltip: 'إضافة عن طريق الصوت',
+            onPressed: _openVoiceAddItem,
+          ),
+        ],
       ),
       body: Padding(
         padding: AppSpacing.allLarge,
@@ -251,7 +278,15 @@ class _AddItemSheetState extends State<AddItemSheet> {
                   value: _isCustom,
                   onChanged: (v) => setState(() {
                     _isCustom = v;
-                    if (!v) _convertSourceInventoryId = null;
+                    if (!v) {
+                      _convertSourceInventoryId = null;
+                    } else {
+                      // Clear stale inventory quantities so switching back to
+                      // inventory mode later starts from a clean slate.
+                      for (final controller in _quantityControllers.values) {
+                        controller.clear();
+                      }
+                    }
                   }),
                 ),
                 const Text('مخصص'),
@@ -469,7 +504,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                             textAlign: TextAlign.center),
                                         SizedBox(height: AppSpacing.verticalXSmall),
                                         TextField(
-                                          controller: _quantityControllers[item.id],
+                                          controller: _controllerFor(item.id),
                                           keyboardType: const TextInputType.numberWithOptions(decimal: true),
                                           inputFormatters: [quantityInputFormatter],
                                           textAlign: TextAlign.center,
@@ -531,12 +566,12 @@ class _AddItemSheetState extends State<AddItemSheet> {
                           ),
                         ),
                         if (i < _filtered.length - 1)
-                          const Padding(
+                          Padding(
                             padding: EdgeInsets.only(right: AppSpacing.horizontalXXXLarge, left: AppSpacing.horizontalXXXLarge, top: AppSpacing.verticalMedium),
                             child: Divider(
                               height: 1,
                               thickness: 1,
-                              color: Color.fromARGB(255, 25, 88, 62),
+                              color: theme.dividerColor,
                             ),
                           ),
                       ],

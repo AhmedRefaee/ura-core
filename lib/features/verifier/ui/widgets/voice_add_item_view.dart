@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
@@ -117,20 +116,11 @@ class _VoiceAddItemViewState extends State<VoiceAddItemView> {
   }
 
   void _confirm(AiAddItemReviewing state) {
-    if (state.matches.isNotEmpty) {
-      widget.onAddInventoryItems(
-        state.matches.map((m) => (item: m.item, quantity: m.quantity)).toList(),
-      );
-    }
-    for (final u in state.unmatched.where((u) => u.includeAsCustom)) {
-      final payload = jsonEncode({
-        'name': u.name,
-        'qty': u.quantity,
-        'unit': u.unit,
-        'minQty': 0,
-      });
-      widget.onAddCustomItem(payload, u.quantity);
-    }
+    applyAiReview(
+      state,
+      onAddInventoryItems: widget.onAddInventoryItems,
+      onAddCustomItem: widget.onAddCustomItem,
+    );
     Navigator.pop(context, true);
   }
 

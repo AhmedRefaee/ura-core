@@ -8,6 +8,7 @@ import '../../../../shared/utils/quantity_format.dart';
 import '../../../../core/design_system/theme/theme.dart';
 import '../../../../core/di/injection.dart';
 import '../../logic/ai_add_item_cubit.dart';
+import 'paste_add_item_view.dart';
 import 'voice_add_item_view.dart';
 
 /// Shared widget for adding items to an order.
@@ -112,6 +113,23 @@ class _AddItemSheetState extends State<AddItemSheet> {
         builder: (_) => BlocProvider(
           create: (_) => sl<AiAddItemCubit>(),
           child: VoiceAddItemView(
+            inventory: widget.inventory,
+            onAddInventoryItems: widget.onAddInventoryItems,
+            onAddCustomItem: widget.onAddCustomItem,
+          ),
+        ),
+      ),
+    );
+    if (added == true && mounted) Navigator.pop(context);
+  }
+
+  Future<void> _openPasteAddItem() async {
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<AiAddItemCubit>(),
+          child: PasteAddItemView(
             inventory: widget.inventory,
             onAddInventoryItems: widget.onAddInventoryItems,
             onAddCustomItem: widget.onAddCustomItem,
@@ -257,6 +275,11 @@ class _AddItemSheetState extends State<AddItemSheet> {
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.content_paste),
+            tooltip: 'إضافة من رسالة',
+            onPressed: _openPasteAddItem,
+          ),
           IconButton(
             icon: const Icon(Icons.mic),
             tooltip: 'إضافة عن طريق الصوت',

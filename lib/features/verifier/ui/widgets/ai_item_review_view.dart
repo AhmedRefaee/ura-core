@@ -1,8 +1,34 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/design_system/theme/theme.dart';
 import '../../../../shared/models/inventory_item.dart';
 import '../../logic/ai_add_item_cubit.dart';
+
+/// Hands a finished review to the same two callbacks AddItemSheet's manual
+/// submit uses, so an AI-added item is indistinguishable from a hand-added
+/// one downstream. Only phrases the user explicitly checked become custom
+/// items, and they carry the same JSON payload manual entry produces.
+void applyAiReview(
+  AiAddItemReviewing state, {
+  required void Function(List<({InventoryItem item, double quantity})> items) onAddInventoryItems,
+  required void Function(String description, double quantity, {String? sourceInventoryId}) onAddCustomItem,
+}) {
+  if (state.matches.isNotEmpty) {
+    onAddInventoryItems(
+      state.matches.map((m) => (item: m.item, quantity: m.quantity)).toList(),
+    );
+  }
+  for (final u in state.unmatched.where((u) => u.includeAsCustom)) {
+    final payload = jsonEncode({
+      'name': u.name,
+      'qty': u.quantity,
+      'unit': u.unit,
+      'minQty': 0,
+    });
+    onAddCustomItem(payload, u.quantity);
+  }
+}
 
 /// The wording around the shared review list that depends on how the request
 /// arrived. The list itself is identical either way — only the way it refers

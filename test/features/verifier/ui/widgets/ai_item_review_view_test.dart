@@ -1,6 +1,8 @@
 // The review list is shared by the voice screen and the paste screen, so
 // these tests pin the parts that must look identical for both inputs, plus
 // the wording that must not.
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -81,6 +83,48 @@ void main() {
 
     await tester.pumpWidget(wrap(state, copy: AiReviewCopy.text));
     expect(find.text('فهمت: ثلاث كراتين مياه'), findsOneWidget);
+  });
+
+  group('applyAiReview', () {
+    test('sends matched rows to the inventory callback and skips unchecked phrases', () {
+      List<({InventoryItem item, double quantity})>? inventoryItems;
+      var customCalls = 0;
+
+      applyAiReview(
+        const AiAddItemReviewing(
+          matches: [ReviewMatch(item: water, quantity: 3, confidence: 0.9)],
+          unmatched: [ReviewUnmatched(name: 'صابون فاخر', quantity: 2, unit: 'علبة')],
+        ),
+        onAddInventoryItems: (items) => inventoryItems = items,
+        onAddCustomItem: (_, _, {sourceInventoryId}) => customCalls++,
+      );
+
+      expect(inventoryItems!.single.item, water);
+      expect(inventoryItems!.single.quantity, 3);
+      expect(customCalls, 0, reason: 'an unchecked phrase must not become a custom item');
+    });
+
+    test('encodes a checked phrase as the same JSON payload manual entry uses', () {
+      String? payload;
+      double? quantity;
+
+      applyAiReview(
+        const AiAddItemReviewing(
+          matches: [],
+          unmatched: [
+            ReviewUnmatched(name: 'صابون فاخر', quantity: 2, unit: 'علبة', includeAsCustom: true),
+          ],
+        ),
+        onAddInventoryItems: (_) {},
+        onAddCustomItem: (description, qty, {sourceInventoryId}) {
+          payload = description;
+          quantity = qty;
+        },
+      );
+
+      expect(quantity, 2);
+      expect(jsonDecode(payload!), {'name': 'صابون فاخر', 'qty': 2.0, 'unit': 'علبة', 'minQty': 0});
+    });
   });
 
   testWidgets('an empty result explains itself in terms of the input that produced it', (tester) async {

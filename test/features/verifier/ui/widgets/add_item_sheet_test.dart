@@ -13,7 +13,7 @@ void main() {
 
   Widget wrap(Widget child) => MaterialApp(home: child);
 
-  testWidgets('renders a mic button for voice add without touching DI', (tester) async {
+  testWidgets('renders both AI entry buttons without touching DI', (tester) async {
     await tester.pumpWidget(wrap(AddItemSheet(
       inventory: const [water],
       orderDirection: OrderDirection.outbound,
@@ -22,6 +22,7 @@ void main() {
     )));
 
     expect(find.byIcon(Icons.mic), findsOneWidget);
+    expect(find.byIcon(Icons.content_paste), findsOneWidget);
   });
 
   testWidgets('manual inventory flow still calls onAddInventoryItems with entered quantity', (tester) async {

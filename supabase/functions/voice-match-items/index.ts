@@ -5,6 +5,20 @@ const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
 // we send the recording itself, not a pre-transcribed string.
 const GEMINI_MODEL = 'gemini-3.6-flash';
 
+// The web build calls this from a browser, which preflights it because the
+// request carries an Authorization header and a JSON body. Without these
+// headers — and without answering OPTIONS below — the call never leaves the
+// browser and surfaces as an opaque "Failed to fetch". Origin is not the
+// access boundary here: every request still needs a valid JWT, and the
+// inventory query runs under it so RLS decides what the caller can see.
+const CORS_HEADERS = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-supabase-api-version',
+  'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  'Access-Control-Max-Age': '86400',
+};
+
 // Generous enough for a long forwarded WhatsApp thread, small enough that a
 // pasted novel can't run up a Gemini bill. This function still has no rate
 // limiting, so the cap is the only guard on the text surface.
@@ -32,6 +46,11 @@ interface MatchResponse {
 }
 
 Deno.serve(async (req) => {
+  // Answer the browser's preflight before anything else — it arrives as
+  // OPTIONS, which the method check below would otherwise reject as 405.
+  if (req.method === 'OPTIONS') {
+    return new Response(null, { status: 204, headers: CORS_HEADERS });
+  }
   if (req.method !== 'POST') {
     return jsonResponse({ error: 'Method not allowed' }, 405);
   }
@@ -306,6 +325,8 @@ async function matchWithGemini(
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
-    headers: { 'Content-Type': 'application/json' },
+    // Errors need the CORS headers as much as successes do; without them a
+    // browser reports a failed fetch instead of the real message.
+    headers: { ...CORS_HEADERS, 'Content-Type': 'application/json' },
   });
 }

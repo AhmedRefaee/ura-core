@@ -145,13 +145,13 @@ void main() {
     List<Map<String, Object?>> matches = const [],
     List<Map<String, Object?>> unmatched = const [],
     List<Map<String, Object?>> ambiguous = const [],
-    String? heard,
+    String? summary,
   }) =>
       jsonEncode({
         'matches': matches,
         'unmatched': unmatched,
         'ambiguous': ambiguous,
-        'heard_summary': ?heard,
+        'understood_summary': ?summary,
       });
 
   Future<ItemMatchResult> matchText(ScriptedModel model, {String text = 'محتاج مياه'}) async {
@@ -167,7 +167,7 @@ void main() {
           matches: [
             {'item_ref': 1, 'quantity': 3, 'confidence': 0.9},
           ],
-          heard: 'ثلاث كراتين مياه',
+          summary: 'ثلاث كراتين مياه',
         ),
       ]);
 
@@ -176,7 +176,7 @@ void main() {
       expect(result.matches.single.itemId, 'id-water-330');
       expect(result.matches.single.quantity, 3);
       expect(result.matches.single.confidence, 0.9);
-      expect(result.heardSummary, 'ثلاث كراتين مياه');
+      expect(result.understoodSummary, 'ثلاث كراتين مياه');
     });
 
     test('an invented ref cannot reach the order', () async {
@@ -490,14 +490,14 @@ void main() {
       final model = ScriptedModel([
         answer(matches: [
           {'item_ref': 2, 'quantity': 7, 'confidence': 0.5},
-        ], heard: 'سبع كراتين'),
+        ], summary: 'سبع كراتين'),
       ]);
 
       final result = await matchText(model);
 
       expect(result.matches.single.itemId, 'id-water-500');
       expect(result.matches.single.quantity, 7);
-      expect(result.heardSummary, 'سبع كراتين');
+      expect(result.understoodSummary, 'سبع كراتين');
     });
   });
 }

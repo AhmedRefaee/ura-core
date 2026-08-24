@@ -52,7 +52,7 @@ void main() {
               unmatched: const [
                 UnmatchedItem(text: 'صابون فاخر', quantity: 2, unit: 'علبة'),
               ],
-              heardSummary: 'فهمت طلب ٣ كراتين مياه وعلبتين صابون فاخر',
+              understoodSummary: 'فهمت طلب ٣ كراتين مياه وعلبتين صابون فاخر',
             ),
           ),
         );
@@ -66,7 +66,7 @@ void main() {
             .having((s) => s.matches.first.item, 'matched item', water)
             .having((s) => s.matches.first.quantity, 'quantity', 3)
             .having((s) => s.unmatched, 'unmatched', hasLength(1))
-            .having((s) => s.heardSummary, 'heardSummary', isNotNull),
+            .having((s) => s.understoodSummary, 'understoodSummary', isNotNull),
       ],
       verify: (_) =>
           verify(() => repository.matchText('السلام عليكم، محتاج ٣ كراتين مياه نوفا', any())).called(1),

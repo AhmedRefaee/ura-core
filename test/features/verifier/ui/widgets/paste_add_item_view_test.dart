@@ -32,7 +32,7 @@ void main() {
         ItemMatchResult(
           matches: [MatchedItem(itemId: 'item-water', quantity: 3, confidence: 0.95)],
           unmatched: [],
-          heardSummary: 'ثلاث كراتين مياه نوفا',
+          understoodSummary: 'ثلاث كراتين مياه نوفا',
         ),
       ),
     );

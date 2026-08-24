@@ -105,7 +105,7 @@ class AiItemReviewView extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (state.heardSummary != null && state.heardSummary!.trim().isNotEmpty)
+        if (state.understoodSummary != null && state.understoodSummary!.trim().isNotEmpty)
           Container(
             margin: EdgeInsets.only(bottom: AppSpacing.verticalMedium),
             padding: AppSpacing.allMedium,
@@ -119,7 +119,7 @@ class AiItemReviewView extends StatelessWidget {
                 Icon(copy.summaryIcon, size: 18, color: theme.colorScheme.primary),
                 SizedBox(width: AppSpacing.horizontalSmall),
                 Expanded(
-                  child: Text('${copy.summaryPrefix}: ${state.heardSummary}',
+                  child: Text('${copy.summaryPrefix}: ${state.understoodSummary}',
                       style: theme.textTheme.bodySmall),
                 ),
               ],

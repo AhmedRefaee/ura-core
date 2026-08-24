@@ -74,7 +74,7 @@ interface MatchResponse {
   matches: { item_ref: number; quantity: number; confidence: number }[];
   unmatched: { text: string; quantity?: number; unit?: string }[];
   ambiguous: { text: string; quantity?: number; unit?: string; candidate_item_refs: number[] }[];
-  heard_summary?: string;
+  understood_summary?: string;
 }
 
 /// What the client gets back — real inventory ids, unchanged from before the
@@ -234,7 +234,7 @@ Deno.serve(async (req) => {
       matches,
       unmatched,
       ambiguous,
-      heard_summary: result.heard_summary,
+      understood_summary: result.understood_summary,
       debug_timing_ms: debugTimingMs,
     });
   } catch (err) {
@@ -291,7 +291,7 @@ const SHARED_RULES =
   'the words alone do not narrow it down to one specific row. Only ' +
   'use "ambiguous" when multiple rows genuinely match what was requested; a ' +
   'single clear match still goes in "matches". ' +
-  'Also return a short natural-language "heard_summary" (in ' +
+  'Also return a short natural-language "understood_summary" (in ' +
   'Arabic) recapping everything you understood from the request, so the person ' +
   'reviewing it can sanity-check it.';
 
@@ -394,7 +394,7 @@ async function matchWithGemini(
               required: ['text', 'candidate_item_refs'],
             },
           },
-          heard_summary: { type: 'STRING' },
+          understood_summary: { type: 'STRING' },
         },
         required: ['matches', 'unmatched', 'ambiguous'],
       },
@@ -412,7 +412,7 @@ async function matchWithGemini(
       matches: Array.isArray(parsed.matches) ? parsed.matches : [],
       unmatched: Array.isArray(parsed.unmatched) ? parsed.unmatched : [],
       ambiguous: Array.isArray(parsed.ambiguous) ? parsed.ambiguous : [],
-      heard_summary: typeof parsed.heard_summary === 'string' ? parsed.heard_summary : undefined,
+      understood_summary: typeof parsed.understood_summary === 'string' ? parsed.understood_summary : undefined,
     },
     usage: (data.usageMetadata ?? {}) as UsageMetadata,
     model,

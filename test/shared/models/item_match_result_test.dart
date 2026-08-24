@@ -99,18 +99,27 @@ void main() {
       expect(result.ambiguous, isEmpty);
     });
 
-    test('parses heard_summary when present', () {
+    test('parses understood_summary when present', () {
+      final result = ItemMatchResult.fromMap({
+        'matches': [],
+        'unmatched': [],
+        'understood_summary': 'سمعت طلب ٣ كراتين مياه',
+      });
+      expect(result.understoodSummary, 'سمعت طلب ٣ كراتين مياه');
+    });
+
+    test('the old heard_summary key still parses, for an un-redeployed function', () {
       final result = ItemMatchResult.fromMap({
         'matches': [],
         'unmatched': [],
         'heard_summary': 'سمعت طلب ٣ كراتين مياه',
       });
-      expect(result.heardSummary, 'سمعت طلب ٣ كراتين مياه');
+      expect(result.understoodSummary, 'سمعت طلب ٣ كراتين مياه');
     });
 
-    test('heard_summary is null when missing', () {
+    test('understood_summary is null when missing', () {
       final result = ItemMatchResult.fromMap({});
-      expect(result.heardSummary, isNull);
+      expect(result.understoodSummary, isNull);
     });
   });
 }

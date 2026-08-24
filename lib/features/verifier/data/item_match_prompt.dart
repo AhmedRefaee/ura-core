@@ -47,7 +47,7 @@ class ItemMatchPrompt {
       'the words alone do not narrow it down to one specific row. Only '
       'use "ambiguous" when multiple rows genuinely match what was requested; a '
       'single clear match still goes in "matches". '
-      'Also return a short natural-language "heard_summary" (in '
+      'Also return a short natural-language "understood_summary" (in '
       'Arabic) recapping everything you understood from the request, so the person '
       'reviewing it can sanity-check it. Keep it to one sentence of at most 20 '
       'words — it is generated after everything else, so every extra word is '
@@ -89,8 +89,8 @@ class ItemMatchPrompt {
           optionalProperties: ['quantity', 'unit'],
         ),
       ),
-      'heard_summary': Schema.string(),
+      'understood_summary': Schema.string(),
     },
-    optionalProperties: ['heard_summary'],
+    optionalProperties: ['understood_summary'],
   );
 }

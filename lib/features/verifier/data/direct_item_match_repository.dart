@@ -339,7 +339,7 @@ class DirectItemMatchRepository implements ItemMatchRepository {
       matches: matches,
       unmatched: unmatched,
       ambiguous: ambiguous,
-      heardSummary: decoded['heard_summary'] as String?,
+      understoodSummary: decoded['understood_summary'] as String?,
     );
   }
 }

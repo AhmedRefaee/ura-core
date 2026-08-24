@@ -91,13 +91,13 @@ class ItemMatchResult extends Equatable {
   final List<AmbiguousItem> ambiguous;
   // Short natural-language recap of what the model understood from the
   // request, shown in the review screen so the result isn't a black box.
-  final String? heardSummary;
+  final String? understoodSummary;
 
   const ItemMatchResult({
     required this.matches,
     required this.unmatched,
     this.ambiguous = const [],
-    this.heardSummary,
+    this.understoodSummary,
   });
 
   factory ItemMatchResult.fromMap(Map<String, dynamic> map) {
@@ -111,10 +111,14 @@ class ItemMatchResult extends Equatable {
       ambiguous: (map['ambiguous'] as List? ?? [])
           .map((e) => AmbiguousItem.fromMap(e as Map<String, dynamic>))
           .toList(),
-      heardSummary: map['heard_summary'] as String?,
+      // The deployed `voice-match-items` function still answers with the old
+      // `heard_summary` key until it is redeployed, and this is the only parser
+      // that path uses — so accept both rather than silently losing the recap.
+      understoodSummary:
+          (map['understood_summary'] ?? map['heard_summary']) as String?,
     );
   }
 
   @override
-  List<Object?> get props => [matches, unmatched, ambiguous, heardSummary];
+  List<Object?> get props => [matches, unmatched, ambiguous, understoodSummary];
 }

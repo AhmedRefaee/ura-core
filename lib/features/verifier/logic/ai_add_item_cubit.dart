@@ -100,13 +100,13 @@ class AiAddItemReviewing extends AiAddItemState {
   final List<ReviewMatch> matches;
   final List<ReviewUnmatched> unmatched;
   final List<ReviewAmbiguous> ambiguous;
-  final String? heardSummary;
+  final String? understoodSummary;
 
   const AiAddItemReviewing({
     required this.matches,
     required this.unmatched,
     this.ambiguous = const [],
-    this.heardSummary,
+    this.understoodSummary,
   });
 
   /// False while any ambiguous item is unresolved, even if other items are
@@ -124,11 +124,11 @@ class AiAddItemReviewing extends AiAddItemState {
         matches: matches ?? this.matches,
         unmatched: unmatched ?? this.unmatched,
         ambiguous: ambiguous ?? this.ambiguous,
-        heardSummary: heardSummary,
+        understoodSummary: understoodSummary,
       );
 
   @override
-  List<Object?> get props => [matches, unmatched, ambiguous, heardSummary];
+  List<Object?> get props => [matches, unmatched, ambiguous, understoodSummary];
 }
 
 class AiAddItemError extends AiAddItemState {
@@ -210,7 +210,7 @@ class AiAddItemCubit extends Cubit<AiAddItemState> with SafeEmit<AiAddItemState>
       matches: matches,
       unmatched: unmatched,
       ambiguous: ambiguous,
-      heardSummary: result.heardSummary,
+      understoodSummary: result.understoodSummary,
     );
   }
 

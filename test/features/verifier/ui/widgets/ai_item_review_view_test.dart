@@ -74,7 +74,7 @@ void main() {
     const state = AiAddItemReviewing(
       matches: [ReviewMatch(item: water, quantity: 3, confidence: 0.9)],
       unmatched: [],
-      heardSummary: 'ثلاث كراتين مياه',
+      understoodSummary: 'ثلاث كراتين مياه',
     );
 
     await tester.pumpWidget(wrap(state));

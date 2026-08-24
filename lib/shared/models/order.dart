@@ -18,6 +18,17 @@ extension OrderDirectionLabel on OrderDirection {
       };
 }
 
+/// Which entity category a picker should default to for a given direction:
+/// an outbound order heads to a توريد entity, an inbound one comes from a
+/// مشتريات entity. Kept next to the labels so every picker defaults the same.
+extension OrderDirectionEntityCategory on OrderDirection {
+  EntityCategory get defaultEntityCategory => switch (this) {
+        OrderDirection.outbound => EntityCategory.outgoing,
+        OrderDirection.inboundRep => EntityCategory.incoming,
+        OrderDirection.inboundExternal => EntityCategory.incoming,
+      };
+}
+
 class Order extends Equatable {
   final String id;
   final String? referenceCode;

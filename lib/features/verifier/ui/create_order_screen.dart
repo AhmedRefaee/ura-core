@@ -120,6 +120,7 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       EntityPicker(
                         entities: ready.entities,
                         selected: ready.selectedEntity,
+                        initialCategory: ready.direction.defaultEntityCategory,
                         onChanged: (e) =>
                             context.read<CreateOrderCubit>().selectEntity(e),
                       ),

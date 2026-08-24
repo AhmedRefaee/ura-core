@@ -51,7 +51,12 @@ class _VoiceAddItemViewState extends State<VoiceAddItemView> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startRecording());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Runs in parallel with the recording: by the time they stop talking the
+      // function is already awake.
+      context.read<AiAddItemCubit>().warmUp();
+      _startRecording();
+    });
   }
 
   @override
@@ -77,7 +82,18 @@ class _VoiceAddItemViewState extends State<VoiceAddItemView> {
       final dir = await getTemporaryDirectory();
       final path = '${dir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       await _recorder.start(
-        const RecordConfig(encoder: AudioEncoder.aacLc, bitRate: 48000, sampleRate: 44100),
+        // Speech, not music. The package defaults to stereo at 44.1 kHz, which
+        // spends the upload on a duplicated channel and on frequencies no voice
+        // occupies; mono at 16 kHz is what keeps a low bitrate intelligible
+        // (telephony manages on 8 kHz). Halves what has to leave the phone,
+        // which on warehouse wifi is the part of the wait we control. Gemini
+        // bills audio by duration, so this buys transfer time, not model time.
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc,
+          bitRate: 24000,
+          sampleRate: 16000,
+          numChannels: 1,
+        ),
         path: path,
       );
     } catch (_) {

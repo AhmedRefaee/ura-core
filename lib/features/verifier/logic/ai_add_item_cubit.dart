@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
@@ -152,6 +153,11 @@ class AiAddItemCubit extends Cubit<AiAddItemState> with SafeEmit<AiAddItemState>
 
   AiAddItemCubit(this._repository) : super(AiAddItemIdle());
 
+  /// Called as the entry screens open, well before there's anything to match.
+  /// Deliberately not awaited and deliberately without a state change: it is a
+  /// head start, not a step the user waits on.
+  void warmUp() => unawaited(_repository.warmUp());
+
   void startRecording() => safeEmit(const AiAddItemRecording());
 
   void updateElapsed(int seconds) => safeEmit(AiAddItemRecording(elapsedSeconds: seconds));
@@ -168,7 +174,7 @@ class AiAddItemCubit extends Cubit<AiAddItemState> with SafeEmit<AiAddItemState>
 
     safeEmit(AiAddItemMatching());
 
-    final result = await _repository.matchAudio(audioBytes, mimeType);
+    final result = await _repository.matchAudio(audioBytes, mimeType, inventory);
     switch (result) {
       case AppSuccess(data: final matchResult):
         safeEmit(_toReviewingState(matchResult, inventory));
@@ -190,7 +196,7 @@ class AiAddItemCubit extends Cubit<AiAddItemState> with SafeEmit<AiAddItemState>
 
     safeEmit(AiAddItemMatching());
 
-    final result = await _repository.matchText(trimmed);
+    final result = await _repository.matchText(trimmed, inventory);
     switch (result) {
       case AppSuccess(data: final matchResult):
         safeEmit(_toReviewingState(matchResult, inventory));

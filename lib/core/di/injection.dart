@@ -14,6 +14,7 @@ import '../../features/verifier/data/entity_repository.dart';
 import '../../features/verifier/data/inventory_repository.dart';
 import '../../features/verifier/data/order_repository.dart';
 import '../../features/verifier/data/order_template_repository.dart';
+import '../../features/verifier/data/direct_item_match_repository.dart';
 import '../../features/verifier/data/item_match_repository.dart';
 import '../../features/verifier/logic/create_order_cubit.dart';
 import '../../features/verifier/logic/order_templates_cubit.dart';
@@ -83,7 +84,13 @@ Future<void> setupDependencies() async {
   sl.registerLazySingleton<OrderTemplateRepository>(() => OrderTemplateRepository());
   sl.registerLazySingleton<RepOrdersRepository>(() => RepOrdersRepository());
   sl.registerLazySingleton<ChatRepository>(() => ChatRepository());
-  sl.registerLazySingleton<ItemMatchRepository>(() => ItemMatchRepository());
+  // Calls Gemini straight from the device. Swap this one line for
+  // EdgeItemMatchRepository() to route back through the Supabase function,
+  // which is still deployed — worth knowing if Firebase AI Logic isn't
+  // provisioned yet, since that fails at call time, not at startup.
+  sl.registerLazySingleton<ItemMatchRepository>(
+    () => DirectItemMatchRepository(),
+  );
 
   // Chat cubits (singleton badge cubit; factory threads + directory cubits)
   sl.registerLazySingleton<OrderChatBadgeCubit>(

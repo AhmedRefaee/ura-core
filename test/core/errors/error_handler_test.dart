@@ -223,5 +223,38 @@ void main() {
         expect(error.message.isNotEmpty, true);
       });
     });
+
+    // ─── Edge function said "busy", not "broken" ─────────────────────────────
+    group('edge function failures', () {
+      test('retryable detail → tells the user to try again shortly', () {
+        final error = ErrorHandler.handle(
+          const FunctionException(
+            status: 503,
+            details: {'error': 'Gemini request failed: 503', 'retryable': true},
+          ),
+        );
+        expect(error.type, AppErrorType.server);
+        expect(error.message, 'الخدمة مزدحمة حالياً، يرجى المحاولة بعد لحظات');
+      });
+
+      test('a plain failure keeps the generic message', () {
+        final error = ErrorHandler.handle(
+          const FunctionException(
+            status: 500,
+            details: {'error': 'Gemini returned no content', 'retryable': false},
+          ),
+        );
+        expect(error.type, AppErrorType.server);
+        expect(error.message, 'تعذر معالجة الطلب، يرجى المحاولة مجدداً');
+      });
+
+      test('details without the flag keeps the generic message', () {
+        final error = ErrorHandler.handle(
+          const FunctionException(status: 500, details: 'boom'),
+        );
+        expect(error.type, AppErrorType.server);
+        expect(error.message, 'تعذر معالجة الطلب، يرجى المحاولة مجدداً');
+      });
+    });
   });
 }

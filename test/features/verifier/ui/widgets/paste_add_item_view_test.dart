@@ -21,10 +21,13 @@ void main() {
 
   setUp(() {
     repository = MockItemMatchRepository();
+    // The screen wakes the edge function as it opens; unstubbed, the mock
+    // answers null and the post-frame callback dies on it.
+    when(() => repository.warmUp()).thenAnswer((_) async {});
   });
 
   void stubOneMatch() {
-    when(() => repository.matchText(any())).thenAnswer(
+    when(() => repository.matchText(any(), any())).thenAnswer(
       (_) async => const AppSuccess(
         ItemMatchResult(
           matches: [MatchedItem(itemId: 'item-water', quantity: 3, confidence: 0.95)],
@@ -67,6 +70,17 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('opening the screen wakes the function before there is anything to send',
+      (tester) async {
+    await tester.pumpWidget(wrap());
+    await open(tester);
+
+    // The point is the ordering: the warm-up goes out while the person is
+    // still pasting and reading, so the real request doesn't pay a cold start.
+    verify(() => repository.warmUp()).called(1);
+    verifyNever(() => repository.matchText(any(), any()));
+  });
+
   testWidgets('the analyze button stays disabled until the message has content', (tester) async {
     await tester.pumpWidget(wrap());
     await open(tester);
@@ -94,7 +108,7 @@ void main() {
       find.ancestor(of: find.text('تحليل الرسالة'), matching: find.byType(ElevatedButton)),
     );
     expect(analyze.onPressed, isNull);
-    verifyNever(() => repository.matchText(any()));
+    verifyNever(() => repository.matchText(any(), any()));
   });
 
   testWidgets('analyzing a pasted message shows the matched items for review', (tester) async {
@@ -109,7 +123,7 @@ void main() {
 
     expect(find.text('مياه نوفا 330 مل'), findsOneWidget);
     expect(find.text('فهمت: ثلاث كراتين مياه نوفا'), findsOneWidget);
-    verify(() => repository.matchText('السلام عليكم، محتاج ٣ كراتين مياه نوفا')).called(1);
+    verify(() => repository.matchText('السلام عليكم، محتاج ٣ كراتين مياه نوفا', any())).called(1);
   });
 
   testWidgets('confirming hands the reviewed items to the caller and closes the screen', (tester) async {
@@ -134,7 +148,7 @@ void main() {
   });
 
   testWidgets('a failed analysis offers a way back to the message', (tester) async {
-    when(() => repository.matchText(any())).thenAnswer(
+    when(() => repository.matchText(any(), any())).thenAnswer(
       (_) async => const AppFailure(AppError(message: 'فشل الاتصال', type: AppErrorType.server)),
     );
 

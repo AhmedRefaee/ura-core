@@ -42,6 +42,11 @@ class _PasteAddItemViewState extends State<PasteAddItemView> {
   void initState() {
     super.initState();
     _controller.addListener(_onMessageChanged);
+    // Pasting and reading the message over takes a few seconds; spend them
+    // waking the function rather than waiting on it afterwards.
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) => context.read<AiAddItemCubit>().warmUp(),
+    );
   }
 
   @override

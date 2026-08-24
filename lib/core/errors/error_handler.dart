@@ -15,6 +15,17 @@ class ErrorHandler {
       );
     }
     if (error is FunctionException) {
+      // An edge function marks a failure `retryable` when it gave up against a
+      // busy upstream rather than on anything wrong with the request. Saying so
+      // matters: "try again" is real advice here, where the generic message
+      // below tells someone to repeat whatever just broke.
+      final details = error.details;
+      if (details is Map && details['retryable'] == true) {
+        return const AppError(
+          message: 'الخدمة مزدحمة حالياً، يرجى المحاولة بعد لحظات',
+          type: AppErrorType.server,
+        );
+      }
       return const AppError(
         message: 'تعذر معالجة الطلب، يرجى المحاولة مجدداً',
         type: AppErrorType.server,

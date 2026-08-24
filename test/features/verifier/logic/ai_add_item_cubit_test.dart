@@ -59,13 +59,13 @@ void main() {
             .having((s) => s.matches, 'matches', isEmpty)
             .having((s) => s.unmatched, 'unmatched', isEmpty),
       ],
-      verify: (_) => verifyNever(() => repository.matchAudio(any(), any())),
+      verify: (_) => verifyNever(() => repository.matchAudio(any(), any(), any())),
     );
 
     blocTest<AiAddItemCubit, AiAddItemState>(
       'finishRecording resolves matches against inventory, drops unknown ids, and carries heardSummary',
       build: () {
-        when(() => repository.matchAudio(any(), any())).thenAnswer(
+        when(() => repository.matchAudio(any(), any(), any())).thenAnswer(
           (_) async => AppSuccess(
             ItemMatchResult(
               matches: const [
@@ -95,7 +95,7 @@ void main() {
     blocTest<AiAddItemCubit, AiAddItemState>(
       'finishRecording emits Error on repository failure',
       build: () {
-        when(() => repository.matchAudio(any(), any())).thenAnswer(
+        when(() => repository.matchAudio(any(), any(), any())).thenAnswer(
           (_) async => const AppFailure(AppError(message: 'فشل', type: AppErrorType.server)),
         );
         return AiAddItemCubit(repository);
@@ -116,13 +116,13 @@ void main() {
             .having((s) => s.matches, 'matches', isEmpty)
             .having((s) => s.unmatched, 'unmatched', isEmpty),
       ],
-      verify: (_) => verifyNever(() => repository.matchText(any())),
+      verify: (_) => verifyNever(() => repository.matchText(any(), any())),
     );
 
     blocTest<AiAddItemCubit, AiAddItemState>(
       'submitText sends the trimmed message and resolves matches the same way audio does',
       build: () {
-        when(() => repository.matchText(any())).thenAnswer(
+        when(() => repository.matchText(any(), any())).thenAnswer(
           (_) async => AppSuccess(
             ItemMatchResult(
               matches: const [
@@ -149,13 +149,13 @@ void main() {
             .having((s) => s.heardSummary, 'heardSummary', isNotNull),
       ],
       verify: (_) =>
-          verify(() => repository.matchText('السلام عليكم، محتاج ٣ كراتين مياه نوفا')).called(1),
+          verify(() => repository.matchText('السلام عليكم، محتاج ٣ كراتين مياه نوفا', any())).called(1),
     );
 
     blocTest<AiAddItemCubit, AiAddItemState>(
       'submitText keeps ambiguous entries ambiguous, exactly as the audio path does',
       build: () {
-        when(() => repository.matchText(any())).thenAnswer(
+        when(() => repository.matchText(any(), any())).thenAnswer(
           (_) async => AppSuccess(
             ItemMatchResult(
               matches: const [],
@@ -186,7 +186,7 @@ void main() {
     blocTest<AiAddItemCubit, AiAddItemState>(
       'submitText emits Error on repository failure',
       build: () {
-        when(() => repository.matchText(any())).thenAnswer(
+        when(() => repository.matchText(any(), any())).thenAnswer(
           (_) async => const AppFailure(AppError(message: 'فشل', type: AppErrorType.server)),
         );
         return AiAddItemCubit(repository);
@@ -239,7 +239,7 @@ void main() {
     blocTest<AiAddItemCubit, AiAddItemState>(
       'finishRecording keeps ambiguous entries with 2+ valid candidates ambiguous',
       build: () {
-        when(() => repository.matchAudio(any(), any())).thenAnswer(
+        when(() => repository.matchAudio(any(), any(), any())).thenAnswer(
           (_) async => AppSuccess(
             ItemMatchResult(
               matches: const [],
@@ -270,7 +270,7 @@ void main() {
     blocTest<AiAddItemCubit, AiAddItemState>(
       'finishRecording auto-promotes an ambiguous entry to a match when only 1 candidate resolves',
       build: () {
-        when(() => repository.matchAudio(any(), any())).thenAnswer(
+        when(() => repository.matchAudio(any(), any(), any())).thenAnswer(
           (_) async => AppSuccess(
             ItemMatchResult(
               matches: const [],
@@ -302,7 +302,7 @@ void main() {
     blocTest<AiAddItemCubit, AiAddItemState>(
       'finishRecording demotes an ambiguous entry to unmatched when no candidates resolve',
       build: () {
-        when(() => repository.matchAudio(any(), any())).thenAnswer(
+        when(() => repository.matchAudio(any(), any(), any())).thenAnswer(
           (_) async => AppSuccess(
             ItemMatchResult(
               matches: const [],

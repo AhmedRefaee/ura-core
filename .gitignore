@@ -57,3 +57,8 @@ android/app/google-services.json
 
 # Generated platform registrants (recreated by `flutter pub get`)
 macos/Flutter/GeneratedPluginRegistrant.swift
+
+# Match-report fixtures: real inventory and real customer messages.
+# Business data with names and phone numbers in it — see tool/fixtures/README.md
+tool/fixtures/inventory.csv
+tool/fixtures/messages/

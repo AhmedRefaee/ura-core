@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:typed_data';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
 import '../../../core/errors/app_result.dart';
@@ -95,14 +94,6 @@ sealed class AiAddItemState extends Equatable {
 
 class AiAddItemIdle extends AiAddItemState {}
 
-class AiAddItemRecording extends AiAddItemState {
-  final int elapsedSeconds;
-  const AiAddItemRecording({this.elapsedSeconds = 0});
-
-  @override
-  List<Object?> get props => [elapsedSeconds];
-}
-
 class AiAddItemMatching extends AiAddItemState {}
 
 class AiAddItemReviewing extends AiAddItemState {
@@ -158,35 +149,8 @@ class AiAddItemCubit extends Cubit<AiAddItemState> with SafeEmit<AiAddItemState>
   /// head start, not a step the user waits on.
   void warmUp() => unawaited(_repository.warmUp());
 
-  void startRecording() => safeEmit(const AiAddItemRecording());
-
-  void updateElapsed(int seconds) => safeEmit(AiAddItemRecording(elapsedSeconds: seconds));
-
-  Future<void> finishRecording(
-    Uint8List audioBytes,
-    String mimeType,
-    List<InventoryItem> inventory,
-  ) async {
-    if (audioBytes.isEmpty) {
-      safeEmit(const AiAddItemReviewing(matches: [], unmatched: []));
-      return;
-    }
-
-    safeEmit(AiAddItemMatching());
-
-    final result = await _repository.matchAudio(audioBytes, mimeType, inventory);
-    switch (result) {
-      case AppSuccess(data: final matchResult):
-        safeEmit(_toReviewingState(matchResult, inventory));
-      case AppFailure(error: final error):
-        logger.w('AiAddItemCubit → matching failed: ${error.message}');
-        safeEmit(AiAddItemError(error.message));
-    }
-  }
-
   /// Matches a pasted written request — e.g. a WhatsApp message forwarded
-  /// from an outside entity — against the inventory. Produces exactly the
-  /// same review state the audio path does; only the input differs.
+  /// from an outside entity — against the inventory.
   Future<void> submitText(String text, List<InventoryItem> inventory) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) {

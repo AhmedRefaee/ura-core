@@ -1,8 +1,8 @@
 import { createClient } from 'jsr:@supabase/supabase-js@2';
 
 const GEMINI_API_KEY = Deno.env.get('GEMINI_API_KEY');
-// A multimodal model capable of native audio understanding — required since
-// we send the recording itself, not a pre-transcribed string.
+// Kept in step with the Dart path's model choice. This function is the unused
+// fallback; the app calls Gemini directly. See DirectItemMatchRepository.
 const GEMINI_MODEL = 'gemini-3.6-flash';
 // This is an extraction task, not a reasoning one: read a request, find the
 // names in a list, return quantities. gemini-3.6-flash thinks at "medium" by
@@ -20,10 +20,8 @@ const THINKING_LEVEL = 'low';
 const GEMINI_FALLBACK_MODEL = 'gemini-3.5-flash';
 const GEMINI_MAX_ATTEMPTS = 3;
 // Per attempt, so a hung endpoint gets abandoned and retried instead of waited
-// out. Audio is allowed longer: uploading and listening to a clip is real work,
-// where a text request that hasn't answered in 20s is not going to.
+// out. A text request that hasn't answered in 20s is not going to.
 const TEXT_ATTEMPT_TIMEOUT_MS = 20_000;
-const AUDIO_ATTEMPT_TIMEOUT_MS = 35_000;
 // Ceiling across all attempts and backoffs. Someone is standing there holding a
 // phone: past this it is kinder to say "busy, try again" than to keep spinning.
 const TOTAL_BUDGET_MS = 55_000;
@@ -61,12 +59,6 @@ const CORS_HEADERS = {
 // pasted novel can't run up a Gemini bill. This function still has no rate
 // limiting, so the cap is the only guard on the text surface.
 const MAX_TEXT_CHARS = 4000;
-
-/// The request being matched: either a recording to listen to, or a written
-/// message to read. Everything downstream of the Gemini call is identical.
-type MatchInput =
-  | { kind: 'audio'; audioBase64: string; mimeType: string }
-  | { kind: 'text'; text: string };
 
 interface InventoryRow {
   id: string;
@@ -129,28 +121,16 @@ Deno.serve(async (req) => {
   const t0 = Date.now();
   try {
     const payload = await req.json();
-    const audioBase64 = typeof payload.audio_base64 === 'string' ? payload.audio_base64.trim() : '';
     const text = typeof payload.text === 'string' ? payload.text.trim() : '';
-    const mimeType = payload.mime_type;
 
-    if (audioBase64 && text) {
-      return jsonResponse({ error: 'Provide either audio_base64 or text, not both' }, 400);
-    }
-    // No usable input at all is not an error — an empty recording already
-    // returned an empty result, and the paste screen relies on the same.
-    if (!audioBase64 && !text) {
+    // No usable input is not an error — the paste screen warms this function
+    // with an empty body precisely because it returns before doing any work.
+    if (!text) {
       return jsonResponse({ matches: [], unmatched: [] });
-    }
-    if (audioBase64 && (!mimeType || typeof mimeType !== 'string')) {
-      return jsonResponse({ error: 'Missing mime_type' }, 400);
     }
     if (text.length > MAX_TEXT_CHARS) {
       return jsonResponse({ error: `Text exceeds ${MAX_TEXT_CHARS} characters` }, 400);
     }
-
-    const input: MatchInput = text
-      ? { kind: 'text', text }
-      : { kind: 'audio', audioBase64, mimeType };
 
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
@@ -184,7 +164,7 @@ Deno.serve(async (req) => {
     const t1 = Date.now();
 
     const { result, usage, model, attempts } = await matchWithGemini(
-      input,
+      text,
       catalog.block,
       t0 + TOTAL_BUDGET_MS,
     );
@@ -271,19 +251,8 @@ Deno.serve(async (req) => {
   }
 });
 
-const AUDIO_OPENING =
-  'You listen to an audio recording of someone dictating an order request, ' +
-  'and match what they say to items in a fixed inventory list. The speech is ' +
-  'primarily Arabic (Modern Standard Arabic or a regional dialect such as ' +
-  'Gulf, Levantine, or Egyptian), and may include some English item or brand ' +
-  'names mixed in — do not assume the audio is in English. Listen to the ' +
-  'ENTIRE recording from start to finish and extract every distinct item and ' +
-  'quantity mentioned, not just the first one; the speaker may list many items ' +
-  'in one recording. ';
-
-// Written requests reach the verifier as forwarded chat messages, so the
-// model has to do something the audio path never needed: throw away the
-// conversation around the order before it starts matching.
+// Written requests reach the verifier as forwarded chat messages, so the model
+// has to throw away the conversation around the order before it starts matching.
 const TEXT_OPENING =
   'You read a written order request — typically a WhatsApp message from ' +
   'someone at an outside entity, pasted in by the person handling it — and ' +
@@ -360,13 +329,13 @@ function buildCatalog(inventory: InventoryRow[]): {
 }
 
 async function matchWithGemini(
-  input: MatchInput,
+  text: string,
   catalogBlock: string,
   deadline: number,
 ): Promise<{ result: MatchResponse; usage: UsageMetadata; model: string; attempts: number }> {
   if (!GEMINI_API_KEY) throw new Error('GEMINI_API_KEY not configured');
 
-  const systemInstruction = (input.kind === 'audio' ? AUDIO_OPENING : TEXT_OPENING) + SHARED_RULES;
+  const systemInstruction = TEXT_OPENING + SHARED_RULES;
 
   const body = {
     systemInstruction: { parts: [{ text: systemInstruction }] },
@@ -378,9 +347,7 @@ async function matchWithGemini(
           // it can serve as a cacheable prefix; the part that varies per
           // request follows it.
           { text: catalogBlock },
-          input.kind === 'text'
-            ? { text: 'Request message:\n' + input.text }
-            : { inlineData: { mimeType: input.mimeType, data: input.audioBase64 } },
+          { text: 'Request message:\n' + text },
         ],
       },
     ],
@@ -434,7 +401,7 @@ async function matchWithGemini(
     },
   };
 
-  const { data, model, attempts } = await callGemini(body, input.kind, deadline);
+  const { data, model, attempts } = await callGemini(body, deadline);
 
   const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
   if (!text) throw new Error('Gemini returned no content');
@@ -460,10 +427,9 @@ async function matchWithGemini(
 /// thing that's overloaded, asking it a third time is only a slower way to fail.
 async function callGemini(
   body: unknown,
-  kind: MatchInput['kind'],
   deadline: number,
 ): Promise<{ data: GeminiResponse; model: string; attempts: number }> {
-  const attemptTimeoutMs = kind === 'audio' ? AUDIO_ATTEMPT_TIMEOUT_MS : TEXT_ATTEMPT_TIMEOUT_MS;
+  const attemptTimeoutMs = TEXT_ATTEMPT_TIMEOUT_MS;
   let lastMessage = 'Gemini was never reached';
 
   for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt++) {

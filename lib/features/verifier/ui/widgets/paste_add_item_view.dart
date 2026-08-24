@@ -12,10 +12,8 @@ const _maxMessageChars = 4000;
 
 /// Paste-a-message item entry, pushed on top of AddItemSheet. Verifiers get
 /// order requests as WhatsApp messages from people at outside entities;
-/// pasting one here runs the same match against the org's inventory that the
-/// voice screen runs, and ends at the same review list. Text skips the audio
-/// recording and the audio-understanding pass, so it is the quicker of the
-/// two ways in. Confirming pops this view with `true` and calls the same
+/// pasting one here matches it against the org's inventory and ends at the
+/// review list. Confirming pops this view with `true` and calls the same
 /// callbacks AddItemSheet's manual submit uses, so the parent screen
 /// (create/edit order) needs no changes.
 class PasteAddItemView extends StatefulWidget {
@@ -105,10 +103,7 @@ class _PasteAddItemViewState extends State<PasteAddItemView> {
           child: BlocBuilder<AiAddItemCubit, AiAddItemState>(
             builder: (context, state) {
               return switch (state) {
-                // Recording never happens on this screen; it shares the cubit
-                // with the voice path, so the compose step covers both idle
-                // cases rather than pretending one is unreachable.
-                AiAddItemIdle() || AiAddItemRecording() => _buildCompose(context),
+                AiAddItemIdle() => _buildCompose(context),
                 AiAddItemMatching() =>
                   const _CenteredMessage(text: 'جاري تحليل الرسالة ومطابقتها مع المخزون...'),
                 AiAddItemReviewing() => AiItemReviewView(

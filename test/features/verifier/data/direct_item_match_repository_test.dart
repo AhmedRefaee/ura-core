@@ -4,7 +4,6 @@
 // neither should need a Firebase project to test.
 import 'dart:async';
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:firebase_ai/firebase_ai.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -32,9 +31,7 @@ class ScriptedModel implements ItemMatchModel {
   Stream<ItemMatchModelChunk> generate({
     required String systemInstruction,
     required String catalogBlock,
-    String? text,
-    Uint8List? audioBytes,
-    String? audioMimeType,
+    required String text,
   }) async* {
     calls++;
     catalogsSeen.add(catalogBlock);
@@ -68,9 +65,7 @@ class SilentModel implements ItemMatchModel {
   Stream<ItemMatchModelChunk> generate({
     required String systemInstruction,
     required String catalogBlock,
-    String? text,
-    Uint8List? audioBytes,
-    String? audioMimeType,
+    required String text,
   }) {
     calls++;
     final controller = StreamController<ItemMatchModelChunk>();
@@ -93,9 +88,7 @@ class DrippingModel implements ItemMatchModel {
   Stream<ItemMatchModelChunk> generate({
     required String systemInstruction,
     required String catalogBlock,
-    String? text,
-    Uint8List? audioBytes,
-    String? audioMimeType,
+    required String text,
   }) async* {
     calls++;
     final size = (body.length / chunks).ceil();
@@ -117,9 +110,7 @@ class EndlessModel implements ItemMatchModel {
   Stream<ItemMatchModelChunk> generate({
     required String systemInstruction,
     required String catalogBlock,
-    String? text,
-    Uint8List? audioBytes,
-    String? audioMimeType,
+    required String text,
   }) async* {
     calls++;
     while (true) {
@@ -319,15 +310,10 @@ void main() {
       expect(model.catalogsSeen.single, isNot(contains('id-water-330')));
     });
 
-    test('the text instruction for a paste, the audio one for a clip', () async {
-      final textModel = ScriptedModel([answer()]);
-      await matchText(textModel);
-      expect(textModel.instructionsSeen.single, contains('written order request'));
-
-      final audioModel = ScriptedModel([answer()]);
-      await DirectItemMatchRepository(model: audioModel)
-          .matchAudio(Uint8List.fromList([1, 2, 3]), 'audio/aac', inventory);
-      expect(audioModel.instructionsSeen.single, contains('audio recording'));
+    test('the written-request instruction', () async {
+      final model = ScriptedModel([answer()]);
+      await matchText(model);
+      expect(model.instructionsSeen.single, contains('written order request'));
     });
 
     test('an empty inventory is answered without calling the model at all', () async {

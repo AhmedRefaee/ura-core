@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:firebase_ai/firebase_ai.dart';
 
 import '../../../core/logging/app_logger.dart';
@@ -70,9 +68,7 @@ abstract class ItemMatchModel {
   Stream<ItemMatchModelChunk> generate({
     required String systemInstruction,
     required String catalogBlock,
-    String? text,
-    Uint8List? audioBytes,
-    String? audioMimeType,
+    required String text,
   });
 }
 
@@ -133,19 +129,14 @@ class FirebaseItemMatchModel implements ItemMatchModel {
   Stream<ItemMatchModelChunk> generate({
     required String systemInstruction,
     required String catalogBlock,
-    String? text,
-    Uint8List? audioBytes,
-    String? audioMimeType,
+    required String text,
   }) async* {
     final parts = <Part>[
       // The catalog goes first and stays byte-identical between calls while the
       // inventory doesn't change, so it can serve as a cacheable prefix; the
       // part that varies per request follows it.
       TextPart(catalogBlock),
-      if (text != null)
-        TextPart('Request message:\n$text')
-      else if (audioBytes != null && audioMimeType != null)
-        InlineDataPart(audioMimeType, audioBytes),
+      TextPart('Request message:\n$text'),
     ];
 
     final responses = _modelFactory(systemInstruction)

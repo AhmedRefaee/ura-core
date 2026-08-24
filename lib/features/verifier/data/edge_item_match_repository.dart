@@ -1,5 +1,3 @@
-import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -24,19 +22,6 @@ class EdgeItemMatchRepository implements ItemMatchRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
 
   @override
-  Future<AppResult<ItemMatchResult>> matchAudio(
-    Uint8List audioBytes,
-    String mimeType,
-    List<InventoryItem> inventory,
-  ) async {
-    logger.d('EdgeItemMatchRepository → matchAudio: ${audioBytes.length} bytes');
-    return _invokeMatch('matchAudio', {
-      'audio_base64': base64Encode(audioBytes),
-      'mime_type': mimeType,
-    });
-  }
-
-  @override
   Future<AppResult<ItemMatchResult>> matchText(
     String text,
     List<InventoryItem> inventory,
@@ -45,7 +30,7 @@ class EdgeItemMatchRepository implements ItemMatchRepository {
     return _invokeMatch('matchText', {'text': text});
   }
 
-  /// Wakes the edge function while the person is still recording or pasting, so
+  /// Wakes the edge function while the person is still pasting, so
   /// the real request doesn't also pay for a cold start. Empty input is answered
   /// before the function touches the database or Gemini, which makes it the
   /// cheapest possible way to knock on the door. Fire-and-forget: if it fails,

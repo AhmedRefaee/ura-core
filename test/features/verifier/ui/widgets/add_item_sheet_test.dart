@@ -1,7 +1,7 @@
-// Full DI/Supabase-backed navigation (tapping the mic button, which
-// resolves AiAddItemCubit via `sl`) is exercised manually on-device per
-// the verification steps in the voice-add-item plan — see test/widget_test.dart
-// for why this repo doesn't spin up Firebase/Supabase for widget tests.
+// Full DI/Supabase-backed navigation (tapping the paste button, which resolves
+// AiAddItemCubit via `sl`) is exercised manually on-device — see
+// test/widget_test.dart for why this repo doesn't spin up Firebase/Supabase for
+// widget tests.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ura_core/features/verifier/ui/widgets/add_item_sheet.dart';
@@ -13,7 +13,7 @@ void main() {
 
   Widget wrap(Widget child) => MaterialApp(home: child);
 
-  testWidgets('renders both AI entry buttons without touching DI', (tester) async {
+  testWidgets('offers the paste entry point and no longer the voice one', (tester) async {
     await tester.pumpWidget(wrap(AddItemSheet(
       inventory: const [water],
       orderDirection: OrderDirection.outbound,
@@ -21,8 +21,10 @@ void main() {
       onAddCustomItem: (_, _, {sourceInventoryId}) {},
     )));
 
-    expect(find.byIcon(Icons.mic), findsOneWidget);
     expect(find.byIcon(Icons.content_paste), findsOneWidget);
+    // The voice feature was removed deliberately; a mic reappearing here means
+    // something was restored by accident.
+    expect(find.byIcon(Icons.mic), findsNothing);
   });
 
   testWidgets('manual inventory flow still calls onAddInventoryItems with entered quantity', (tester) async {

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:bloc_test/bloc_test.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
@@ -19,11 +17,6 @@ void main() {
   const water500 = InventoryItem(id: 'item-water-500', itemName: 'مياه نوفا 500 مل', quantity: 30, unit: 'كرتونة');
   const soap = InventoryItem(id: 'item-soap', itemName: 'صابون', quantity: 20, unit: 'علبة');
   final inventory = [water, water500, soap];
-  final audioBytes = Uint8List.fromList([1, 2, 3]);
-
-  setUpAll(() {
-    registerFallbackValue(Uint8List(0));
-  });
 
   setUp(() {
     repository = MockItemMatchRepository();
@@ -33,79 +26,6 @@ void main() {
     test('initial state is idle', () {
       expect(AiAddItemCubit(repository).state, isA<AiAddItemIdle>());
     });
-
-    blocTest<AiAddItemCubit, AiAddItemState>(
-      'startRecording emits Recording',
-      build: () => AiAddItemCubit(repository),
-      act: (cubit) => cubit.startRecording(),
-      expect: () => [isA<AiAddItemRecording>()],
-    );
-
-    blocTest<AiAddItemCubit, AiAddItemState>(
-      'updateElapsed emits Recording with the elapsed seconds',
-      build: () => AiAddItemCubit(repository),
-      act: (cubit) => cubit.updateElapsed(12),
-      expect: () => [
-        isA<AiAddItemRecording>().having((s) => s.elapsedSeconds, 'elapsedSeconds', 12),
-      ],
-    );
-
-    blocTest<AiAddItemCubit, AiAddItemState>(
-      'finishRecording with empty audio emits empty Reviewing state directly',
-      build: () => AiAddItemCubit(repository),
-      act: (cubit) => cubit.finishRecording(Uint8List(0), 'audio/aac', inventory),
-      expect: () => [
-        isA<AiAddItemReviewing>()
-            .having((s) => s.matches, 'matches', isEmpty)
-            .having((s) => s.unmatched, 'unmatched', isEmpty),
-      ],
-      verify: (_) => verifyNever(() => repository.matchAudio(any(), any(), any())),
-    );
-
-    blocTest<AiAddItemCubit, AiAddItemState>(
-      'finishRecording resolves matches against inventory, drops unknown ids, and carries heardSummary',
-      build: () {
-        when(() => repository.matchAudio(any(), any(), any())).thenAnswer(
-          (_) async => AppSuccess(
-            ItemMatchResult(
-              matches: const [
-                MatchedItem(itemId: 'item-water', quantity: 3, confidence: 0.9),
-                MatchedItem(itemId: 'item-unknown', quantity: 1, confidence: 0.5),
-              ],
-              unmatched: const [
-                UnmatchedItem(text: 'صابون فاخر', quantity: 2, unit: 'علبة'),
-              ],
-              heardSummary: 'سمعت طلب ٣ كراتين مياه وعلبتين صابون فاخر',
-            ),
-          ),
-        );
-        return AiAddItemCubit(repository);
-      },
-      act: (cubit) => cubit.finishRecording(audioBytes, 'audio/aac', inventory),
-      expect: () => [
-        isA<AiAddItemMatching>(),
-        isA<AiAddItemReviewing>()
-            .having((s) => s.matches, 'matches', hasLength(1))
-            .having((s) => s.matches.first.item, 'matched item', water)
-            .having((s) => s.unmatched, 'unmatched', hasLength(1))
-            .having((s) => s.heardSummary, 'heardSummary', isNotNull),
-      ],
-    );
-
-    blocTest<AiAddItemCubit, AiAddItemState>(
-      'finishRecording emits Error on repository failure',
-      build: () {
-        when(() => repository.matchAudio(any(), any(), any())).thenAnswer(
-          (_) async => const AppFailure(AppError(message: 'فشل', type: AppErrorType.server)),
-        );
-        return AiAddItemCubit(repository);
-      },
-      act: (cubit) => cubit.finishRecording(audioBytes, 'audio/aac', inventory),
-      expect: () => [
-        isA<AiAddItemMatching>(),
-        isA<AiAddItemError>().having((s) => s.message, 'message', 'فشل'),
-      ],
-    );
 
     blocTest<AiAddItemCubit, AiAddItemState>(
       'submitText with blank text emits an empty Reviewing state without calling the repository',
@@ -120,7 +40,7 @@ void main() {
     );
 
     blocTest<AiAddItemCubit, AiAddItemState>(
-      'submitText sends the trimmed message and resolves matches the same way audio does',
+      'submitText sends the trimmed message and resolves matches against inventory',
       build: () {
         when(() => repository.matchText(any(), any())).thenAnswer(
           (_) async => AppSuccess(
@@ -153,7 +73,7 @@ void main() {
     );
 
     blocTest<AiAddItemCubit, AiAddItemState>(
-      'submitText keeps ambiguous entries ambiguous, exactly as the audio path does',
+      'submitText keeps ambiguous entries with 2+ valid candidates ambiguous',
       build: () {
         when(() => repository.matchText(any(), any())).thenAnswer(
           (_) async => AppSuccess(
@@ -237,40 +157,9 @@ void main() {
     });
 
     blocTest<AiAddItemCubit, AiAddItemState>(
-      'finishRecording keeps ambiguous entries with 2+ valid candidates ambiguous',
+      'submitText auto-promotes an ambiguous entry to a match when only 1 candidate resolves',
       build: () {
-        when(() => repository.matchAudio(any(), any(), any())).thenAnswer(
-          (_) async => AppSuccess(
-            ItemMatchResult(
-              matches: const [],
-              unmatched: const [],
-              ambiguous: [
-                AmbiguousItem(
-                  text: 'مياه نوفا',
-                  quantity: 2,
-                  unit: 'كرتونة',
-                  candidateItemIds: [water.id, water500.id],
-                ),
-              ],
-            ),
-          ),
-        );
-        return AiAddItemCubit(repository);
-      },
-      act: (cubit) => cubit.finishRecording(audioBytes, 'audio/aac', inventory),
-      expect: () => [
-        isA<AiAddItemMatching>(),
-        isA<AiAddItemReviewing>()
-            .having((s) => s.matches, 'matches', isEmpty)
-            .having((s) => s.ambiguous, 'ambiguous', hasLength(1))
-            .having((s) => s.ambiguous.single.candidates, 'candidates', [water, water500]),
-      ],
-    );
-
-    blocTest<AiAddItemCubit, AiAddItemState>(
-      'finishRecording auto-promotes an ambiguous entry to a match when only 1 candidate resolves',
-      build: () {
-        when(() => repository.matchAudio(any(), any(), any())).thenAnswer(
+        when(() => repository.matchText(any(), any())).thenAnswer(
           (_) async => AppSuccess(
             ItemMatchResult(
               matches: const [],
@@ -288,7 +177,7 @@ void main() {
         );
         return AiAddItemCubit(repository);
       },
-      act: (cubit) => cubit.finishRecording(audioBytes, 'audio/aac', inventory),
+      act: (cubit) => cubit.submitText('محتاج كرتونتين مياه نوفا', inventory),
       expect: () => [
         isA<AiAddItemMatching>(),
         isA<AiAddItemReviewing>()
@@ -300,9 +189,9 @@ void main() {
     );
 
     blocTest<AiAddItemCubit, AiAddItemState>(
-      'finishRecording demotes an ambiguous entry to unmatched when no candidates resolve',
+      'submitText demotes an ambiguous entry to unmatched when no candidates resolve',
       build: () {
-        when(() => repository.matchAudio(any(), any(), any())).thenAnswer(
+        when(() => repository.matchText(any(), any())).thenAnswer(
           (_) async => AppSuccess(
             ItemMatchResult(
               matches: const [],
@@ -320,7 +209,7 @@ void main() {
         );
         return AiAddItemCubit(repository);
       },
-      act: (cubit) => cubit.finishRecording(audioBytes, 'audio/aac', inventory),
+      act: (cubit) => cubit.submitText('محتاج كرتونتين مياه نوفا', inventory),
       expect: () => [
         isA<AiAddItemMatching>(),
         isA<AiAddItemReviewing>()

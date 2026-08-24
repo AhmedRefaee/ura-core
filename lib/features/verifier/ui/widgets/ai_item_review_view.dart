@@ -30,9 +30,9 @@ void applyAiReview(
   }
 }
 
-/// The wording around the shared review list that depends on how the request
-/// arrived. The list itself is identical either way — only the way it refers
-/// back to the input changes: a recording was heard, a message was read.
+/// The wording around the review list. Kept as a struct rather than inlined
+/// so the strings stay in one place, and so a second input path — should one
+/// ever arrive again — has somewhere to put its own wording.
 class AiReviewCopy {
   final IconData summaryIcon;
   final String summaryPrefix;
@@ -50,15 +50,6 @@ class AiReviewCopy {
     required this.retryLabel,
   });
 
-  static const voice = AiReviewCopy(
-    summaryIcon: Icons.hearing,
-    summaryPrefix: 'سمعت',
-    emptyIcon: Icons.mic_off,
-    emptyMessage: 'لم يتم التعرف على أي كلام، حاول مرة أخرى',
-    retryIcon: Icons.mic,
-    retryLabel: 'إعادة المحاولة',
-  );
-
   static const text = AiReviewCopy(
     summaryIcon: Icons.chat_bubble_outline,
     summaryPrefix: 'فهمت',
@@ -69,7 +60,7 @@ class AiReviewCopy {
   );
 }
 
-/// The review step both AI entry paths end at: inventory matches with editable
+/// The review step the AI entry path ends at: inventory matches with editable
 /// quantities, entries that need a choice before anything can be confirmed,
 /// and phrases that matched nothing, which stay opted out of the order unless
 /// the user checks them in.

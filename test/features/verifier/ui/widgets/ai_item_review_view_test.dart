@@ -1,6 +1,5 @@
-// The review list is shared by the voice screen and the paste screen, so
-// these tests pin the parts that must look identical for both inputs, plus
-// the wording that must not.
+// The review list is where every AI-matched order ends up, so these tests pin
+// what the verifier is shown before anything reaches the order.
 import 'dart:convert';
 
 import 'package:flutter/material.dart';
@@ -18,7 +17,7 @@ void main() {
   const water = InventoryItem(id: 'item-water', itemName: 'مياه نوفا 330 مل', quantity: 50, unit: 'كرتونة');
   const water500 = InventoryItem(id: 'item-water-500', itemName: 'مياه نوفا 500 مل', quantity: 30, unit: 'كرتونة');
 
-  Widget wrap(AiAddItemReviewing state, {AiReviewCopy copy = AiReviewCopy.voice}) {
+  Widget wrap(AiAddItemReviewing state, {AiReviewCopy copy = AiReviewCopy.text}) {
     return MaterialApp(
       home: Scaffold(
         body: BlocProvider(
@@ -71,7 +70,7 @@ void main() {
     expect(button.onPressed, isNotNull);
   });
 
-  testWidgets('the summary is introduced as heard for voice and understood for text', (tester) async {
+  testWidgets('the summary is introduced as understood', (tester) async {
     const state = AiAddItemReviewing(
       matches: [ReviewMatch(item: water, quantity: 3, confidence: 0.9)],
       unmatched: [],
@@ -79,9 +78,6 @@ void main() {
     );
 
     await tester.pumpWidget(wrap(state));
-    expect(find.text('سمعت: ثلاث كراتين مياه'), findsOneWidget);
-
-    await tester.pumpWidget(wrap(state, copy: AiReviewCopy.text));
     expect(find.text('فهمت: ثلاث كراتين مياه'), findsOneWidget);
   });
 
@@ -127,12 +123,9 @@ void main() {
     });
   });
 
-  testWidgets('an empty result explains itself in terms of the input that produced it', (tester) async {
+  testWidgets('an empty result says so instead of showing a blank list', (tester) async {
     await tester.pumpWidget(wrap(const AiAddItemReviewing(matches: [], unmatched: [])));
-    expect(find.text(AiReviewCopy.voice.emptyMessage), findsOneWidget);
 
-    await tester.pumpWidget(wrap(const AiAddItemReviewing(matches: [], unmatched: []), copy: AiReviewCopy.text));
     expect(find.text(AiReviewCopy.text.emptyMessage), findsOneWidget);
-    expect(AiReviewCopy.text.emptyMessage, isNot(AiReviewCopy.voice.emptyMessage));
   });
 }

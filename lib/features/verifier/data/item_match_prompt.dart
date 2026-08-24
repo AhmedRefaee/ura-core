@@ -1,25 +1,14 @@
 import 'package:firebase_ai/firebase_ai.dart';
 
-/// Everything the model is told, kept in one place so the audio and text paths
-/// can't drift apart. Ported from the `voice-match-items` edge function, which
-/// stays deployed as a fallback — if you change the rules here, change them
-/// there too or the two paths will start disagreeing about the same message.
+/// Everything the model is told, kept in one place. The same rules are
+/// duplicated in the `voice-match-items` edge function, which stays deployed as
+/// a fallback — if you change them here, change them there too, or the two
+/// implementations will start disagreeing about the same message.
 class ItemMatchPrompt {
   const ItemMatchPrompt._();
 
-  static const _audioOpening =
-      'You listen to an audio recording of someone dictating an order request, '
-      'and match what they say to items in a fixed inventory list. The speech is '
-      'primarily Arabic (Modern Standard Arabic or a regional dialect such as '
-      'Gulf, Levantine, or Egyptian), and may include some English item or brand '
-      'names mixed in — do not assume the audio is in English. Listen to the '
-      'ENTIRE recording from start to finish and extract every distinct item and '
-      'quantity mentioned, not just the first one; the speaker may list many items '
-      'in one recording. ';
-
-  // Written requests arrive as forwarded chat messages, so the model has to do
-  // something the audio path never needed: throw away the conversation around
-  // the order before it starts matching.
+  // Requests arrive as forwarded chat messages, so the model has to throw away
+  // the conversation around the order before it starts matching.
   static const _textOpening =
       'You read a written order request — typically a WhatsApp message from '
       'someone at an outside entity, pasted in by the person handling it — and '
@@ -65,7 +54,6 @@ class ItemMatchPrompt {
       'time the person is watching a spinner. Do not list the items again one '
       'by one; they are already on the screen underneath it.';
 
-  static const audioInstruction = _audioOpening + _sharedRules;
   static const textInstruction = _textOpening + _sharedRules;
 
   /// The model answers in refs, never in ids — see [ItemMatchCatalog].

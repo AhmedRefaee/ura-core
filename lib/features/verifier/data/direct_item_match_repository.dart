@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-import 'dart:typed_data';
 
 import 'package:firebase_ai/firebase_ai.dart';
 
@@ -56,34 +55,18 @@ class DirectItemMatchRepository implements ItemMatchRepository {
   /// only real datapoint there is; the first-token timing logged in [_collect]
   /// is what will let them be tightened honestly.
   static const textIdleTimeout = Duration(seconds: 60);
-  static const audioIdleTimeout = Duration(seconds: 75);
 
   /// A backstop for a stream that keeps trickling and never ends. Someone is
   /// standing there holding a phone, so it is not generous -- but it is well
   /// past anything a working call has taken.
   static const textCeiling = Duration(seconds: 90);
-  static const audioCeiling = Duration(seconds: 120);
 
   static const maxAttempts = 3;
-  static const _backoffBase = Duration(milliseconds: 700);
 
-  @override
-  Future<AppResult<ItemMatchResult>> matchAudio(
-    Uint8List audioBytes,
-    String mimeType,
-    List<InventoryItem> inventory,
-  ) {
-    logger.d('DirectItemMatchRepository → matchAudio: ${audioBytes.length} bytes');
-    return _match(
-      label: 'matchAudio',
-      instruction: ItemMatchPrompt.audioInstruction,
-      inventory: inventory,
-      idleTimeout: _idleTimeoutOverride ?? audioIdleTimeout,
-      ceiling: _ceilingOverride ?? audioCeiling,
-      audioBytes: audioBytes,
-      audioMimeType: mimeType,
-    );
-  }
+  /// Prefixes every log line from this repository.
+  static const _label = 'matchText';
+
+  static const _backoffBase = Duration(milliseconds: 700);
 
   @override
   Future<AppResult<ItemMatchResult>> matchText(
@@ -91,14 +74,7 @@ class DirectItemMatchRepository implements ItemMatchRepository {
     List<InventoryItem> inventory,
   ) {
     logger.d('DirectItemMatchRepository → matchText: ${text.length} chars');
-    return _match(
-      label: 'matchText',
-      instruction: ItemMatchPrompt.textInstruction,
-      inventory: inventory,
-      idleTimeout: _idleTimeoutOverride ?? textIdleTimeout,
-      ceiling: _ceilingOverride ?? textCeiling,
-      text: text,
-    );
+    return _match(text, inventory);
   }
 
   /// Nothing to wake: there is no function in front of Gemini any more, and
@@ -108,21 +84,17 @@ class DirectItemMatchRepository implements ItemMatchRepository {
   @override
   Future<void> warmUp() async {}
 
-  Future<AppResult<ItemMatchResult>> _match({
-    required String label,
-    required String instruction,
-    required List<InventoryItem> inventory,
-    required Duration idleTimeout,
-    required Duration ceiling,
-    String? text,
-    Uint8List? audioBytes,
-    String? audioMimeType,
-  }) async {
+  Future<AppResult<ItemMatchResult>> _match(
+    String text,
+    List<InventoryItem> inventory,
+  ) async {
     if (inventory.isEmpty) {
-      logger.w('DirectItemMatchRepository → $label with an empty inventory');
+      logger.w('DirectItemMatchRepository → $_label with an empty inventory');
       return const AppSuccess(ItemMatchResult(matches: [], unmatched: []));
     }
 
+    final idleTimeout = _idleTimeoutOverride ?? textIdleTimeout;
+    final ceiling = _ceilingOverride ?? textCeiling;
     final catalog = ItemMatchCatalog.of(inventory);
     final overallStart = DateTime.now();
     Object? lastError;
@@ -131,21 +103,17 @@ class DirectItemMatchRepository implements ItemMatchRepository {
       final started = DateTime.now();
       try {
         final (json, usage) = await _collect(
-          label: label,
           attempt: attempt,
           started: started,
-          instruction: instruction,
           catalog: catalog,
           idleTimeout: idleTimeout,
           ceiling: ceiling,
           text: text,
-          audioBytes: audioBytes,
-          audioMimeType: audioMimeType,
         );
 
         final result = _toResult(json, catalog);
         logger.i(
-          'DirectItemMatchRepository → $label ${result.matches.length} matches, '
+          'DirectItemMatchRepository → $_label ${result.matches.length} matches, '
           '${result.unmatched.length} unmatched, ${result.ambiguous.length} ambiguous '
           'in ${DateTime.now().difference(started).inMilliseconds}ms '
           '(attempt $attempt, ${usage?.summary ?? 'usage unreported'})',
@@ -158,7 +126,7 @@ class DirectItemMatchRepository implements ItemMatchRepository {
         // full. Three of those is how one slow request turned into a hard
         // failure. A warning rather than an error, too: a slow link or a slow
         // model is not a crash and Crashlytics should not carry it as one.
-        logger.w('DirectItemMatchRepository → $label gave up waiting: $e');
+        logger.w('DirectItemMatchRepository → $_label gave up waiting: $e');
         return const AppFailure(
           AppError(
             message: 'الاستجابة تأخرت أكثر من المعتاد، يرجى المحاولة مجدداً',
@@ -168,10 +136,10 @@ class DirectItemMatchRepository implements ItemMatchRepository {
       } catch (e, st) {
         lastError = e;
         if (!_worthRetrying(e)) {
-          logger.e('DirectItemMatchRepository → $label failed', error: e, stackTrace: st);
+          logger.e('DirectItemMatchRepository → $_label failed', error: e, stackTrace: st);
           return AppFailure(_toAppError(e));
         }
-        logger.w('DirectItemMatchRepository → $label attempt $attempt failed: $e');
+        logger.w('DirectItemMatchRepository → $_label attempt $attempt failed: $e');
         if (attempt == maxAttempts) break;
 
         // Exponential, with jitter so a capacity spike doesn't turn every
@@ -183,7 +151,7 @@ class DirectItemMatchRepository implements ItemMatchRepository {
       }
     }
 
-    logger.w('DirectItemMatchRepository → $label exhausted: $lastError');
+    logger.w('DirectItemMatchRepository → $_label exhausted: $lastError');
     return const AppFailure(
       AppError(
         message: 'الخدمة مزدحمة حالياً، يرجى المحاولة بعد لحظات',
@@ -200,16 +168,12 @@ class DirectItemMatchRepository implements ItemMatchRepository {
   /// subscription -- and cancelling is the whole reason this is a stream rather
   /// than a future, because it is the one thing `Future.timeout` cannot do.
   Future<(String, ItemMatchUsage?)> _collect({
-    required String label,
     required int attempt,
     required DateTime started,
-    required String instruction,
     required ItemMatchCatalog catalog,
     required Duration idleTimeout,
     required Duration ceiling,
-    String? text,
-    Uint8List? audioBytes,
-    String? audioMimeType,
+    required String text,
   }) async {
     final buffer = StringBuffer();
     final deadline = started.add(ceiling);
@@ -218,11 +182,9 @@ class DirectItemMatchRepository implements ItemMatchRepository {
 
     final chunks = _model
         .generate(
-          systemInstruction: instruction,
+          systemInstruction: ItemMatchPrompt.textInstruction,
           catalogBlock: catalog.block,
           text: text,
-          audioBytes: audioBytes,
-          audioMimeType: audioMimeType,
         )
         .timeout(idleTimeout);
 
@@ -232,7 +194,7 @@ class DirectItemMatchRepository implements ItemMatchRepository {
         // The number that says where the minute actually goes: a long wait here
         // is thinking or the network, a long tail after it is generation.
         logger.d(
-          'DirectItemMatchRepository → $label first token after '
+          'DirectItemMatchRepository → $_label first token after '
           '${DateTime.now().difference(started).inMilliseconds}ms (attempt $attempt)',
         );
       }
@@ -241,7 +203,7 @@ class DirectItemMatchRepository implements ItemMatchRepository {
 
       if (DateTime.now().isAfter(deadline)) {
         throw TimeoutException(
-          '$label passed its ${ceiling.inSeconds}s ceiling still streaming',
+          '$_label passed its ${ceiling.inSeconds}s ceiling still streaming',
           ceiling,
         );
       }

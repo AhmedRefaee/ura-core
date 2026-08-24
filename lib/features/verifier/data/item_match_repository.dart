@@ -1,25 +1,15 @@
-import 'dart:typed_data';
-
 import '../../../core/errors/app_result.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/item_match_result.dart';
 
-/// Matches a request for items — spoken or written — against the caller's own
-/// inventory, returning only matches backed by real inventory rows plus
-/// anything it couldn't place.
+/// Matches a written request for items against the caller's own inventory,
+/// returning only matches backed by real inventory rows plus anything it
+/// couldn't place.
 ///
 /// Two implementations exist for one reason: the direct one talks to Gemini
 /// from the device, and the edge one goes through Supabase. See
 /// `DirectItemMatchRepository` for which is wired and why the other is kept.
 abstract class ItemMatchRepository {
-  /// Sends a recorded clip, transcribed and matched in a single multimodal
-  /// call — there is no separate speech-to-text step.
-  Future<AppResult<ItemMatchResult>> matchAudio(
-    Uint8List audioBytes,
-    String mimeType,
-    List<InventoryItem> inventory,
-  );
-
   /// Sends a pasted written request — typically a WhatsApp message forwarded
   /// from someone at an outside entity.
   Future<AppResult<ItemMatchResult>> matchText(

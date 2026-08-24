@@ -9,7 +9,6 @@ import '../../../../core/design_system/theme/theme.dart';
 import '../../../../core/di/injection.dart';
 import '../../logic/ai_add_item_cubit.dart';
 import 'paste_add_item_view.dart';
-import 'voice_add_item_view.dart';
 
 /// Shared widget for adding items to an order.
 /// Used by both CreateOrderScreen and EditOrderScreen.
@@ -104,23 +103,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
     }
 
     Navigator.pop(context);
-  }
-
-  Future<void> _openVoiceAddItem() async {
-    final added = await Navigator.push<bool>(
-      context,
-      MaterialPageRoute(
-        builder: (_) => BlocProvider(
-          create: (_) => sl<AiAddItemCubit>(),
-          child: VoiceAddItemView(
-            inventory: widget.inventory,
-            onAddInventoryItems: widget.onAddInventoryItems,
-            onAddCustomItem: widget.onAddCustomItem,
-          ),
-        ),
-      ),
-    );
-    if (added == true && mounted) Navigator.pop(context);
   }
 
   Future<void> _openPasteAddItem() async {
@@ -279,11 +261,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
             icon: const Icon(Icons.content_paste),
             tooltip: 'إضافة من رسالة',
             onPressed: _openPasteAddItem,
-          ),
-          IconButton(
-            icon: const Icon(Icons.mic),
-            tooltip: 'إضافة عن طريق الصوت',
-            onPressed: _openVoiceAddItem,
           ),
         ],
       ),

@@ -39,6 +39,7 @@ The header line is optional, and only the first column is required.''');
   }
 
   final inventory = _readInventory(inventoryFile);
+  _checkEncoding(inventory);
   final matcher = LocalItemMatcher(inventory);
   stdout.writeln('Catalog: ${inventory.length} rows\n');
 
@@ -124,9 +125,44 @@ void _bar(String label, int n, int total) {
 
 String _clip(String s) => s.length <= 58 ? s : '${s.substring(0, 57)}…';
 
+/// Excel on Windows saves CSV as Windows-1256 unless you pick "CSV UTF-8", and
+/// the Arabic comes back as mojibake. Every match then fails, the report reads
+/// 0% and the matcher looks broken when the file is what's wrong. Cheaper to
+/// say so than to let anyone debug that.
+void _checkEncoding(List<InventoryItem> inventory) {
+  if (inventory.isEmpty) return;
+  final arabic = RegExp('[ء-ي]');
+  final withArabic = inventory.where((i) => arabic.hasMatch(i.itemName)).length;
+  if (withArabic > inventory.length * 0.2) return;
+
+  stderr.writeln('''
+⚠  Only $withArabic of ${inventory.length} rows contain Arabic letters.
+
+   That almost always means inventory.csv is not UTF-8. In Excel use
+   "Save As → CSV UTF-8 (Comma delimited)", not plain "CSV".
+
+   First row read as: ${inventory.first.itemName}
+''');
+}
+
 List<InventoryItem> _readInventory(File file) {
+  final List<String> lines;
+  try {
+    lines = file.readAsLinesSync();
+  } on FileSystemException {
+    // Windows-1256 bytes are not valid UTF-8, so the read throws outright
+    // rather than producing wrong text. Same cause as _checkEncoding, caught
+    // earlier and louder.
+    stderr.writeln('''
+✗  ${file.path} is not UTF-8, so it can't be read.
+
+   In Excel: "Save As → CSV UTF-8 (Comma delimited)", not plain "CSV".
+   Plain CSV on Windows writes Windows-1256 and mangles Arabic.''');
+    exit(1);
+  }
+
   final rows = <InventoryItem>[];
-  for (final raw in file.readAsLinesSync()) {
+  for (final raw in lines) {
     final line = raw.trim();
     if (line.isEmpty) continue;
     final cells = line.split(RegExp('[,\t;]')).map((c) => c.trim()).toList();

@@ -68,19 +68,34 @@ class LocalItemMatcher {
   /// of rows and says almost nothing; "نوفا" or "330" points at a handful.
   final Map<String, double> _idf = {};
 
-  final List<List<String>> _itemTokens = [];
-  final List<double> _itemWeight = [];
+  /// Words from the item's own name. These are what a full match is measured
+  /// against.
+  final List<List<String>> _nameTokens = [];
+
+  /// Words from category and SKU. They earn a row a place in the running —
+  /// "قهوة" should surface the coffee rows — but they must not count towards
+  /// coverage. "سحلب" is a one-word product sitting in the three-word category
+  /// "مشروبات ساخنة أخرى"; measured against all four words, naming the product
+  /// exactly and completely scored 0.34.
+  final List<List<String>> _extraTokens = [];
+
+  final List<double> _nameWeight = [];
+
+  /// What a category or SKU hit is worth next to a name hit.
+  static const _extraTokenWeight = 0.3;
 
   LocalItemMatcher(List<InventoryItem> inventory) : _inventory = inventory {
     for (var i = 0; i < inventory.length; i++) {
       final row = inventory[i];
       // The unit is deliberately excluded: "كرتونة" is how it is sold, not what
       // it is, and including it makes every row look alike.
-      final tokens = ArabicText.tokenize(
-        [row.itemName, row.category ?? '', row.sku ?? ''].join(' '),
-      );
-      _itemTokens.add(tokens);
-      for (final token in tokens.toSet()) {
+      final name = ArabicText.tokenize(row.itemName);
+      final extra = ArabicText.tokenize('${row.category ?? ''} ${row.sku ?? ''}')
+          .where((t) => !name.contains(t))
+          .toList();
+      _nameTokens.add(name);
+      _extraTokens.add(extra);
+      for (final token in {...name, ...extra}) {
         _postings.putIfAbsent(token, () => <int>{}).add(i);
       }
     }
@@ -92,8 +107,8 @@ class LocalItemMatcher {
       _idf[entry.key] = log((total + 1) / (entry.value.length + 1));
     }
 
-    for (final tokens in _itemTokens) {
-      _itemWeight.add(_weigh(tokens));
+    for (final tokens in _nameTokens) {
+      _nameWeight.add(_weigh(tokens));
     }
   }
 
@@ -127,13 +142,24 @@ class LocalItemMatcher {
 
   static final _quantityToken = RegExp(r'^\d+(?:[.,]\d+)?$');
 
+  /// Single letters Arabic attaches to the front of a word: and, then, with,
+  /// for, like.
+  static const _proclitics = {'و', 'ف', 'ب', 'ل', 'ك'};
+
+  /// Senders put several items on one line separated by a comma as often as
+  /// by a newline. Deliberately not splitting on "و" as well: it is a letter
+  /// that begins real words, and splitting on it would cut names in half.
+  static final _inlineSeparators = RegExp(r'[،؛;]|,(?=\s)');
+
   /// Splits [message] into request lines and ranks the catalog against each.
   List<RequestLine> match(String message) {
     final lines = <RequestLine>[];
-    for (final raw in message.split('\n')) {
-      final text = raw.replaceFirst(_listMarker, '').trim();
-      if (text.isEmpty) continue;
-      lines.add(_matchLine(text));
+    for (final rawLine in message.split('\n')) {
+      for (final raw in rawLine.split(_inlineSeparators)) {
+        final text = raw.replaceFirst(_listMarker, '').trim();
+        if (text.isEmpty) continue;
+        lines.add(_matchLine(text));
+      }
     }
     return lines;
   }
@@ -175,11 +201,17 @@ class LocalItemMatcher {
 
     final scored = <ScoredItem>[];
     for (final index in touched) {
-      final itemTokens = _itemTokens[index];
+      final nameTokens = _nameTokens[index];
       var matched = 0.0;
-      for (final token in itemTokens.toSet()) {
+      for (final token in nameTokens.toSet()) {
         final strength = matchedVocab[token];
         if (strength != null) matched += _idf[token]! * strength;
+      }
+      for (final token in _extraTokens[index].toSet()) {
+        final strength = matchedVocab[token];
+        if (strength != null) {
+          matched += _idf[token]! * strength * _extraTokenWeight;
+        }
       }
       if (matched <= 0) continue;
 
@@ -188,7 +220,7 @@ class LocalItemMatcher {
       // "2" and "جم" and on nothing that names a product — a coincidence of
       // packaging, scored like a match. Sizes discriminate between rows that
       // already share a name; on their own they mean nothing.
-      final sharesContent = itemTokens.any(
+      final sharesContent = nameTokens.any(
         (t) => matchedVocab.containsKey(t) && _isContentWord(t),
       );
       if (!sharesContent) continue;
@@ -198,8 +230,10 @@ class LocalItemMatcher {
       // perfectly. Precision asks "did this row account for the line?" —
       // without it, a one-word row beats the more specific row that the extra
       // words were pointing at.
-      final coverage = matched / _itemWeight[index];
-      final precision = matched / lineWeight;
+      // Capped: a category hit on top of a complete name match would
+      // otherwise push coverage past 1.
+      final coverage = min(1.0, matched / _nameWeight[index]);
+      final precision = min(1.0, matched / lineWeight);
       scored.add(ScoredItem(_inventory[index], 0.7 * coverage + 0.3 * precision));
     }
 
@@ -240,6 +274,22 @@ class LocalItemMatcher {
       yield MapEntry(token, 1);
       return;
     }
+
+    // Arabic glues its conjunctions and prepositions onto the following word,
+    // so a list written "وحليب المراعي وسكر الاسرة" contains neither حليب nor
+    // سكر as far as string equality is concerned. Both lines matched nothing
+    // at all before this.
+    //
+    // Only ever accepted when what is left is a word the catalog actually
+    // uses, which is what makes it safe: "وسط" and "ورق" strip to "سط" and
+    // "رق", neither of which is in the catalog, so neither is stripped.
+    if (token.length >= 4 && _proclitics.contains(token[0])) {
+      final stripped = token.substring(1);
+      if (_postings.containsKey(stripped)) {
+        yield MapEntry(stripped, 1);
+        return;
+      }
+    }
     // A number that isn't in the catalog is a quantity, not a misspelt size.
     if (_numeric.hasMatch(token) || token.length < 4) return;
 
@@ -251,14 +301,41 @@ class LocalItemMatcher {
   }
 
   /// The count the sender asked for, or 1.
+  ///
+  /// Position decides this, not the number itself. "٣ كجم شيكولاتة" is three
+  /// kilos of chocolate; "عصير برتقال ٢٠٠ مل" is a two-hundred millilitre
+  /// juice. The digits and the unit are identical in shape — what differs is
+  /// whether a product has been named yet.
   static double _quantityIn(List<String> tokens) {
+    var namedSomething = false;
     for (var i = 0; i < tokens.length; i++) {
-      if (!_quantityToken.hasMatch(tokens[i])) continue;
-      // A number glued to a unit of measure is part of the product's name.
+      if (!_quantityToken.hasMatch(tokens[i])) {
+        namedSomething = namedSomething || _isContentWord(tokens[i]);
+        continue;
+      }
+
       final next = i + 1 < tokens.length ? tokens[i + 1] : null;
-      if (next != null && _sizeUnits.contains(next)) continue;
-      final parsed = double.tryParse(tokens[i].replaceAll(',', '.'));
-      if (parsed != null && parsed > 0) return parsed;
+      final bool isCount;
+      if (next == null) {
+        // Trailing: "سحلب 5" and "زنجبيل مطحون 500 جم 3" both end in the count.
+        isCount = true;
+      } else if (_packaging.contains(next)) {
+        // "٢٠ حبة", "٣ كرتون" — counted in boxes, so it is a count.
+        isCount = true;
+      } else if (_sizeUnits.contains(next)) {
+        // "٣ كجم شيكولاتة" is a count; "شيكولاتة ٣ كجم" is a size. The only
+        // difference is whether the product was named first.
+        isCount = !namedSomething;
+      } else {
+        // A number sitting inside the name — "خلاص باللوز ٥ نجوم" — is part of
+        // what the thing is called, not how many were wanted.
+        isCount = !namedSomething;
+      }
+
+      if (isCount) {
+        final parsed = double.tryParse(tokens[i].replaceAll(',', '.'));
+        if (parsed != null && parsed > 0) return parsed;
+      }
     }
     return 1;
   }

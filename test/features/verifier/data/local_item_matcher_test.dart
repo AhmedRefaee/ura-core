@@ -141,6 +141,24 @@ void main() {
       expect(lines.single.quantity, 5);
     });
 
+    test('a weight before the product is a count, after it is a size', () {
+      // Identical shape, opposite meaning. What separates them is whether a
+      // product has been named yet.
+      expect(only('3 كجم صابون لوكس').quantity, 3);
+      expect(only('صابون لوكس 3 كجم').quantity, 1);
+    });
+
+    test('a number inside the name is not a count', () {
+      // "٥ نجوم" is five-star, a grade, not five of anything. Reading it as a
+      // count silently multiplies the order.
+      final lines = matcher.match('مياه نوفا 330 مل 5 نجوم');
+      expect(lines.single.quantity, 1);
+    });
+
+    test('a trailing number is the count', () {
+      expect(only('صابون لوكس 4').quantity, 4);
+    });
+
     test('a bare numbered line still defaults to one', () {
       final lines = matcher.match('2) صابون لوكس');
       expect(lines.single.quantity, 1);

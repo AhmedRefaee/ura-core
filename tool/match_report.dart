@@ -19,7 +19,20 @@ import 'package:ura_core/shared/models/inventory_item.dart';
 const confidentAt = 0.60;
 
 /// Below this the line is treated as unmatched rather than offered as a guess.
-const hopelessBelow = 0.30;
+///
+/// Low on purpose. Rejecting a line is now the content-word rule's job, not a
+/// score threshold's: a row that shares no product word never becomes a
+/// candidate at all. A brand on its own — "باجة" — genuinely scores low
+/// because it does not say which باجة, and that is a choice to offer, not a
+/// miss to report.
+const hopelessBelow = 0.15;
+
+/// A win has to be a clear win. "شاي اخضر" fits three rows — احمد, الربيع and
+/// توينجز — and the only reason توينجز edges ahead is that its name is shorter,
+/// so a larger share of it got matched. That is an artefact of how coverage is
+/// measured, not evidence about what the sender meant. Unless the best
+/// candidate beats the runner-up by this much, it is a choice, not an answer.
+const marginAt = 0.15;
 
 void main(List<String> args) {
   final inventoryFile = File('tool/fixtures/inventory.csv');
@@ -86,7 +99,8 @@ The header line is optional, and only the first column is required.''');
           ? line.quantity.toInt().toString()
           : line.quantity.toString();
 
-      if (best.score >= confidentAt) {
+      final runnerUp = line.candidates.length > 1 ? line.candidates[1].score : 0.0;
+      if (best.score >= confidentAt && best.score - runnerUp >= marginAt) {
         confident++;
         stdout.writeln('  ✓  ${_clip(line.text)}');
         stdout.writeln('       $qty × ${best.item.itemName}  '

@@ -102,10 +102,19 @@ void main() {
       expect(only('ميـاه نوفـا ٣٣٠').best!.item, water330);
     });
 
-    test('nothing in the catalog scores nothing', () {
+    test('a request for something unstocked survives as a line with no options',
+        () {
+      // Not noise. The sender asked for it, so the verifier has to see it —
+      // dropping it silently is how an order loses a line nobody notices.
       final lines = matcher.match('محتاج مكنسة كهربائية');
+
       expect(lines.single.candidates, isEmpty);
-      expect(lines.single.isNoise, isTrue);
+      expect(lines.single.isNoise, isFalse);
+      expect(lines.single.text, contains('مكنسة'));
+    });
+
+    test('a line with no word that could name a product is noise', () {
+      expect(matcher.match('01001234567').single.isNoise, isTrue);
     });
   });
 
@@ -177,7 +186,7 @@ void main() {
 01001234567
 ''';
 
-    test('greetings, names, numbers and sign-offs are recognised as noise', () {
+    test('greetings, sign-offs and bare numbers are recognised as noise', () {
       final noise = matcher.match(message).where((l) => l.isNoise).map((l) => l.text);
 
       expect(noise, contains('السلام عليكم ورحمة الله'));

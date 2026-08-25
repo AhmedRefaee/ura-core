@@ -30,9 +30,14 @@ class RequestLine {
   /// Best first. Empty when nothing in the catalog scored at all.
   final List<ScoredItem> candidates;
 
-  /// True when not one word of this line appears anywhere in the catalog —
-  /// a greeting, a sign-off, a phone number. Nothing to match, and nothing
-  /// worth showing the verifier as a failure either.
+  /// True only when the line is clearly not a request at all: a greeting, a
+  /// sign-off, a phone number. Noise is dropped silently, so the test for it
+  /// is deliberately narrow.
+  ///
+  /// It used to be "no word of this line is in the catalog", which quietly
+  /// deleted every request for something not stocked — the sender asks for a
+  /// vacuum cleaner and nobody ever learns they asked. Showing a greeting as
+  /// an unmatched line costs one glance; losing a request costs an order.
   final bool isNoise;
 
   const RequestLine({
@@ -164,9 +169,46 @@ class LocalItemMatcher {
     return lines;
   }
 
+  /// Words that only ever appear in the wrapping around an order: greetings,
+  /// thanks, blessings, sign-offs. One of these is enough to call a line
+  /// conversation rather than a request.
+  static const _pleasantries = {
+    'السلام', 'عليكم', 'ورحمه', 'وبركاته', 'صباح', 'مساء', 'الخير', 'النور',
+    'شكرا', 'مشكور', 'مشكورين', 'تحياتي', 'جزاك', 'جزاكم', 'يعطيك', 'يعطيكم',
+    'العافيه', 'حياك', 'اهلا', 'مرحبا', 'تسلم', 'تسلمو', 'الله', 'وعليكم',
+  };
+
+  /// A line is only dropped when it is plainly not asking for anything: it
+  /// says thank you, or it contains no word that could name a product at all
+  /// (a bare phone number, a stray "٣ كرتون").
+  static bool _isNoise(List<String> tokens) {
+    // "وشكرا" is thanks with the conjunction glued on, same as everywhere else.
+    bool isPleasantry(String t) =>
+        _pleasantries.contains(t) ||
+        (t.length >= 4 &&
+            _proclitics.contains(t[0]) &&
+            _pleasantries.contains(t.substring(1)));
+
+    if (tokens.any(isPleasantry)) return true;
+    return !tokens.any(_isContentWord);
+  }
+
+  /// "المطلوب:" and "حابين نطلب التالي لو تكرمت:" introduce the list rather
+  /// than being part of it. A trailing colon is the one structural marker that
+  /// says so without having to guess at meaning.
+  static final _headerLine = RegExp(r':\s*$');
+
   RequestLine _matchLine(String text) {
     final tokens = ArabicText.tokenize(text);
     final quantity = _quantityIn(tokens);
+    if (_headerLine.hasMatch(text) || _isNoise(tokens)) {
+      return RequestLine(
+        text: text,
+        quantity: quantity,
+        candidates: const [],
+        isNoise: true,
+      );
+    }
 
     // Expand each line token to the catalog words it could be, once per line
     // rather than once per row — this is what keeps a 194-row scan cheap.
@@ -185,7 +227,7 @@ class LocalItemMatcher {
         text: text,
         quantity: quantity,
         candidates: const [],
-        isNoise: true,
+        isNoise: _isNoise(tokens),
       );
     }
 

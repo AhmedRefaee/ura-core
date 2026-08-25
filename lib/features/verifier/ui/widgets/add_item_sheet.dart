@@ -9,6 +9,7 @@ import '../../../../core/design_system/theme/theme.dart';
 import '../../../../core/di/injection.dart';
 import '../../logic/ai_add_item_cubit.dart';
 import 'paste_add_item_view.dart';
+import '../../../../shared/widgets/off_stock.dart';
 
 /// Shared widget for adding items to an order.
 /// Used by both CreateOrderScreen and EditOrderScreen.
@@ -289,7 +290,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     }
                   }),
                 ),
-                const Text('مخصص'),
+                Text(OffStock.label),
               ],
             ),
             SizedBox(height: AppSpacing.verticalLarge),
@@ -300,18 +301,18 @@ class _AddItemSheetState extends State<AddItemSheet> {
                   child: Container(
                     padding: AppSpacing.allSmall,
                     decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.1),
+                      color: OffStock.color.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                      border: Border.all(color: OffStock.color.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.swap_horiz, color: Colors.orange, size: 18),
+                        Icon(Icons.swap_horiz, color: OffStock.color, size: 18),
                         SizedBox(width: AppSpacing.horizontalSmall),
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'تم التحويل من صنف المخزون',
-                            style: TextStyle(fontSize: 12, color: Colors.orange),
+                            style: TextStyle(fontSize: 12, color: OffStock.color),
                           ),
                         ),
                         IconButton(
@@ -553,9 +554,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                   child: TextButton.icon(
                                     onPressed: () => _convertToCustom(item),
                                     icon: const Icon(Icons.swap_horiz, size: 16),
-                                    label: const Text('تحويل إلى صنف مخصص'),
+                                    label: Text('تحويل إلى ${OffStock.label}'),
                                     style: TextButton.styleFrom(
-                                      foregroundColor: Colors.orange,
+                                      foregroundColor: OffStock.color,
                                       padding: EdgeInsets.zero,
                                       visualDensity: VisualDensity.compact,
                                       textStyle: const TextStyle(fontSize: 12),
@@ -588,7 +589,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
           padding: AppSpacing.allLarge,
           child: FilledButton(
             onPressed: !_hasAnySelection ? null : _submit,
-            child: Text(_isCustom ? 'إضافة صنف مخصص' : 'إضافة الأصناف المحددة'),
+            child: Text(_isCustom ? 'إضافة ${OffStock.label}' : 'إضافة الأصناف المحددة'),
           ),
         ),
       ),

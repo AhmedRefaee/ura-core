@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'profile.dart';
+import 'off_stock_label.dart';
 
 enum ItemCheckStatus { pending, checked, rejected }
 
@@ -88,8 +89,8 @@ class OrderItem extends Equatable {
   String get displayName {
     if (!isCustom) return inventoryName ?? inventoryId ?? '';
     final json = customItemJson;
-    if (json != null) return json['name'] as String? ?? 'صنف مخصص';
-    return customDescription ?? 'صنف مخصص';
+    if (json != null) return json['name'] as String? ?? offStockLabel;
+    return customDescription ?? offStockLabel;
   }
 
   @override

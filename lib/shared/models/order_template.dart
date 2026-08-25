@@ -1,6 +1,7 @@
 import 'package:equatable/equatable.dart';
 import '../utils/quantity_format.dart';
 import 'order.dart';
+import 'off_stock_label.dart';
 
 class OrderTemplateItem extends Equatable {
   final String id;
@@ -24,7 +25,7 @@ class OrderTemplateItem extends Equatable {
   });
 
   String get displayName =>
-      isCustom ? (customDescription ?? 'صنف مخصص') : (inventoryName ?? '');
+      isCustom ? (customDescription ?? offStockLabel) : (inventoryName ?? '');
 
   factory OrderTemplateItem.fromMap(Map<String, dynamic> m) => OrderTemplateItem(
         id: m['id'] as String,

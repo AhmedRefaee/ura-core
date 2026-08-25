@@ -4,6 +4,7 @@ import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../../shared/widgets/off_stock.dart';
 import '../logic/edit_order_cubit.dart';
 import 'widgets/add_item_sheet.dart';
 import '../../../core/design_system/theme/theme.dart';
@@ -122,13 +123,24 @@ class EditOrderScreen extends StatelessWidget {
                               dense: true,
                               leading: Icon(
                                 draft.isCustom
-                                    ? Icons.shopping_bag_outlined
+                                    ? OffStock.icon
                                     : Icons.inventory_2_outlined,
-                                color: draft.isCustom ? Colors.orange : Colors.teal,
+                                color: draft.isCustom ? OffStock.color : Colors.teal,
                                 size: 20,
                               ),
                               title: Text(draft.displayName),
-                              subtitle: Text('الكمية: ${formatQty(draft.quantity)}'),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text('الكمية: ${formatQty(draft.quantity)}'),
+                                  if (draft.isCustom)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 2),
+                                      child: OffStock.badge(),
+                                    ),
+                                ],
+                              ),
                               trailing: Container(
                                 padding: EdgeInsets.symmetric(
                                     horizontal: AppSpacing.horizontalXSmall, vertical: AppSpacing.verticalXSmall),
@@ -320,8 +332,8 @@ class _EditableItemTile extends StatelessWidget {
       child: Row(
         children: [
           Icon(
-            item.isCustom ? Icons.shopping_bag_outlined : Icons.inventory_2_outlined,
-            color: item.isCustom ? Colors.orange : Colors.teal,
+            item.isCustom ? OffStock.icon : Icons.inventory_2_outlined,
+            color: item.isCustom ? OffStock.color : Colors.teal,
             size: 20,
           ),
           SizedBox(width: AppSpacing.horizontalSmall),
@@ -332,6 +344,11 @@ class _EditableItemTile extends StatelessWidget {
               children: [
                 SelectableText(item.displayName,
                     style: const TextStyle(fontWeight: FontWeight.w500)),
+                if (item.isCustom)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: OffStock.badge(),
+                  ),
                 if (invItem != null)
                   Text(
                     'المتوفر: ${formatQty(invItem.quantity)}',

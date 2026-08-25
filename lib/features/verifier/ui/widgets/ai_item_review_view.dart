@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/design_system/theme/theme.dart';
 import '../../../../shared/models/inventory_item.dart';
 import '../../logic/ai_add_item_cubit.dart';
+import '../../../../shared/widgets/off_stock.dart';
 
 /// Hands a finished review to the same two callbacks AddItemSheet's manual
 /// submit uses, so an AI-added item is indistinguishable from a hand-added
@@ -317,8 +318,8 @@ class _UnmatchedTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(unmatched.name, style: const TextStyle(fontWeight: FontWeight.w500)),
-                  Text('إضافة كصنف مخصص · ${unmatched.unit}',
-                      style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                  Text('إضافة كـ ${OffStock.label} · ${unmatched.unit}',
+                      style: TextStyle(fontSize: 12, color: OffStock.color)),
                 ],
               ),
             ),

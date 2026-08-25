@@ -4,6 +4,7 @@ import '../models/draft_order_item.dart';
 import '../models/inventory_item.dart';
 import '../models/order.dart';
 import '../utils/quantity_format.dart';
+import 'off_stock.dart';
 
 class DraftOrderItemsList extends StatelessWidget {
   final List<DraftOrderItem> items;
@@ -30,10 +31,27 @@ class DraftOrderItemsList extends StatelessWidget {
         ),
       );
     }
+    // Split by index, not by value, so onRemove keeps pointing at the right
+    // slot in the original list once the two groups are rendered separately.
+    final stockIndices = <int>[];
+    final offStockIndices = <int>[];
+    for (var i = 0; i < items.length; i++) {
+      (items[i].isCustom ? offStockIndices : stockIndices).add(i);
+    }
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (int i = 0; i < items.length; i++)
-          _buildItemTile(context, i, items[i]),
+        for (final i in stockIndices) _buildItemTile(context, i, items[i]),
+        if (offStockIndices.isNotEmpty)
+          OffStock.section(
+            count: offStockIndices.length,
+            child: Column(
+              children: [
+                for (final i in offStockIndices) _buildItemTile(context, i, items[i]),
+              ],
+            ),
+          ),
       ],
     );
   }
@@ -53,6 +71,11 @@ class DraftOrderItemsList extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text('الكمية: ${formatQty(item.quantity)}'),
+          if (item.isCustom)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: OffStock.badge(),
+            ),
           if (isOverStock)
             GestureDetector(
               onTap: () => Navigator.push(

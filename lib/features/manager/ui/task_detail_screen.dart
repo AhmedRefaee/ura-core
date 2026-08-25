@@ -9,6 +9,7 @@ import '../../../shared/models/order.dart';
 import '../../../shared/models/order_edit_log_entry.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../../shared/widgets/off_stock.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
@@ -441,11 +442,9 @@ class _ItemRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            item.isCustom
-                ? Icons.shopping_bag_outlined
-                : Icons.inventory_outlined,
+            item.isCustom ? OffStock.icon : Icons.inventory_outlined,
             size: 18,
-            color: item.isCustom ? Colors.orange : Colors.teal,
+            color: item.isCustom ? OffStock.color : Colors.teal,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -462,6 +461,11 @@ class _ItemRow extends StatelessWidget {
                       : 'الكمية: ${formatQty(item.quantity)}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
+                if (item.isCustom)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: OffStock.badge(),
+                  ),
                 if (!item.isCustom &&
                     item.wasUnavailableAtCreation &&
                     orderDirection == OrderDirection.outbound)

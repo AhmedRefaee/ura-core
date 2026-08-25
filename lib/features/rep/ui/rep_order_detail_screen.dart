@@ -6,6 +6,7 @@ import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../../shared/widgets/off_stock.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
@@ -350,10 +351,8 @@ class _ItemTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Icon(
-          item.isCustom
-              ? Icons.shopping_bag_outlined
-              : Icons.inventory_outlined,
-          color: item.isCustom ? Colors.orange : Colors.teal,
+          item.isCustom ? OffStock.icon : Icons.inventory_outlined,
+          color: item.isCustom ? OffStock.color : Colors.teal,
         ),
         title: Text(item.displayName),
         subtitle: Column(
@@ -361,6 +360,11 @@ class _ItemTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text('الكمية: ${formatQty(item.effectiveQuantity)}'),
+            if (item.isCustom)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: OffStock.badge(),
+              ),
             if (showWarning)
               Chip(
                 avatar: const Icon(

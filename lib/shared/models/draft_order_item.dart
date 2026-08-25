@@ -1,4 +1,5 @@
 import 'package:equatable/equatable.dart';
+import 'off_stock_label.dart';
 
 class DraftOrderItem extends Equatable {
   final String? inventoryId;
@@ -18,7 +19,7 @@ class DraftOrderItem extends Equatable {
   });
 
   String get displayName =>
-      isCustom ? (customDescription ?? 'صنف مخصص') : (inventoryName ?? '');
+      isCustom ? (customDescription ?? offStockLabel) : (inventoryName ?? '');
 
   Map<String, dynamic> toInsertMap() => {
         if (inventoryId != null) 'inventory_id': inventoryId,

@@ -5,6 +5,7 @@ import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../../shared/widgets/off_stock.dart';
 import '../../inventory/ui/inventory_form_screen.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
@@ -316,10 +317,8 @@ class _ItemTile extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  item.isCustom
-                      ? Icons.shopping_bag_outlined
-                      : Icons.inventory_outlined,
-                  color: item.isCustom ? Colors.orange : Colors.teal,
+                  item.isCustom ? OffStock.icon : Icons.inventory_outlined,
+                  color: item.isCustom ? OffStock.color : Colors.teal,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -355,6 +354,11 @@ class _ItemTile extends StatelessWidget {
               Text(
                 'الكمية: ${formatQty(effectiveQty)}',
                 style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            if (item.isCustom)
+              Padding(
+                padding: const EdgeInsets.only(top: 2, bottom: 2),
+                child: OffStock.badge(),
               ),
             if (showWarning)
               Chip(

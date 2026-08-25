@@ -87,7 +87,9 @@ class LocalItemMatcher {
 
     final total = inventory.length;
     for (final entry in _postings.entries) {
-      _idf[entry.key] = log((total + 1) / (entry.value.length + 1)) + 1;
+      // No floor: a token present in every row narrows nothing and must be
+      // worth nothing, or it caps every row's achievable coverage below 1.
+      _idf[entry.key] = log((total + 1) / (entry.value.length + 1));
     }
 
     for (final tokens in _itemTokens) {
@@ -98,8 +100,12 @@ class LocalItemMatcher {
   /// What a full match on this row is worth, so coverage can be a fraction of
   /// it. Distinct tokens only: a name that repeats a word shouldn't be harder
   /// to satisfy than one that doesn't.
-  double _weigh(List<String> tokens) =>
-      tokens.toSet().fold<double>(0, (sum, t) => sum + (_idf[t] ?? 0));
+  double _weigh(List<String> tokens) {
+    final weight = tokens.toSet().fold<double>(0, (sum, t) => sum + (_idf[t] ?? 0));
+    // A row whose every word is universal has nothing to distinguish it. Guard
+    // the division rather than letting it produce infinity.
+    return weight > 0 ? weight : 1;
+  }
 
   /// A token is worth matching only if it is a real word. Numbers are matched
   /// exactly and never fuzzily — 330 and 500 are one character apart and mean
@@ -113,9 +119,11 @@ class LocalItemMatcher {
     'ml', 'l', 'g', 'kg', 'gm', 'cc', 'سم', 'مم',
   };
 
-  /// A leading list marker: "1." "2)" "-" "•". Numbering is not a quantity, and
-  /// reading it as one turns a numbered list into escalating order sizes.
-  static final _listMarker = RegExp(r'^\s*(?:[-*•·]|\d{1,2}\s*[.)\]])\s*');
+  /// A leading list marker: "1." "2)" "3-" "-" "•". Numbering is not a
+  /// quantity, and reading it as one turns a numbered list into escalating
+  /// order sizes. "3-" is the form real senders actually use most, and it is
+  /// the most dangerous: without it, "1- ٥ بكت شاي" orders one, not five.
+  static final _listMarker = RegExp(r'^\s*(?:[-*•·]|\d{1,2}\s*[-.)\]])\s+');
 
   static final _quantityToken = RegExp(r'^\d+(?:[.,]\d+)?$');
 
@@ -175,6 +183,16 @@ class LocalItemMatcher {
       }
       if (matched <= 0) continue;
 
+      // A row has to share an actual product word, not just a number and a
+      // unit. "نسكافيه ذهبي ٢٠٠ جم" against "زعفران اسيانا - 2 جم" agrees on
+      // "2" and "جم" and on nothing that names a product — a coincidence of
+      // packaging, scored like a match. Sizes discriminate between rows that
+      // already share a name; on their own they mean nothing.
+      final sharesContent = itemTokens.any(
+        (t) => matchedVocab.containsKey(t) && _isContentWord(t),
+      );
+      if (!sharesContent) continue;
+
       // Two halves, and both matter. Coverage asks "did the line account for
       // this row?" — without it, "مياه" alone would match every water row
       // perfectly. Precision asks "did this row account for the line?" —
@@ -193,6 +211,28 @@ class LocalItemMatcher {
       isNoise: false,
     );
   }
+
+  /// How things are packed and counted. These words appear inside item names
+  /// ("170 مل كرتون - شد 48") *and* as the unit being ordered ("٦ كرتون"), so
+  /// they collide constantly between rows that share nothing else.
+  static const _packaging = {
+    'كرتون', 'كرتونة', 'علبة', 'علبه', 'كيس', 'بكت', 'باكيت', 'حبة', 'حبه',
+    'شد', 'شدة', 'شده', 'عبوة', 'عبوه', 'درزن', 'صندوق', 'زجاجة', 'زجاجه',
+    'ظرف', 'قطعة', 'قطعه', 'خيط',
+  };
+
+  /// Whether a token names something, as opposed to measuring or containing it.
+  /// Numbers, units and packaging are all shared by rows with nothing to do
+  /// with each other, so none of them can be the only evidence for a match.
+  ///
+  /// Safe even for the rows that genuinely sell containers: an order for
+  /// "علبة بلاستيك" still carries "بلاستيك", which is a real word about the
+  /// product.
+  static bool _isContentWord(String token) =>
+      token.length > 1 &&
+      !_numeric.hasMatch(token) &&
+      !_sizeUnits.contains(token) &&
+      !_packaging.contains(token);
 
   /// Catalog words this line word could be, each with how sure we are.
   Iterable<MapEntry<String, double>> _bestVocabMatches(String token) sync* {

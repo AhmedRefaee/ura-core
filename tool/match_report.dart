@@ -173,7 +173,11 @@ List<InventoryItem> _readInventory(File file) {
 
     String? at(int i) {
       if (i >= cells.length) return null;
-      return cells[i].isEmpty ? null : cells[i];
+      final cell = cells[i];
+      // Supabase exports SQL NULL as the four letters "null". Left alone it
+      // becomes a word on every row and pollutes the index.
+      if (cell.isEmpty || cell.toLowerCase() == 'null') return null;
+      return cell;
     }
 
     rows.add(InventoryItem(

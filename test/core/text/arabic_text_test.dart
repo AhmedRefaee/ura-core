@@ -57,6 +57,20 @@ void main() {
       expect(ArabicText.tokenize('مياه نوفا، 330 مل'), ['مياه', 'نوفا', '330', 'مل']);
     });
 
+    test('the definite article is dropped so ال is not a difference', () {
+      // A catalog row says "عصير المانجو"; the person ordering writes
+      // "عصير مانجو". Same product, and Arabic glues the article on with no
+      // space to separate it.
+      expect(ArabicText.tokenize('المانجو'), ArabicText.tokenize('مانجو'));
+      expect(ArabicText.tokenize('عصير التفاح'), ['عصير', 'تفاح']);
+      expect(ArabicText.tokenize('والقصيم'), ['قصيم']);
+    });
+
+    test('a short word keeps its ال rather than collapsing to nothing', () {
+      // "الله" must not become "له"; two letters left is not a word.
+      expect(ArabicText.tokenize('الله'), ['الله']);
+    });
+
     test('an empty or punctuation-only string has no tokens', () {
       expect(ArabicText.tokenize('   '), isEmpty);
       expect(ArabicText.tokenize('!!! ---'), isEmpty);

@@ -134,6 +134,13 @@ void main() {
       expect(lines.single.quantity, 4);
     });
 
+    test('a dash-numbered marker is not the quantity either', () {
+      // "1- ٥ بكت" is the form real senders use most, and the dangerous one:
+      // read the marker as the count and a five-pack order becomes one.
+      final lines = matcher.match('1- ٥ صابون لوكس');
+      expect(lines.single.quantity, 5);
+    });
+
     test('a bare numbered line still defaults to one', () {
       final lines = matcher.match('2) صابون لوكس');
       expect(lines.single.quantity, 1);

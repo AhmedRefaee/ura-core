@@ -64,11 +64,30 @@ class ArabicText {
         .trim();
   }
 
-  /// Folded words, in order, with empties dropped.
+  /// Folded words, in order, with empties dropped and the definite article
+  /// removed.
+  ///
+  /// Dropping "ال" matters more here than any other single rule. A catalog row
+  /// reads "عصير المانجو" and the person ordering writes "عصير مانجو"; those are
+  /// the same product and, without this, not the same token. Arabic attaches
+  /// the article to the word rather than standing it apart, so unlike English
+  /// there is no whitespace to save us.
   static List<String> tokenize(String input) {
     final normalized = normalize(input);
     if (normalized.isEmpty) return const [];
-    return normalized.split(' ').where((t) => t.isNotEmpty).toList();
+    return [
+      for (final token in normalized.split(' '))
+        if (token.isNotEmpty) _stripArticle(token),
+    ];
+  }
+
+  /// Removes a leading "ال" (or "وال") when enough word is left to still mean
+  /// something. The length floor is what stops "الله" becoming "له" and short
+  /// words collapsing into each other.
+  static String _stripArticle(String word) {
+    if (word.length >= 6 && word.startsWith('وال')) return word.substring(3);
+    if (word.length >= 5 && word.startsWith('ال')) return word.substring(2);
+    return word;
   }
 
   /// How alike two folded words are, 0 to 1, by shared character trigrams.

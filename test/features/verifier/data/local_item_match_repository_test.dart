@@ -111,6 +111,44 @@ void main() {
     expect(result.unmatched, isEmpty);
   });
 
+  test('an English word offers a choice across brands, just like Arabic would',
+      () async {
+    const greenTeaA = InventoryItem(
+      id: 'tea-a',
+      itemName: 'احمد شاي اخضر',
+      quantity: 30,
+      unit: 'بكت',
+      category: 'شاي',
+    );
+    const greenTeaB = InventoryItem(
+      id: 'tea-b',
+      itemName: 'الربيع شاي اخضر',
+      quantity: 30,
+      unit: 'بكت',
+      category: 'شاي',
+    );
+    // water330/soap are unrelated filler: with only the two tea rows, both
+    // sharing every discriminating word, IDF correctly zeroes them out as
+    // uninformative and nothing would score at all — an artifact of the
+    // fixture, not of English matching, so give it a normal-shaped catalog.
+    final result = await LocalItemMatchRepository()
+        .matchText('green tea', [greenTeaA, greenTeaB, water330, soap]);
+    final data = (result as AppSuccess<ItemMatchResult>).data;
+
+    expect(data.matches, isEmpty, reason: 'must not pick a brand silently');
+    expect(data.ambiguous.single.candidateItemIds,
+        containsAll(['tea-a', 'tea-b']));
+  });
+
+  test('an English word for a product genuinely absent from the catalog keeps the sender\'s wording',
+      () async {
+    final result = await match('nescafe');
+
+    expect(result.matches, isEmpty);
+    expect(result.ambiguous, isEmpty);
+    expect(result.unmatched.single.text, 'nescafe');
+  });
+
   test('several items in one message are each resolved on their own', () async {
     final result = await match('''
 3 كرتونة مياه نوفا 330 مل

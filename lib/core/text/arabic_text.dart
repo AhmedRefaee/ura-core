@@ -21,6 +21,15 @@ class ArabicText {
   /// to sprinkle through a forwarded message all fall out here.
   static final _separators = RegExp('[^ء-يa-z0-9]+');
 
+  /// Boundary between a digit and a Latin letter, in either direction —
+  /// "30kg", "2crt", "3days", "4M" fuse the two with nothing for [_separators]
+  /// to catch, since both sides belong to its "keep" class. Deliberately does
+  /// NOT touch digit↔Arabic-letter boundaries — no evidence of that fusion in
+  /// real messages, and touching it risks the well-tested Arabic path for no
+  /// observed benefit.
+  static final _digitLetterBoundary =
+      RegExp(r'(?<=[0-9])(?=[a-z])|(?<=[a-z])(?=[0-9])');
+
   static const _letterFolds = {
     // Every alef with a seat, plus alef wasla, folds to bare alef.
     'آ': 'ا', // آ
@@ -60,6 +69,7 @@ class ArabicText {
     return buffer
         .toString()
         .replaceAll(_diacritics, '')
+        .replaceAllMapped(_digitLetterBoundary, (_) => ' ')
         .replaceAll(_separators, ' ')
         .trim();
   }

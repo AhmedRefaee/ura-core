@@ -116,6 +116,50 @@ void main() {
     test('a line with no word that could name a product is noise', () {
       expect(matcher.match('01001234567').single.isNoise, isTrue);
     });
+
+    test('headers wrapped in asterisks are noise, but a bolded real order is not',
+        () {
+      final result = matcher.match('*Order for weekly*\n1/ 3 صابون لوكس');
+
+      expect(result.first.isNoise, isTrue);
+      expect(result.last.isNoise, isFalse);
+      expect(result.last.best?.item, soap);
+    });
+
+    test('a fully-bolded real product line is not mistaken for a header', () {
+      final line = only('*3 صابون لوكس*');
+
+      expect(line.isNoise, isFalse);
+      expect(line.best!.item, soap);
+    });
+
+    test('a header is still noise even when a stray number coincides with a catalog token',
+        () {
+      // "3days" splits into "3"+"days" (the digit/letter boundary fix). If
+      // some unrelated row's name happens to contain a bare "3" (real
+      // catalog example: "...مقاس 3"), that exact-matches and makes
+      // matchedVocab non-empty — but a number alone can never pass the
+      // sharesContent gate, so real scoring still finds nothing. The header
+      // check has to be judged by that outcome, not by whether any
+      // vocabulary overlapped at all before scoring ran.
+      const plateSize3 = InventoryItem(
+        id: 'plate-3',
+        itemName: 'صحن ورق كرافت مقاس 3',
+        quantity: 50,
+        unit: 'كرتون',
+        category: 'ادوات تقديم',
+      );
+      final withCollision = LocalItemMatcher([...inventory, plateSize3]);
+
+      final line = withCollision
+          .match('*Order for 3days*')
+          .where((l) => !l.isNoise)
+          .toList();
+
+      // Would be non-empty and misreported as "nothing in the catalog" under
+      // the old matchedVocab.isEmpty check; must be noise instead.
+      expect(line, isEmpty);
+    });
   });
 
   group('quantities', () {
@@ -150,6 +194,15 @@ void main() {
       expect(lines.single.quantity, 5);
     });
 
+    test('a slash-numbered marker is not the quantity either', () {
+      // Common in English-language messages ("1/ item"). Deliberately using
+      // different digits for the marker and the real count — "9/ 3 كرتون"
+      // means 9 was a marker and 3 the count; if the marker leaked, it would
+      // read as 9, and a test built on equal digits couldn't catch that.
+      final lines = matcher.match('9/ 3 كرتون صابون لوكس');
+      expect(lines.single.quantity, 3);
+    });
+
     test('a weight before the product is a count, after it is a size', () {
       // Identical shape, opposite meaning. What separates them is whether a
       // product has been named yet.
@@ -171,6 +224,154 @@ void main() {
     test('a bare numbered line still defaults to one', () {
       final lines = matcher.match('2) صابون لوكس');
       expect(lines.single.quantity, 1);
+    });
+
+    test('an English packaging count is recognised, once split', () {
+      expect(only('2crt صابون لوكس').quantity, 2);
+    });
+
+    test('an English weight unit before the product is a count', () {
+      expect(only('3kg صابون لوكس').quantity, 3);
+    });
+
+    test('an English hedge word does not get counted as the product', () {
+      expect(only('please 2 kg صابون لوكس').quantity, 2);
+    });
+  });
+
+  group('English and bilingual input', () {
+    // Styled after the real catalog's coffee/tea/milk rows, which is what
+    // exposed the cross-department alias collisions this table now excludes.
+    const darkCoffee = InventoryItem(
+      id: 'coffee-dark',
+      itemName: 'بن هرري محمص غامق',
+      quantity: 20,
+      unit: 'كجم',
+      category: 'قهوة',
+    );
+    const arabicaBeans = InventoryItem(
+      id: 'coffee-beans',
+      itemName: 'حبوب قهوة ارابيكا',
+      quantity: 20,
+      unit: 'كجم',
+      category: 'قهوة',
+    );
+    const greenTeaAhmad = InventoryItem(
+      id: 'tea-green-ahmad',
+      itemName: 'احمد شاي اخضر',
+      quantity: 30,
+      unit: 'بكت',
+      category: 'شاي',
+    );
+    const greenTeaRabie = InventoryItem(
+      id: 'tea-green-rabie',
+      itemName: 'الربيع شاي اخضر',
+      quantity: 30,
+      unit: 'بكت',
+      category: 'شاي',
+    );
+    const redTeaTwinings = InventoryItem(
+      id: 'tea-red-twinings',
+      itemName: 'توينجز شاي احمر',
+      quantity: 30,
+      unit: 'بكت',
+      category: 'شاي',
+    );
+    const bonnySachet = InventoryItem(
+      id: 'milk-bonny-sachet',
+      itemName: 'حليب بوني شفرات',
+      quantity: 40,
+      unit: 'كرتون',
+      category: 'البان',
+    );
+    const bonnyCarton = InventoryItem(
+      id: 'milk-bonny-carton',
+      itemName: 'حليب بوني كامل الدسم',
+      quantity: 40,
+      unit: 'علبة',
+      category: 'البان',
+    );
+    const plate = InventoryItem(
+      id: 'plate-big',
+      itemName: 'صحن بلاستيك مستطيل كبير',
+      quantity: 100,
+      unit: 'كرتون',
+      category: 'ادوات تقديم',
+    );
+
+    final bilingualInventory = [
+      darkCoffee, arabicaBeans, greenTeaAhmad, greenTeaRabie, redTeaTwinings,
+      bonnySachet, bonnyCarton, plate,
+    ];
+    final bilingualMatcher = LocalItemMatcher(bilingualInventory);
+
+    RequestLine onlyOf(String message) {
+      final lines =
+          bilingualMatcher.match(message).where((l) => !l.isNoise).toList();
+      expect(lines, hasLength(1), reason: 'expected exactly one real line');
+      return lines.single;
+    }
+
+    test('a bare English category word stays broadly ambiguous, like its Arabic equivalent', () {
+      final line = onlyOf('coffee');
+
+      expect(line.candidates.length, greaterThanOrEqualTo(2));
+      expect(line.best!.score, lessThan(0.7));
+    });
+
+    test('green tea matches every green-tea row, ambiguously', () {
+      final line = onlyOf('green tea');
+
+      expect(line.candidates.map((c) => c.item.id),
+          containsAll(['tea-green-ahmad', 'tea-green-rabie']));
+    });
+
+    test('red tea resolves confidently — only one row is both red and tea', () {
+      expect(onlyOf('red tea').best!.item, redTeaTwinings);
+    });
+
+    test('a brand plus product narrows an otherwise-ambiguous English noun', () {
+      final line = onlyOf('bonny milk');
+
+      expect(line.candidates.map((c) => c.item.id),
+          containsAll(['milk-bonny-sachet', 'milk-bonny-carton']));
+    });
+
+    test('case does not matter for English tokens', () {
+      expect(onlyOf('COFFEE').candidates, isNotEmpty);
+      expect(onlyOf('Coffee').candidates.length,
+          onlyOf('coffee').candidates.length);
+    });
+
+    test('a product genuinely absent from the catalog has no candidates', () {
+      // Deliberately excludes "coffee mate": it shares the word "coffee",
+      // which is a correct alias needed for "Black coffee"/"coffee beans" to
+      // work — so it legitimately surfaces low-score coffee suggestions
+      // rather than nothing. That's safe (well under the 0.65 auto-accept
+      // threshold, never silently added), just not literally empty.
+      for (final query in [
+        'nescafe',
+        'nespresso capsule',
+        'cardamom',
+        'water',
+        'fresh fruit',
+      ]) {
+        expect(bilingualMatcher.match(query).single.candidates, isEmpty,
+            reason: query);
+      }
+    });
+
+    test('a line sharing only a loose word gets low-confidence suggestions, never a silent match', () {
+      final line = onlyOf('coffee mate');
+      expect(line.candidates, isNotEmpty);
+      expect(line.best!.score, lessThan(0.65));
+    });
+
+    test('an unrelated adjective does not pull in a wrong department', () {
+      // "big" must not surface the plate row for an unrelated request — no
+      // cup product exists, so this must fall through to unmatched.
+      final line = onlyOf('only curve big cups');
+      expect(line.candidates, isEmpty);
     });
   });
 

@@ -40,8 +40,22 @@ void main() {
       expect(ArabicText.normalize('  مياه   نوفا \n\n 330  '), 'مياه نوفا 330');
     });
 
-    test('Latin is lowercased and kept', () {
-      expect(ArabicText.normalize('Nova Water 500ML'), 'nova water 500ml');
+    test('Latin is lowercased, and a digit/letter boundary is inserted', () {
+      // "500ml" fused would be invisible to quantity detection downstream —
+      // neither a bare number nor a bare unit word.
+      expect(ArabicText.normalize('Nova Water 500ML'), 'nova water 500 ml');
+    });
+
+    test('a digit/letter boundary splits in either direction', () {
+      expect(ArabicText.normalize('30kg'), '30 kg');
+      expect(ArabicText.normalize('3days'), '3 days');
+    });
+
+    test('Arabic-letter/digit fusion is left alone', () {
+      // Deliberate scope boundary: only Latin letters get a digit boundary.
+      // No evidence real messages fuse a digit directly onto an Arabic word
+      // the way "30kg" fuses onto a Latin one.
+      expect(ArabicText.normalize('٣كجم'), '3كجم');
     });
 
     test('the two spellings a rep actually types collapse together', () {
@@ -74,6 +88,18 @@ void main() {
     test('an empty or punctuation-only string has no tokens', () {
       expect(ArabicText.tokenize('   '), isEmpty);
       expect(ArabicText.tokenize('!!! ---'), isEmpty);
+    });
+
+    test('a fused Latin quantity and unit split into two tokens', () {
+      // Otherwise "30kg" is invisible to quantity detection: it's neither a
+      // bare number nor a bare unit word, just one opaque blob.
+      expect(ArabicText.tokenize('2crt'), ['2', 'crt']);
+      expect(ArabicText.tokenize('5bag'), ['5', 'bag']);
+    });
+
+    test('a fused Arabic-Indic digit and Arabic word stays one token', () {
+      // Locks in the deliberate scope boundary: only Latin fusion is split.
+      expect(ArabicText.tokenize('٣كجم'), ['3كجم']);
     });
   });
 

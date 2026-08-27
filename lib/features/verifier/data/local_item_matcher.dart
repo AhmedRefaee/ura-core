@@ -2,6 +2,7 @@ import 'dart:math';
 
 import '../../../core/text/arabic_text.dart';
 import '../../../shared/models/inventory_item.dart';
+import 'english_alias.dart';
 
 /// One inventory row this matcher thinks a request line might mean.
 class ScoredItem {
@@ -139,11 +140,12 @@ class LocalItemMatcher {
     'ml', 'l', 'g', 'kg', 'gm', 'cc', 'سم', 'مم',
   };
 
-  /// A leading list marker: "1." "2)" "3-" "-" "•". Numbering is not a
+  /// A leading list marker: "1." "2)" "3-" "1/" "-" "•". Numbering is not a
   /// quantity, and reading it as one turns a numbered list into escalating
   /// order sizes. "3-" is the form real senders actually use most, and it is
   /// the most dangerous: without it, "1- ٥ بكت شاي" orders one, not five.
-  static final _listMarker = RegExp(r'^\s*(?:[-*•·]|\d{1,2}\s*[-.)\]])\s+');
+  /// "1/" is just as common in English-language messages.
+  static final _listMarker = RegExp(r'^\s*(?:[-*•·]|\d{1,2}\s*[-./)\]])\s+');
 
   static final _quantityToken = RegExp(r'^\d+(?:[.,]\d+)?$');
 
@@ -198,6 +200,14 @@ class LocalItemMatcher {
   /// says so without having to guess at meaning.
   static final _headerLine = RegExp(r':\s*$');
 
+  /// "*Order for weekly*" — a whole line WhatsApp-bolded as a section title,
+  /// not a request. Deliberately more conservative than [_headerLine]: unlike
+  /// a colon, a sender routinely bolds an entire REAL product line too
+  /// ("*Red tea 2crt*"), and misreading that as a header silently drops an
+  /// order — the one failure this design can't tolerate. See where this is
+  /// used in [_matchLine]: only once the line has already matched nothing.
+  static final _wrappedHeaderLine = RegExp(r'^\*.+\*$');
+
   RequestLine _matchLine(String text) {
     final tokens = ArabicText.tokenize(text);
     final quantity = _quantityIn(tokens);
@@ -220,15 +230,6 @@ class LocalItemMatcher {
           matchedVocab[entry.key] = entry.value;
         }
       }
-    }
-
-    if (matchedVocab.isEmpty) {
-      return RequestLine(
-        text: text,
-        quantity: quantity,
-        candidates: const [],
-        isNoise: _isNoise(tokens),
-      );
     }
 
     final touched = <int>{};
@@ -284,7 +285,15 @@ class LocalItemMatcher {
       text: text,
       quantity: quantity,
       candidates: scored.take(8).toList(),
-      isNoise: false,
+      // Checked here, after real scoring, not against `matchedVocab.isEmpty`
+      // beforehand: a header can contain a bare number that happens to be an
+      // exact token inside some unrelated row's name (e.g. "3days" splits to
+      // "3", which is also "...مقاس 3"'s size token) — that gives matchedVocab
+      // a hit, but a purely numeric token can never pass the sharesContent
+      // gate above, so `scored` still ends up empty. Gating on the actual
+      // outcome, not a step along the way, is what catches this.
+      isNoise: scored.isEmpty &&
+          (_wrappedHeaderLine.hasMatch(text) || _isNoise(tokens)),
     );
   }
 
@@ -295,6 +304,25 @@ class LocalItemMatcher {
     'كرتون', 'كرتونة', 'علبة', 'علبه', 'كيس', 'بكت', 'باكيت', 'حبة', 'حبه',
     'شد', 'شدة', 'شده', 'عبوة', 'عبوه', 'درزن', 'صندوق', 'زجاجة', 'زجاجه',
     'ظرف', 'قطعة', 'قطعه', 'خيط',
+    // English packaging/count units. 'cartoon' is a literal misspelling seen
+    // in real messages ("30 cartoon water") — added as its own entry, not
+    // fuzzy-tolerated, since no fuzzy fallback applies to unit words.
+    'carton', 'cartoon', 'ctn', 'crt',
+    'bag', 'bags', 'sack', 'sacks',
+    'pack', 'pk', 'packet', 'packets',
+    'box', 'boxes', 'bottle', 'bottles', 'btl',
+    'piece', 'pieces', 'pc', 'pcs',
+  };
+
+  /// English hedge/filler words. Must never flip `namedSomething` true in
+  /// [_quantityIn] — "please 2 kg سكر" must still read as a 2kg count, not a
+  /// size, just because "please" came first — but must NOT go in
+  /// [_pleasantries]: a line that also carries a real (even if unmatched)
+  /// product word is a request, not noise, and dropping it silently is the
+  /// one failure mode this whole feature exists to avoid.
+  static const _englishFillers = {
+    'only', 'just', 'please', 'pls', 'plz', 'kindly', 'also',
+    'the', 'a', 'an', 'for', 'of', 'to', 'and',
   };
 
   /// Whether a token names something, as opposed to measuring or containing it.
@@ -308,7 +336,8 @@ class LocalItemMatcher {
       token.length > 1 &&
       !_numeric.hasMatch(token) &&
       !_sizeUnits.contains(token) &&
-      !_packaging.contains(token);
+      !_packaging.contains(token) &&
+      !_englishFillers.contains(token);
 
   /// Catalog words this line word could be, each with how sure we are.
   Iterable<MapEntry<String, double>> _bestVocabMatches(String token) sync* {
@@ -332,6 +361,24 @@ class LocalItemMatcher {
         return;
       }
     }
+
+    // An English word for a concept the catalog only writes in Arabic.
+    // "coffee" must reach the same rows "قهوة" already does — several,
+    // ambiguously — not one row hand-picked for it. Checked before the
+    // length/numeric guard below: that guard exists to protect the fuzzy
+    // trigram fallback from short-string false positives, and has nothing to
+    // do with an exact dictionary lookup — "tea" (length 3) must still
+    // resolve. Every alias target is matched via an exact postings check,
+    // never by lowering the fuzzy threshold.
+    var aliasedAny = false;
+    for (final vocab in EnglishAlias.arabicFor(token)) {
+      if (_postings.containsKey(vocab)) {
+        yield MapEntry(vocab, 1);
+        aliasedAny = true;
+      }
+    }
+    if (aliasedAny) return;
+
     // A number that isn't in the catalog is a quantity, not a misspelt size.
     if (_numeric.hasMatch(token) || token.length < 4) return;
 

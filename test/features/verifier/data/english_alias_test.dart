@@ -36,16 +36,74 @@ void main() {
   });
 
   group('must stay empty — no such product in the catalog', () {
-    test('unstocked coffee-adjacent brands resolve to nothing', () {
-      for (final word in ['nescafe', 'nespresso', 'coffeemate']) {
+    // This test used to assert that nescafe, nespresso and coffeemate resolve
+    // to nothing. All three are stocked — نسكافي، كبسولات نسبرسو، كوفي ميت —
+    // and were simply absent from the 99-row export the list was first vetted
+    // against. What genuinely is not carried is the coffee brand nobody asked
+    // for by a name we hold.
+    test('a brand the catalogue does not carry resolves to nothing', () {
+      for (final word in ['starbucks', 'illy', 'lavazza']) {
         expect(EnglishAlias.arabicFor(word), isEmpty, reason: word);
       }
     });
 
+    test('«كوفي» is not aliased despite كوفي ميت being stocked', () {
+      // It sits on filters, coffee, tea and chocolate rows. Only «ميت», which
+      // is unique to the one row, carries the coffeemate lookup.
+      expect(EnglishAlias.arabicFor('coffeemate'), ['ميت']);
+      expect(EnglishAlias.arabicFor('coffeemate'), isNot(contains('كوفي')));
+    });
+
     test('unstocked products resolve to nothing', () {
-      for (final word in ['cardamom', 'water', 'curve', 'fruit']) {
+      // 'cardamom' and 'water' used to be asserted here too, on the belief
+      // that neither was carried. Both were in the catalogue all along —
+      // missing only from the 99-row export this list was first vetted
+      // against. 'curve' (a cup brand nobody stocks) and 'fruit' stay.
+      for (final word in ['curve', 'fruit', 'pepsi', 'ice']) {
         expect(EnglishAlias.arabicFor(word), isEmpty, reason: word);
       }
+    });
+  });
+
+  // Every one of these came from a real request line that previously matched
+  // nothing at all. Each target was checked against the full 195-row export
+  // and appears in exactly one category, so none can pull a wrong-department
+  // row — the vetting rule english_alias.dart sets out.
+  group('English words for things that are stocked', () {
+    test('product nouns resolve to the catalogue word', () {
+      expect(EnglishAlias.arabicFor('cardamom'), contains('هيل'));
+      expect(EnglishAlias.arabicFor('cups'), contains('كاسات'));
+      expect(EnglishAlias.arabicFor('capsule'), contains('كبسولات'));
+      expect(EnglishAlias.arabicFor('filter'), contains('فلتر'));
+      expect(EnglishAlias.arabicFor('plates'), contains('صحن'));
+    });
+
+    test('water resolves despite the catalogue spelling it مياة', () {
+      // Normalisation folds ة to ه, so the stored spelling and the one a
+      // customer types are the same token by the time they are compared.
+      expect(EnglishAlias.arabicFor('water'), isNotEmpty);
+    });
+
+    test('singular and plural both resolve', () {
+      for (final pair in [
+        ['cup', 'cups'],
+        ['plate', 'plates'],
+        ['spoon', 'spoons'],
+        ['fork', 'forks'],
+      ]) {
+        expect(EnglishAlias.arabicFor(pair[0]), isNotEmpty, reason: pair[0]);
+        expect(EnglishAlias.arabicFor(pair[1]), isNotEmpty, reason: pair[1]);
+      }
+    });
+
+    test('brand transliterations resolve, misspellings included', () {
+      expect(EnglishAlias.arabicFor('nespresso'), contains('نسبرسو'));
+      // The spelling a real sender actually used.
+      expect(EnglishAlias.arabicFor('nespersso'), contains('نسبرسو'));
+      expect(EnglishAlias.arabicFor('nesscafe'), contains('نسكافي'));
+      expect(EnglishAlias.arabicFor('lipton'), contains('ليبتون'));
+      expect(EnglishAlias.arabicFor('nova'), contains('نوفا'));
+      expect(EnglishAlias.arabicFor('kitkat'), containsAll(['كيت', 'كات']));
     });
   });
 

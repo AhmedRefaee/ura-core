@@ -58,6 +58,32 @@ void main() {
       expect(row, startsWith('1|'));
     });
 
+    // Sending these grew the block 27% per request for no demonstrated gain,
+    // so they were taken back out. This pins that they stay out: the columns
+    // are for the inventory screens and the no-duplicates rule, not for every
+    // AI call.
+    test('brand, variety and packaging are not sent to the model', () {
+      const milk = InventoryItem(
+        id: 'id-milk',
+        itemName: 'حليب المراعي 1 لتر',
+        quantity: 5,
+        unit: 'كرتون',
+        category: 'ألبان',
+        brand: 'المراعي',
+        variety: 'كامل الدسم',
+        packagingSize: 12,
+        packagingSizeUnit: 'حبة',
+      );
+
+      final block = ItemMatchCatalog.of([milk]).block;
+
+      expect(block.split('\n')[1].split('|').length, 5);
+      expect(block, isNot(contains('كامل الدسم')));
+      expect(block, isNot(contains('12 حبة')));
+      // The brand is still visible, but only because it is part of the name.
+      expect(block, contains('حليب المراعي 1 لتر'));
+    });
+
     test('is byte-identical for the same inventory, so it can be cached', () {
       expect(
         ItemMatchCatalog.of([water330, soap]).block,

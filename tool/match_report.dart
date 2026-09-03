@@ -3,7 +3,10 @@
 //   dart run tool/match_report.dart
 //
 // Reads:
-//   tool/fixtures/inventory.csv   name,unit,category,sku  (header optional)
+//   tool/fixtures/inventory.csv   name,unit,category,sku,brand,variety,
+//                                 packaging_size,packaging_size_unit,aliases
+//                                 (header optional; everything after sku is
+//                                 optional, and aliases are "/"-separated)
 //   tool/fixtures/messages/*.txt  one real request per file
 //
 // No Flutter, no Firebase, no network, no API key, no cost. That is the whole
@@ -194,12 +197,22 @@ List<InventoryItem> _readInventory(File file) {
       return cell;
     }
 
+    // Columns 4 onward are optional, so an older four-column fixture still
+    // loads -- it just reports what the matcher could do before the 2026-09-02
+    // backfill, which is exactly the comparison this tool is for.
+    final packaging = at(6);
+    final aliases = at(8);
     rows.add(InventoryItem(
       id: 'row-${rows.length + 1}',
       itemName: name,
       unit: at(1) ?? 'قطعة',
       category: at(2),
       sku: at(3),
+      brand: at(4),
+      variety: at(5),
+      packagingSize: packaging == null ? null : double.tryParse(packaging),
+      packagingSizeUnit: at(7),
+      aliases: aliases?.split('/').map((a) => a.trim()).where((a) => a.isNotEmpty).toList(),
       quantity: 0,
     ));
   }

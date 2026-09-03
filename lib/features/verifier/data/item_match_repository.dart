@@ -6,9 +6,12 @@ import '../../../shared/models/item_match_result.dart';
 /// returning only matches backed by real inventory rows plus anything it
 /// couldn't place.
 ///
-/// Two implementations exist for one reason: the direct one talks to Gemini
-/// from the device, and the edge one goes through Supabase. See
-/// `DirectItemMatchRepository` for which is wired and why the other is kept.
+/// Several implementations exist: `LocalItemMatchRepository` matches
+/// on-device with no network call, `DirectItemMatchRepository` talks to
+/// Gemini from the device, `EdgeItemMatchRepository` goes through Supabase,
+/// and `HybridItemMatchRepository` composes local-first with a Gemini
+/// fallback for whatever local couldn't place. See `injection.dart` for
+/// which is currently wired.
 abstract class ItemMatchRepository {
   /// Sends a pasted written request — typically a WhatsApp message forwarded
   /// from someone at an outside entity.

@@ -37,6 +37,13 @@ class ItemMatchCatalog {
     return ItemMatchCatalog._([_header, ...lines].join('\n'), ids);
   }
 
+  // brand, variety and packaging are deliberately NOT sent. They were added on
+  // 2026-09-02 and removed the same day: they grew this block by 27% on every
+  // request, and the benefit was never demonstrated — the offline report showed
+  // no change at all locally, and nothing measured the model side. The columns
+  // still exist and are used by the inventory screens and the no-duplicates
+  // rule; they just do not ride along on every AI call. Don't re-add them
+  // without a measurement showing the model answers better with them.
   static const _header =
       'Inventory — one item per line, as ref|name|unit|category|sku:';
 

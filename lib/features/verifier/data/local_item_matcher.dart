@@ -85,6 +85,22 @@ class LocalItemMatcher {
   /// exactly and completely scored 0.34.
   final List<List<String>> _extraTokens = [];
 
+  /// Other words that name this same product: the `aliases` column, plus
+  /// `brand` and `variety`.
+  ///
+  /// These score at full strength, like name words — an alias IS a name — but
+  /// they are deliberately kept out of [_nameWeight]. Coverage asks "did the
+  /// line account for this row?", and a sender who names the row correctly by
+  /// its real name must not be marked down for failing to also say the alias.
+  /// Putting them in the denominator would make every alias added to a row
+  /// quietly make that row harder to match.
+  ///
+  /// Brand and variety were extracted FROM the names, so most of their tokens
+  /// are already in [_nameTokens] and add nothing here — they are included for
+  /// the rows where that is not true (`بشعار بنك المنشآت`) and to stay correct
+  /// if names are ever shortened.
+  final List<List<String>> _aliasTokens = [];
+
   final List<double> _nameWeight = [];
 
   /// What a category or SKU hit is worth next to a name hit.
@@ -96,12 +112,16 @@ class LocalItemMatcher {
       // The unit is deliberately excluded: "كرتونة" is how it is sold, not what
       // it is, and including it makes every row look alike.
       final name = ArabicText.tokenize(row.itemName);
+      final alias = ArabicText.tokenize(
+        [...?row.aliases, row.brand ?? '', row.variety ?? ''].join(' '),
+      ).where((t) => !name.contains(t)).toList();
       final extra = ArabicText.tokenize('${row.category ?? ''} ${row.sku ?? ''}')
-          .where((t) => !name.contains(t))
+          .where((t) => !name.contains(t) && !alias.contains(t))
           .toList();
       _nameTokens.add(name);
+      _aliasTokens.add(alias);
       _extraTokens.add(extra);
-      for (final token in {...name, ...extra}) {
+      for (final token in {...name, ...alias, ...extra}) {
         _postings.putIfAbsent(token, () => <int>{}).add(i);
       }
     }
@@ -154,9 +174,18 @@ class LocalItemMatcher {
   static const _proclitics = {'و', 'ف', 'ب', 'ل', 'ك'};
 
   /// Senders put several items on one line separated by a comma as often as
-  /// by a newline. Deliberately not splitting on "و" as well: it is a letter
-  /// that begins real words, and splitting on it would cut names in half.
-  static final _inlineSeparators = RegExp(r'[،؛;]|,(?=\s)');
+  /// by a newline -- and just as often with "و" ("and") instead: "مناديل
+  /// فاخرة و٣ كراتين مياه نوفا" is two items, not one. Splitting on every "و"
+  /// would cut real words in half, since Arabic glues the conjunction onto
+  /// the next word with no space when it means "and X" as a prefix
+  /// ("وحليب المراعي") -- that form is deliberately left alone. What is safe
+  /// to split on is a "و" that is its own token: preceded by whitespace (or
+  /// the start of the line) AND followed by whitespace, a digit, or the end
+  /// of the line. A digit can never be part of an Arabic word, so "و٣" glued
+  /// with no space is just as unambiguous as "و ٣" with one -- both are
+  /// "and 3", never a word starting with و immediately followed by a number.
+  static final _inlineSeparators =
+      RegExp(r'[،؛;]|,(?=\s)|(?<=\s|^)و(?=\s|[0-9٠-٩]|$)');
 
   /// Splits [message] into request lines and ranks the catalog against each.
   List<RequestLine> match(String message) {
@@ -250,6 +279,10 @@ class LocalItemMatcher {
         final strength = matchedVocab[token];
         if (strength != null) matched += _idf[token]! * strength;
       }
+      for (final token in _aliasTokens[index].toSet()) {
+        final strength = matchedVocab[token];
+        if (strength != null) matched += _idf[token]! * strength;
+      }
       for (final token in _extraTokens[index].toSet()) {
         final strength = matchedVocab[token];
         if (strength != null) {
@@ -263,7 +296,11 @@ class LocalItemMatcher {
       // "2" and "جم" and on nothing that names a product — a coincidence of
       // packaging, scored like a match. Sizes discriminate between rows that
       // already share a name; on their own they mean nothing.
-      final sharesContent = nameTokens.any(
+      // Aliases count here too. An alias is a name, so a line that matched a
+      // row only through one ("nova" for مياه نوفا) has shared a real product
+      // word — checking name tokens alone would drop exactly the rows aliases
+      // exist to rescue.
+      final sharesContent = [...nameTokens, ..._aliasTokens[index]].any(
         (t) => matchedVocab.containsKey(t) && _isContentWord(t),
       );
       if (!sharesContent) continue;
@@ -300,10 +337,28 @@ class LocalItemMatcher {
   /// How things are packed and counted. These words appear inside item names
   /// ("170 مل كرتون - شد 48") *and* as the unit being ordered ("٦ كرتون"), so
   /// they collide constantly between rows that share nothing else.
+  ///
+  /// Plurals are listed separately from their singulars ("كراتين" next to
+  /// "كرتون", "عبوات" next to "عبوة") rather than derived, since Arabic plural
+  /// formation is irregular and there is no cheap rule that gets them all
+  /// right. A sender saying "٣ كراتين" is exactly as common as "٣ كرتون", and
+  /// before this the plural fell through to the "is this a size or a count?"
+  /// guess below, which reads a quantity that follows a named product as a
+  /// size, not a count -- "كوب كبير ٣ كراتين" silently became a quantity of 1.
   static const _packaging = {
-    'كرتون', 'كرتونة', 'علبة', 'علبه', 'كيس', 'بكت', 'باكيت', 'حبة', 'حبه',
-    'شد', 'شدة', 'شده', 'عبوة', 'عبوه', 'درزن', 'صندوق', 'زجاجة', 'زجاجه',
-    'ظرف', 'قطعة', 'قطعه', 'خيط',
+    'كرتون', 'كرتونة', 'كراتين',
+    'علبة', 'علبه', 'علب',
+    'كيس', 'اكياس',
+    'بكت', 'باكيت',
+    'حبة', 'حبه', 'حبات',
+    'شد', 'شدة', 'شده',
+    'عبوة', 'عبوه', 'عبوات',
+    'درزن',
+    'صندوق', 'صناديق',
+    'زجاجة', 'زجاجه', 'زجاجات',
+    'ظرف', 'ظروف',
+    'قطعة', 'قطعه', 'قطع',
+    'خيط', 'خيوط',
     // English packaging/count units. 'cartoon' is a literal misspelling seen
     // in real messages ("30 cartoon water") — added as its own entry, not
     // fuzzy-tolerated, since no fuzzy fallback applies to unit words.

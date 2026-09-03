@@ -237,6 +237,61 @@ void main() {
     test('an English hedge word does not get counted as the product', () {
       expect(only('please 2 kg صابون لوكس').quantity, 2);
     });
+
+    test('a plural packaging word is recognised the same as its singular', () {
+      // "كراتين" (plural of كرتون) used to fall through to the size-vs-count
+      // guess, which reads a count after a named product as a size and
+      // defaults to 1 -- "صابون لوكس ٣ كراتين" silently became a quantity
+      // of 1 instead of 3.
+      expect(only('صابون لوكس 3 كراتين').quantity, 3);
+      expect(only('صابون لوكس 6 عبوات').quantity, 6);
+    });
+  });
+
+  group('splitting on "و" between items', () {
+    test('a standalone و between two items splits them into two lines', () {
+      final lines = matcher
+          .match('صابون لوكس و شوكولاته جالاكسي')
+          .where((l) => !l.isNoise)
+          .toList();
+      expect(lines, hasLength(2));
+      expect(lines[0].best?.item.id, 'soap-lux');
+      expect(lines[1].best?.item.id, 'choc');
+    });
+
+    test('و glued directly to a digit still splits, and the digit is read as a count', () {
+      // "و٣" with no space at all -- the exact shape a real sender typed.
+      final lines = matcher
+          .match('صابون لوكس و٣ مياه نوفا 330')
+          .where((l) => !l.isNoise)
+          .toList();
+      expect(lines, hasLength(2));
+      expect(lines[1].quantity, 3);
+      expect(lines[1].best?.item.id, 'water-330');
+    });
+
+    test('و glued onto a real word is left alone, not split', () {
+      // The exact case this design has to protect: "وشوكولاته" must stay one
+      // token, not become "و" plus a fragment that has lost its "و".
+      final lines = matcher.match('وشوكولاته جالاكسي');
+      expect(lines, hasLength(1));
+      expect(lines.single.best?.item.id, 'choc');
+    });
+
+    test('an item glued to an unrelated one by و is no longer silently dropped', () {
+      // The reported bug: two items on one line joined by و used to become
+      // one RequestLine, and whichever half shared no catalog vocabulary
+      // (here, "مناديل فاخرة" -- not in this catalog at all) contributed
+      // nothing and vanished rather than surfacing as an unmatched item.
+      final lines = matcher
+          .match('مناديل فاخرة و٣ كرتونة صابون لوكس')
+          .where((l) => !l.isNoise)
+          .toList();
+      expect(lines, hasLength(2));
+      expect(lines[0].candidates, isEmpty);
+      expect(lines[1].best?.item.id, 'soap-lux');
+      expect(lines[1].quantity, 3);
+    });
   });
 
   group('English and bilingual input', () {
@@ -407,6 +462,74 @@ void main() {
         'soap-lux': 3,
         'choc': 10,
       });
+    });
+  });
+
+  // The catalogue spells water «مياة» while customers type «مياه», and nobody
+  // writes an Arabic product name in English on purpose — until they do. The
+  // aliases column exists for exactly that gap, and until 2026-09-02 the
+  // matcher did not read it at all.
+  group('aliases, brand and variety as alternative names', () {
+    const juice = InventoryItem(
+      id: 'juice-mango',
+      itemName: 'عصير المانجو 200 مل',
+      quantity: 12,
+      unit: 'كرتون',
+      category: 'عصائر',
+      aliases: ['مانجا', 'manga'],
+    );
+    const milkFull = InventoryItem(
+      id: 'milk-full',
+      itemName: 'حليب المراعي 1 لتر',
+      quantity: 9,
+      unit: 'كرتون',
+      category: 'ألبان',
+      brand: 'المراعي',
+      variety: 'كامل الدسم',
+    );
+    const milkLow = InventoryItem(
+      id: 'milk-low',
+      itemName: 'حليب نادك 1 لتر',
+      quantity: 9,
+      unit: 'كرتون',
+      category: 'ألبان',
+      brand: 'نادك',
+      variety: 'قليل الدسم',
+    );
+
+    final matcher = LocalItemMatcher([juice, milkFull, milkLow]);
+
+    test('a word only in aliases still finds the row', () {
+      final line = matcher.match('كرتون مانجا').single;
+
+      expect(line.best?.item.id, 'juice-mango');
+    });
+
+    test('a variety only in the column separates two rows that share a name',
+        () {
+      // Both rows are "حليب … 1 لتر". Only the variety column tells them apart.
+      final line = matcher.match('حليب كامل الدسم').single;
+
+      expect(line.best?.item.id, 'milk-full');
+    });
+
+    test('an alias-only match is not thrown away as contentless', () {
+      // The content-word gate used to read name tokens only, so a row reached
+      // purely through an alias scored and was then dropped on the way out.
+      final line = matcher.match('manga').single;
+
+      expect(line.candidates, isNotEmpty);
+      expect(line.best?.item.id, 'juice-mango');
+    });
+
+    test('naming a row by its real name is not penalised for the alias', () {
+      // Aliases must stay out of the coverage denominator. If they counted,
+      // every alias added to a row would quietly make that row score lower for
+      // someone who named it correctly.
+      final byName = matcher.match('عصير المانجو 200 مل').single.best!;
+
+      expect(byName.item.id, 'juice-mango');
+      expect(byName.score, greaterThan(0.9));
     });
   });
 }

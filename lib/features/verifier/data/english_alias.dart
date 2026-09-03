@@ -5,12 +5,19 @@ import '../../../core/text/arabic_text.dart';
 /// Grounded, not translated: every value here is a word verified to appear
 /// literally in the real inventory export. A word with no entry here simply
 /// yields nothing — that absence *is* the mechanism that keeps a request for
-/// something genuinely unstocked (nescafe, cardamom, water, "Curve" cups,
-/// fresh fruit) falling through to the unmatched/custom-item flow instead of
-/// being forced onto the nearest unrelated row. Do not add an entry for a
-/// word "because it would be helpful" — add it only after confirming the
-/// target word is in the catalog and checking every row it appears in (see
-/// the vetting note on adjectives below).
+/// something genuinely unstocked (بيبسي, ثلج, car tyres, fresh fruit) falling
+/// through to the unmatched/custom-item flow instead of being forced onto the
+/// nearest unrelated row. Do not add an entry for a word "because it would be
+/// helpful" — add it only after confirming the target word is in the catalog
+/// and checking every row it appears in (see the vetting note on adjectives
+/// below).
+///
+/// **This list was once vetted against a 99-row export and is now vetted
+/// against the full 195.** Several words this file previously named as
+/// "genuinely unstocked" — nescafe, cardamom, water, cups — turned out to be
+/// stocked all along; they were missing from the smaller export, not from the
+/// business. If you are about to conclude that something is not carried,
+/// confirm it against a current export rather than against this comment.
 class EnglishAlias {
   const EnglishAlias._();
 
@@ -39,6 +46,17 @@ class EnglishAlias {
     'ginger': ['زنجبيل'],
     'saffron': ['زعفران'],
     'juice': ['عصير'],
+    'cardamom': ['هيل'],
+    'water': ['مياة'],
+    'cup': ['كاسات'], 'cups': ['كاسات'],
+    'capsule': ['كبسولات'], 'capsules': ['كبسولات'],
+    'filter': ['فلتر'], 'filters': ['فلتر'],
+    'plate': ['صحن'], 'plates': ['صحن'],
+    'spoon': ['ملاعق'], 'spoons': ['ملاعق'],
+    'fork': ['شوكة'], 'forks': ['شوكة'],
+    'knife': ['سكينة'], 'knives': ['سكينة'],
+    'lid': ['غطاء'], 'lids': ['غطاء'],
+    'stirrer': ['محرك'], 'stirrers': ['محرك'],
 
     // --- descriptive adjectives, vetted against every row they appear in
     //     (see exclusions below for what was deliberately left out) ---
@@ -62,6 +80,21 @@ class EnglishAlias {
     'snickers': ['سنيكرز'],
     'twix': ['تويكس'],
     'godiva': ['جوديفاء'],
+    'kitkat': ['كيت كات'],
+    'nescafe': ['نسكافي'], 'nesscafe': ['نسكافي'],
+    // The misspelling is the one real senders actually wrote.
+    'nespresso': ['نسبرسو'], 'nespersso': ['نسبرسو'],
+    'nesquik': ['نسكويك'],
+    'nova': ['نوفا'],
+    'lipton': ['ليبتون'],
+    'perrier': ['بيريه'],
+    'melitta': ['ماليتا'], 'malita': ['ماليتا'],
+    'dunkin': ['دانكن'],
+    'luna': ['لونا'],
+    // Deliberately 'ميت' alone, not 'كوفي ميت'. «كوفي» spans four categories —
+    // مستر كوفي filters, كوفي هوليك coffee, كوفيك tea AND chocolate — so
+    // aliasing it would drag half the catalogue in. «ميت» sits on one row.
+    'coffeemate': ['ميت'], 'coffemate': ['ميت'],
   };
 
   // Deliberately excluded, and why — vetted by reading every catalog row the

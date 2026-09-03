@@ -86,7 +86,14 @@ class ItemMatchModels {
   /// hundred, so a quota error is undiagnosable while the model is a moving
   /// target. Pinned also means the price per request is a number you can
   /// actually compute.
-  static const name = 'gemini-2.5-flash';
+  ///
+  /// Was `gemini-2.5-flash` until 2026-08-31, when a live call came back with
+  /// "This model models/gemini-2.5-flash is no longer available to new users."
+  /// Google's own error names `gemini-3.6-flash` as the replacement. Being
+  /// pinned is what made that a clear one-line error instead of a silent
+  /// reroute to an unknown model at an unknown price -- keep it pinned, and
+  /// expect to have to do this again.
+  static const name = 'gemini-3.6-flash';
 
   /// This is extraction, not reasoning: read a request, find the names in a
   /// list, report quantities. Gemini 3 models think at `medium` by default, and
@@ -101,9 +108,25 @@ class ItemMatchModels {
 ///
 /// This is the point of the whole exercise: the request goes phone → Google
 /// rather than phone → Cloudflare → Supabase → Google and back again. No API
-/// key ships with the app — App Check vouches for the client instead — and the
-/// catalog is built from inventory already in memory, so the round trip that
-/// used to fetch it is gone too.
+/// key ships with the app — App Check vouches for the client instead,
+/// activated in `main.dart` — and the catalog is built from inventory already
+/// in memory, so the round trip that used to fetch it is gone too.
+///
+/// App Check enforcement WAS flipped on for the AI Logic service on
+/// 2026-08-31, and verified by a real device call: an unattested request now
+/// comes back `403 App attestation failed`. Android is the only registered
+/// app (Play Integrity in release, a registered debug token in debug); the
+/// web app is deliberately unregistered, so web calls are rejected by design.
+///
+/// If a device starts failing with 403 in debug, it is almost always that
+/// build's debug token not being in the allow-list. The SDK prints the token
+/// it is actually using to logcat, as a `DebugAppCheckProvider` warning
+/// reading "Failed to exchange debug token", followed by the uuid in
+/// parentheses. Register THAT uuid — the "generate token" button in the
+/// console mints a different one the app knows nothing about.
+///
+/// Don't trust this comment over the Firebase Console — an earlier version of
+/// it asserted enforcement was on when it never had been.
 class FirebaseItemMatchModel implements ItemMatchModel {
   final GenerativeModel Function(String systemInstruction) _modelFactory;
 

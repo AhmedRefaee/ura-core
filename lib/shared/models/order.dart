@@ -5,7 +5,7 @@ import 'profile.dart';
 
 enum OrderDirection { outbound, inboundRep, inboundExternal }
 
-enum OrderStatus { assigned, pickedUp, onTheMove, delivered, deliveredToStorage }
+enum OrderStatus { assigned, pickedUp, onTheMove, delivered }
 
 /// Single source of truth for order-type display text — every place in the
 /// app that shows an order's type (direction picker, list tiles, filters,
@@ -74,6 +74,15 @@ class Order extends Equatable {
   /// Distinguishes outbound-storage (Flow 1) from outbound-external (Flow 2).
   bool get involvesStorage => items.any((i) => i.inventoryId != null);
 
+  /// True when the order has at least one خارج المخزون (is_custom) item --
+  /// whether or not it's mixed with real inventory items.
+  bool get hasOffStockItems => items.any((i) => i.isCustom);
+
+  int get offStockItemsCount => items.where((i) => i.isCustom).length;
+
+  int get offStockPurchasedCount =>
+      items.where((i) => i.isCustom && i.purchasedAt != null).length;
+
   factory Order.fromMap(Map<String, dynamic> map) {
     OrderDirection direction;
     switch (map['direction'] as String) {
@@ -93,8 +102,6 @@ class Order extends Equatable {
         status = OrderStatus.onTheMove;
       case 'delivered':
         status = OrderStatus.delivered;
-      case 'delivered_to_storage':
-        status = OrderStatus.deliveredToStorage;
       default:
         status = OrderStatus.assigned;
     }
@@ -149,8 +156,6 @@ class Order extends Equatable {
         return 'في الطريق';
       case OrderStatus.delivered:
         return 'تم التسليم';
-      case OrderStatus.deliveredToStorage:
-        return 'تم الاستلام في المخزن';
     }
   }
 
@@ -160,7 +165,6 @@ class Order extends Equatable {
         'picked_up' => OrderStatus.pickedUp,
         'on_the_move' => OrderStatus.onTheMove,
         'delivered' => OrderStatus.delivered,
-        'delivered_to_storage' => OrderStatus.deliveredToStorage,
         _ => OrderStatus.assigned,
       };
 

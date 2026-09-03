@@ -237,29 +237,32 @@ class _FilterChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    // Wrap rather than a horizontal scroll strip: a mouse cannot drag one
+    // (Flutter omits PointerDeviceKind.mouse from the default drag devices and
+    // shows no scrollbar), so on desktop web anything past the right edge is
+    // unreachable. These labels are long enough in Arabic to overflow a narrow
+    // window.
+    return Padding(
       padding: AppSpacing.horizontalLargePadding,
-      child: Row(
+      child: Wrap(
+        spacing: AppSpacing.horizontalSmall,
+        runSpacing: AppSpacing.verticalSmall,
         children: [
           _FilterChip(
             label: 'الكل',
             isSelected: selectedFilter == null,
             onTap: () => onChanged(null),
           ),
-          SizedBox(width: AppSpacing.horizontalSmall),
           _FilterChip(
             label: EntityCategory.incoming.label,
             isSelected: selectedFilter == EntityCategory.incoming,
             onTap: () => onChanged(EntityCategory.incoming),
           ),
-          SizedBox(width: AppSpacing.horizontalSmall),
           _FilterChip(
             label: EntityCategory.outgoing.label,
             isSelected: selectedFilter == EntityCategory.outgoing,
             onTap: () => onChanged(EntityCategory.outgoing),
           ),
-          SizedBox(width: AppSpacing.horizontalSmall),
         ],
       ),
     );

@@ -14,7 +14,7 @@ import '../../features/verifier/data/entity_repository.dart';
 import '../../features/verifier/data/inventory_repository.dart';
 import '../../features/verifier/data/order_repository.dart';
 import '../../features/verifier/data/order_template_repository.dart';
-import '../../features/verifier/data/local_item_match_repository.dart';
+import '../../features/verifier/data/hybrid_item_match_repository.dart';
 import '../../features/verifier/data/item_match_repository.dart';
 import '../../features/verifier/logic/create_order_cubit.dart';
 import '../../features/verifier/logic/order_templates_cubit.dart';
@@ -84,22 +84,22 @@ Future<void> setupDependencies() async {
   sl.registerLazySingleton<OrderTemplateRepository>(() => OrderTemplateRepository());
   sl.registerLazySingleton<RepOrdersRepository>(() => RepOrdersRepository());
   sl.registerLazySingleton<ChatRepository>(() => ChatRepository());
-  // Matches on the device against the inventory the screen already holds: no
-  // network call, no quota, no waiting. Three implementations satisfy this one
-  // interface, so switching is this single line:
+  // Matches locally first (instant, free, no quota) and only calls Gemini for
+  // the lines the local matcher couldn't confidently place -- see
+  // HybridItemMatchRepository's own doc for why, and
+  // plans/... for the design history. Four implementations satisfy this one
+  // interface:
   //
-  //   LocalItemMatchRepository()  — on-device, instant, free (current)
-  //   DirectItemMatchRepository() — Gemini via Firebase AI Logic
+  //   HybridItemMatchRepository() — local first, AI fallback for leftovers (current)
+  //   LocalItemMatchRepository()  — on-device only, instant, free
+  //   DirectItemMatchRepository() — Gemini via Firebase AI Logic, every line
   //   EdgeItemMatchRepository()   — Gemini via the Supabase function
   //
-  // The other two need their import added back; both files are still here.
-  //
-  // The Gemini paths read better on messy prose and on items phrased nothing
-  // like their catalog names. They also cost a request each and answered in
-  // roughly a minute on the free tier. Everything either path returns lands in
-  // the same review step in front of the verifier before it becomes an order.
+  // The bottom two need their import added back if switching to them; the
+  // files are still here. Everything any of these return lands in the same
+  // review step in front of the verifier before it becomes an order.
   sl.registerLazySingleton<ItemMatchRepository>(
-    () => LocalItemMatchRepository(),
+    () => HybridItemMatchRepository(),
   );
 
   // Chat cubits (singleton badge cubit; factory threads + directory cubits)

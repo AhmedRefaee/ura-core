@@ -5,7 +5,10 @@ import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_audit_log_entry.dart';
 import '../../../shared/models/inventory_item.dart';
+import '../../../shared/models/profile.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../auth/logic/auth_cubit.dart';
+import '../../auth/logic/auth_state.dart';
 import '../logic/inventory_detail_cubit.dart';
 import 'inventory_form_screen.dart';
 import 'widgets/availability_badge.dart';
@@ -13,23 +16,53 @@ import 'widgets/availability_badge.dart';
 class InventoryItemDetailScreen extends StatelessWidget {
   final InventoryItem item;
 
-  const InventoryItemDetailScreen({super.key, required this.item});
+  /// Whether archiving the item is offered here.
+  ///
+  /// Deleting an item has to be a deliberate trip to the inventory screen, not
+  /// something reachable in one tap while drafting an order -- so the
+  /// over-stock chip in the draft item list opens this screen with the action
+  /// withheld. Archiving is presented to the user as permanent, and the
+  /// order-drafting screen is the wrong place to be one tap away from it.
+  final bool allowDelete;
+
+  const InventoryItemDetailScreen({
+    super.key,
+    required this.item,
+    this.allowDelete = true,
+  });
 
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
       create: (_) => sl.get<InventoryDetailCubit>(param1: item.id)..load(),
-      child: _InventoryItemDetailView(initialItem: item),
+      child: _InventoryItemDetailView(
+        initialItem: item,
+        allowDelete: allowDelete,
+      ),
     );
   }
 }
 
 class _InventoryItemDetailView extends StatelessWidget {
   final InventoryItem initialItem;
-  const _InventoryItemDetailView({required this.initialItem});
+  final bool allowDelete;
+  const _InventoryItemDetailView({
+    required this.initialItem,
+    required this.allowDelete,
+  });
 
   @override
   Widget build(BuildContext context) {
+    // Mirrors the roles inventory_update_item/inventory_delete_item accept, so
+    // no one is shown a button the server would refuse. Reps and managers reach
+    // this screen read-only.
+    final authState = context.watch<AuthCubit>().state;
+    final role = authState is AuthAuthenticated ? authState.profile.role : null;
+    final canEditItem =
+        role == UserRole.verifier ||
+        role == UserRole.storageActor ||
+        role == UserRole.admin;
+
     return BlocConsumer<InventoryDetailCubit, InventoryDetailState>(
       listener: (context, state) {
         if (state is InventoryDetailSuccess) {
@@ -56,19 +89,21 @@ class _InventoryItemDetailView extends StatelessWidget {
           appBar: AppBar(
             title: Text(item.itemName),
             actions: [
-              AppIconButton(
-                icon: Icons.edit_outlined,
-                tooltip: 'تعديل',
-                variant: AppIconButtonVariant.text,
-                onPressed: isActing ? null : () => _openEdit(context, item),
-              ),
-              AppIconButton(
-                icon: Icons.delete_outline,
-                tooltip: 'حذف',
-                variant: AppIconButtonVariant.text,
-                iconColor: AppColors.error,
-                onPressed: isActing ? null : () => _confirmDelete(context),
-              ),
+              if (canEditItem)
+                AppIconButton(
+                  icon: Icons.edit_outlined,
+                  tooltip: 'تعديل',
+                  variant: AppIconButtonVariant.text,
+                  onPressed: isActing ? null : () => _openEdit(context, item),
+                ),
+              if (canEditItem && allowDelete)
+                AppIconButton(
+                  icon: Icons.delete_outline,
+                  tooltip: 'حذف',
+                  variant: AppIconButtonVariant.text,
+                  iconColor: AppColors.error,
+                  onPressed: isActing ? null : () => _confirmDelete(context),
+                ),
             ],
           ),
           body: () {
@@ -181,12 +216,25 @@ class _DetailBody extends StatelessWidget {
                   _InfoRow(label: 'رمز SKU', value: item.sku!),
                 if (item.category != null)
                   _InfoRow(label: 'الفئة', value: item.category!),
+                if (item.brand != null)
+                  _InfoRow(label: 'العلامة التجارية', value: item.brand!),
+                if (item.variety != null)
+                  _InfoRow(label: 'النوع', value: item.variety!),
+                if (item.packagingSize != null)
+                  _InfoRow(
+                    label: 'حجم التعبئة',
+                    value:
+                        '${formatQty(item.packagingSize!)} ${item.packagingSizeUnit ?? ''}'
+                            .trim(),
+                  ),
                 _InfoRow(
                   label: 'حد التنبيه',
                   value: '${formatQty(item.minQuantity)} ${item.unit}',
                 ),
                 if (item.description != null && item.description!.isNotEmpty)
                   _InfoRow(label: 'الوصف', value: item.description!),
+                if (item.aliases != null && item.aliases!.isNotEmpty)
+                  _InfoRow(label: 'أسماء بديلة', value: item.aliases!.join('، ')),
               ],
             ),
           ),

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../core/config/feature_flags.dart';
 import '../features/auth/logic/auth_cubit.dart';
 import '../features/auth/logic/auth_state.dart';
 import '../features/auth/ui/login_screen.dart';
@@ -174,8 +175,13 @@ GoRouter createRouter(AuthCubit authCubit) {
         path: AppRoutes.adminHome,
         builder: (_, _) => const OrgAdminHomeScreen(),
       ),
+      // Chat off: the routes stay registered so an old push notification or a
+      // saved link still resolves to something. Bouncing off AppRoutes.login
+      // hands the user to the top-level redirect above, which puts an
+      // authenticated caller on their own role's home screen.
       GoRoute(
         path: AppRoutes.chat,
+        redirect: kChatEnabled ? null : (_, _) => AppRoutes.login,
         builder: (_, _) => const ChatHubScreen(),
       ),
       GoRoute(
@@ -187,6 +193,7 @@ GoRouter createRouter(AuthCubit authCubit) {
       ),
       GoRoute(
         path: '/chat/:threadId',
+        redirect: kChatEnabled ? null : (_, _) => AppRoutes.login,
         builder: (_, state) {
           final threadId = state.pathParameters['threadId']!;
           return _ChatThreadLoader(threadId: threadId);

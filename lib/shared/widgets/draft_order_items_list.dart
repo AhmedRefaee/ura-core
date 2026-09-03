@@ -12,12 +12,19 @@ class DraftOrderItemsList extends StatelessWidget {
   final OrderDirection direction;
   final ValueChanged<int> onRemove;
 
+  /// Opens an off-stock item for editing so its brand, variety, packaging and
+  /// unit can be filled in before the order is submitted. Optional: the
+  /// template editor reuses this list but has no such flow, and passes null,
+  /// which simply hides the affordance.
+  final ValueChanged<int>? onEditCustom;
+
   const DraftOrderItemsList({
     super.key,
     required this.items,
     required this.inventory,
     required this.direction,
     required this.onRemove,
+    this.onEditCustom,
   });
 
   @override
@@ -81,7 +88,13 @@ class DraftOrderItemsList extends StatelessWidget {
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => InventoryItemDetailScreen(item: invItem),
+                  builder: (_) => InventoryItemDetailScreen(
+                    item: invItem,
+                    // Reached by tapping an over-stock warning mid-draft. That
+                    // is a glance at the item, not a decision to archive it --
+                    // deleting belongs on a deliberate trip to المخزون.
+                    allowDelete: false,
+                  ),
                 ),
               ),
               child: Chip(
@@ -101,9 +114,23 @@ class DraftOrderItemsList extends StatelessWidget {
             ),
         ],
       ),
-      trailing: IconButton(
-        icon: const Icon(Icons.delete_outline, color: Colors.red),
-        onPressed: () => onRemove(index),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (item.isCustom && onEditCustom != null)
+            IconButton(
+              icon: Icon(Icons.edit_outlined, color: OffStock.color),
+              tooltip: 'تعديل بيانات الصنف',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => onEditCustom!(index),
+            ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            tooltip: 'حذف',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => onRemove(index),
+          ),
+        ],
       ),
     );
   }

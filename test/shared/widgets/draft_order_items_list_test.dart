@@ -156,4 +156,67 @@ void main() {
 
     expect(find.text('لم يتم إضافة أصناف بعد'), findsOneWidget);
   });
+
+  group('editing an outside-inventory item', () {
+    testWidgets('only an outside-inventory row offers editing', (tester) async {
+      await tester.pumpWidget(wrap(DraftOrderItemsList(
+        items: const [
+          DraftOrderItem(inventoryId: 'water', inventoryName: 'مياه نوفا 330 مل', quantity: 3, isCustom: false),
+          DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
+        ],
+        inventory: const [water],
+        direction: OrderDirection.outbound,
+        onRemove: (_) {},
+        onEditCustom: (_) {},
+      )));
+
+      // Two rows, but a stock row has nothing custom to edit.
+      expect(find.byIcon(Icons.edit_outlined), findsOneWidget);
+      expect(find.byIcon(Icons.delete_outline), findsNWidgets(2));
+    });
+
+    testWidgets('no edit affordance appears when the screen provides no handler',
+        (tester) async {
+      // The template editor reuses this list and has no edit flow. Offering a
+      // dead button there would be worse than offering nothing.
+      await tester.pumpWidget(wrap(DraftOrderItemsList(
+        items: const [
+          DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
+        ],
+        inventory: const [],
+        direction: OrderDirection.outbound,
+        onRemove: (_) {},
+      )));
+
+      expect(find.byIcon(Icons.edit_outlined), findsNothing);
+      expect(find.byIcon(Icons.delete_outline), findsOneWidget);
+    });
+
+    testWidgets(
+        'editing reports the real index even when the row renders far from '
+        'its position in the list', (tester) async {
+      // Same trap the removal tests guard: outside-inventory rows are pulled
+      // into their own section, so screen order is not list order.
+      int? editedIndex;
+      await tester.pumpWidget(wrap(DraftOrderItemsList(
+        items: const [
+          DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
+          DraftOrderItem(inventoryId: 'water', inventoryName: 'مياه نوفا 330 مل', quantity: 3, isCustom: false),
+          DraftOrderItem(customDescription: 'سكر', quantity: 1, isCustom: true),
+        ],
+        inventory: const [water],
+        direction: OrderDirection.outbound,
+        onRemove: (_) {},
+        onEditCustom: (i) => editedIndex = i,
+      )));
+
+      // The stock row renders first, so both edit icons belong to items 0 and
+      // 2 of the original list, in that order.
+      await tester.tap(find.byIcon(Icons.edit_outlined).first);
+      expect(editedIndex, 0);
+
+      await tester.tap(find.byIcon(Icons.edit_outlined).last);
+      expect(editedIndex, 2);
+    });
+  });
 }

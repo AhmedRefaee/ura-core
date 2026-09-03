@@ -33,8 +33,26 @@ class StorageRepository {
             .eq('direction', 'inbound_rep')
             .order('created_at', ascending: true),
       ]);
+      // The 'assigned' query above has no direction filter at the DB level --
+      // it can't, since "does storage actually need to act on this order"
+      // depends on the order's items (any real inventory_id row?), not just
+      // its status. Filter dynamically per order instead of assuming every
+      // 'assigned' order belongs on this queue:
+      //   - outbound: only if it involvesStorage (Flow 1) -- a Flow 2 order
+      //     (100% خارج المخزون) never touches storage at all.
+      //   - inbound_external: always -- storage confirms delivery right at
+      //     'assigned', that IS this direction's storage step.
+      //   - inbound_rep: never at 'assigned' -- storage only acts once the
+      //     rep has bought and started moving (the second query below).
+      final assignedForStorage = _map(results[0] as List).where((o) {
+        return switch (o.direction) {
+          OrderDirection.outbound => o.involvesStorage,
+          OrderDirection.inboundExternal => true,
+          OrderDirection.inboundRep => false,
+        };
+      });
       final orders = [
-        ..._map(results[0] as List),
+        ...assignedForStorage,
         ..._map(results[1] as List),
       ];
       logger.i('StorageRepository → ${orders.length} active orders for storage');

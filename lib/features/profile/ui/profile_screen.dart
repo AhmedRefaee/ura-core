@@ -166,10 +166,7 @@ class _ProfileBodyState extends State<_ProfileBody> {
 
   @override
   Widget build(BuildContext context) {
-    const doneStatuses = {
-      OrderStatus.delivered,
-      OrderStatus.deliveredToStorage,
-    };
+    const doneStatuses = {OrderStatus.delivered};
     final allOrders = [...widget.active, ...widget.done];
     final delivered = allOrders
         .where((o) => doneStatuses.contains(o.status))

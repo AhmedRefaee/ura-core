@@ -23,7 +23,7 @@ class OrderRepository {
       'order_items(*, inventory:inventory!order_items_inventory_id_fkey(id, item_name))';
 
   static const _orderDetailSelect =
-      'id, reference_code, direction, entity_id, rep_id, created_by, storage_actor_id, status, notes, created_at, assigned_at, picked_up_at, move_started_at, delivered_at, entity:entities(id, name, category, contact_name, contact_phone, address), rep:profiles!orders_rep_id_fkey(id, full_name, phone, role, is_approved, created_at), creator:profiles!orders_created_by_fkey(id, full_name, phone, role, is_approved, created_at), order_items(id, order_id, inventory_id, quantity, final_quantity, is_custom, custom_description, source_inventory_id, check_status, checked_by, checked_at, inventory:inventory!order_items_inventory_id_fkey(id, item_name), checker:profiles!order_items_checked_by_fkey(id, full_name, phone, role, is_approved, created_at))';
+      'id, reference_code, direction, entity_id, rep_id, created_by, storage_actor_id, status, notes, created_at, assigned_at, picked_up_at, move_started_at, delivered_at, entity:entities(id, name, category, contact_name, contact_phone, address), rep:profiles!orders_rep_id_fkey(id, full_name, phone, role, is_approved, created_at), creator:profiles!orders_created_by_fkey(id, full_name, phone, role, is_approved, created_at), order_items(id, order_id, inventory_id, quantity, final_quantity, is_custom, custom_description, source_inventory_id, check_status, checked_by, checked_at, purchased_at, purchased_by, inventory:inventory!order_items_inventory_id_fkey(id, item_name), checker:profiles!order_items_checked_by_fkey(id, full_name, phone, role, is_approved, created_at))';
 
   Future<AppResult<List<Order>>> fetchAllOrders() async {
     try {

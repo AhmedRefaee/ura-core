@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
@@ -14,6 +15,7 @@ import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
 import '../../../features/chat/data/chat_repository.dart';
+import '../../inventory/ui/inventory_form_screen.dart';
 import '../../../features/chat/ui/chat_thread_screen.dart';
 import '../../../features/verifier/data/order_repository.dart';
 import '../../../features/verifier/logic/create_order_cubit.dart';
@@ -213,8 +215,10 @@ class _TaskDetailView extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               _EditHistorySection(orderId: order.id),
-              const SizedBox(height: 16),
-              _CommunicationHistorySection(orderId: order.id),
+              if (kChatEnabled) ...[
+                const SizedBox(height: 16),
+                _CommunicationHistorySection(orderId: order.id),
+              ],
             ],
           ),
         );
@@ -461,11 +465,45 @@ class _ItemRow extends StatelessWidget {
                       : 'الكمية: ${formatQty(item.quantity)}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-                if (item.isCustom)
+                if (item.isCustom) ...[
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
                     child: OffStock.badge(),
                   ),
+                  if (orderDirection == OrderDirection.outbound)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            item.purchasedAt != null
+                                ? Icons.check_circle
+                                : Icons.radio_button_unchecked,
+                            size: 14,
+                            color: item.purchasedAt != null
+                                ? Colors.green
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            item.purchasedAt != null ? 'تم الشراء' : 'لم يُشترَ بعد',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: item.purchasedAt != null
+                                  ? Colors.green
+                                  : Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (orderDirection == OrderDirection.outbound &&
+                      item.purchasedAt != null)
+                    Text(
+                      fmt(item.purchasedAt),
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                ],
                 if (!item.isCustom &&
                     item.wasUnavailableAtCreation &&
                     orderDirection == OrderDirection.outbound)
@@ -520,9 +558,72 @@ class _ItemRow extends StatelessWidget {
               ],
             ),
           ),
+          // Promoting an off-stock item into the catalogue only makes sense
+          // once the order is done and the item has actually been sourced --
+          // before that it is still just a line on a request.
+          if (item.isCustom && orderStatus == OrderStatus.delivered)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, size: 20),
+              tooltip: 'خيارات الصنف',
+              onSelected: (value) {
+                if (value == 'add_to_storage') {
+                  _openAddToStorage(context, item);
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'add_to_storage',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.add_box_outlined, color: Colors.teal),
+                    title: Text('إضافة للمخزن'),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );
+  }
+
+  /// Opens the inventory form pre-filled from the off-stock item's payload.
+  /// Every prefilled field is optional in that form, so an item that needs no
+  /// brand or packaging detail is simply saved without it.
+  void _openAddToStorage(BuildContext context, OrderItem item) async {
+    final json = item.customItemJson;
+    final prefill = CustomItemPrefill(
+      name: json != null
+          ? (json['name'] as String? ?? item.customDescription ?? '')
+          : (item.customDescription ?? ''),
+      // Deliberately NOT item.effectiveQuantity -- see the storage screen's
+      // copy of this. The ordered amount is not the stock count, and a verifier
+      // cannot set a stock count at all: the RPC forces theirs to zero.
+      quantity: 0,
+      unit: json?['unit'] as String? ?? 'قطعة',
+      sku: json?['sku'] as String?,
+      category: json?['category'] as String?,
+      minQuantity: (json?['minQty'] as num?)?.toDouble() ?? 0,
+      description: json?['description'] as String?,
+      brand: json?['brand'] as String?,
+      variety: json?['variety'] as String?,
+      packagingSize: (json?['packagingSize'] as num?)?.toDouble(),
+      packagingSizeUnit: json?['packagingSizeUnit'] as String?,
+    );
+
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => InventoryFormScreen(prefill: prefill)),
+    );
+
+    if (added == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تمت إضافة "${prefill.name}" للمخزن'),
+          backgroundColor: Colors.teal,
+        ),
+      );
+    }
   }
 }
 

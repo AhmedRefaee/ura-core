@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
@@ -78,7 +79,9 @@ class StorageOrderDetailScreen extends StatelessWidget {
               ),
             ],
           ),
-          floatingActionButton: _ChatBridgeButton(order: order),
+          floatingActionButton: kChatEnabled
+              ? _ChatBridgeButton(order: order)
+              : null,
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -274,14 +277,19 @@ class _ItemsSection extends StatelessWidget {
             state: state,
             showCheckControls: showCheckControls,
             showQtyEdit: storageTurn && item.inventoryId != null,
-            isFinished:
-                state.order.status == OrderStatus.delivered ||
-                state.order.status == OrderStatus.deliveredToStorage,
+            isFinished: state.order.status == OrderStatus.delivered,
           ),
         ),
       ],
     );
   }
+}
+
+String _fmtPurchased(DateTime dt) {
+  final l = dt.toLocal();
+  final h = l.hour.toString().padLeft(2, '0');
+  final m = l.minute.toString().padLeft(2, '0');
+  return '${l.day}/${l.month}/${l.year} $h:$m';
 }
 
 class _ItemTile extends StatelessWidget {
@@ -355,11 +363,34 @@ class _ItemTile extends StatelessWidget {
                 'الكمية: ${formatQty(effectiveQty)}',
                 style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
-            if (item.isCustom)
+            if (item.isCustom) ...[
               Padding(
                 padding: const EdgeInsets.only(top: 2, bottom: 2),
                 child: OffStock.badge(),
               ),
+              if (state.order.direction == OrderDirection.outbound)
+                Row(
+                  children: [
+                    Icon(
+                      item.purchasedAt != null
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      size: 14,
+                      color: item.purchasedAt != null ? Colors.green : Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      item.purchasedAt != null
+                          ? 'تم الشراء ${_fmtPurchased(item.purchasedAt!)}'
+                          : 'لم يُشترَ بعد',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: item.purchasedAt != null ? Colors.green : Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
             if (showWarning)
               Chip(
                 avatar: const Icon(
@@ -378,15 +409,25 @@ class _ItemTile extends StatelessWidget {
             if (item.isCustom)
               Align(
                 alignment: AlignmentDirectional.centerEnd,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.add_box_outlined, size: 16),
-                  label: const Text('إضافة للمخزن'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.teal,
-                    visualDensity: VisualDensity.compact,
-                    textStyle: const TextStyle(fontSize: 13),
-                  ),
-                  onPressed: () => _openAddToStorage(context, item),
+                child: PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  tooltip: 'خيارات الصنف',
+                  onSelected: (value) {
+                    if (value == 'add_to_storage') {
+                      _openAddToStorage(context, item);
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'add_to_storage',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.add_box_outlined, color: Colors.teal),
+                        title: Text('إضافة للمخزن'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
           ],
@@ -401,12 +442,21 @@ class _ItemTile extends StatelessWidget {
       name: json != null
           ? (json['name'] as String? ?? item.customDescription ?? '')
           : (item.customDescription ?? ''),
-      quantity: item.effectiveQuantity,
+      // Deliberately NOT item.effectiveQuantity. How many were ordered says
+      // nothing about how many are on the shelf, and a wrong number that looks
+      // deliberate is worse than a blank one -- someone must enter a real count.
+      quantity: 0,
       unit: json?['unit'] as String? ?? 'قطعة',
       sku: json?['sku'] as String?,
       category: json?['category'] as String?,
       minQuantity: (json?['minQty'] as num?)?.toDouble() ?? 0,
       description: json?['description'] as String?,
+      // Filled in by the verifier while building the order, if they bothered.
+      // Absent is fine -- the inventory form leaves them blank and editable.
+      brand: json?['brand'] as String?,
+      variety: json?['variety'] as String?,
+      packagingSize: (json?['packagingSize'] as num?)?.toDouble(),
+      packagingSizeUnit: json?['packagingSizeUnit'] as String?,
     );
 
     final added = await Navigator.push<bool>(
@@ -789,9 +839,7 @@ class _DoneOrWaitingBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDone =
-        order.status == OrderStatus.delivered ||
-        order.status == OrderStatus.deliveredToStorage;
+    final isDone = order.status == OrderStatus.delivered;
 
     if (isDone) {
       return const Card(

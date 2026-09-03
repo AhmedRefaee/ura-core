@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:app_links/app_links.dart';
 import 'package:timeago/timeago.dart' as timeago;
+import 'package:firebase_app_check/firebase_app_check.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -53,6 +54,41 @@ Future<void> main() async {
   timeago.setLocaleMessages('ar', timeago.ArMessages());
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+
+  // Vouches this is a genuine, unmodified copy of the app before Firebase
+  // lets a Gemini call through -- the Firebase config shipped in the app is
+  // public by design (extractable from the APK, readable in a web JS bundle),
+  // so without this, anyone who copies it could call Gemini through this
+  // project's billing. AndroidDebugProvider only produces a token once that
+  // build's one-time debug token is registered in the Firebase Console.
+  //
+  // Android only, deliberately -- and the guard has to be skipping the CALL,
+  // not just omitting providerWeb. firebase_app_check_web's activate() only
+  // wraps its localStorage write in a null check; it then passes the provider
+  // straight to getAppCheckInstance() regardless, so a null one reaches the JS
+  // SDK and throws "Cannot read properties of null (reading 'initialize')",
+  // taking the whole web app down at startup rather than merely leaving it
+  // unattested.
+  //
+  // Web is not a shipping target yet. When it becomes one it needs a reCAPTCHA
+  // ENTERPRISE key created inside the ura-core-9981c Google Cloud project
+  // itself -- classic reCAPTCHA v3 is dead (Google stopped issuing new classic
+  // keys in Q3 2024 and finished auto-migrating the rest in Q1 2026, so the App
+  // Check console's classic registration form is disabled), and an Enterprise
+  // key auto-migrated into some other project cannot be used here. Pair that
+  // key with ReCaptchaEnterpriseProvider, not V3, and add providerWeb here.
+  //
+  // Until then the web build carries no App Check token, so with enforcement on
+  // for AI Logic its Gemini calls are rejected by design. Everything else in
+  // the web app works normally.
+  if (!kIsWeb) {
+    await FirebaseAppCheck.instance.activate(
+      providerAndroid: kDebugMode
+          ? const AndroidDebugProvider()
+          : const AndroidPlayIntegrityProvider(),
+    );
+  }
+
   if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
     await _initCrashReporting();

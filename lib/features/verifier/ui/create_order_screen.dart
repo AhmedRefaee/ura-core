@@ -165,6 +165,8 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                         direction: ready.direction,
                         onRemove: (i) =>
                             context.read<CreateOrderCubit>().removeItem(i),
+                        onEditCustom: (i) =>
+                            _showEditCustomItemDialog(context, ready, i),
                       ),
                       SizedBox(height: AppSpacing.verticalXLarge),
 
@@ -212,6 +214,31 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
         builder: (_) => AddItemSheet(
           inventory: state.inventory,
           orderDirection: state.direction,
+          onAddInventoryItems: (items) => cubit.addMultipleItems(items),
+          onAddCustomItem: (desc, qty, {sourceInventoryId}) => cubit
+              .addCustomItem(desc, qty, sourceInventoryId: sourceInventoryId),
+        ),
+      ),
+    );
+  }
+
+  void _showEditCustomItemDialog(
+    BuildContext context,
+    CreateOrderReady state,
+    int index,
+  ) {
+    final cubit = context.read<CreateOrderCubit>();
+    final item = state.items[index];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddItemSheet(
+          inventory: state.inventory,
+          orderDirection: state.direction,
+          initialCustomJson: item.customDescription,
+          onUpdateCustomItem: (desc, qty) =>
+              cubit.updateCustomItem(index, desc, qty),
+          // Unreachable in edit mode, but the sheet requires them.
           onAddInventoryItems: (items) => cubit.addMultipleItems(items),
           onAddCustomItem: (desc, qty, {sourceInventoryId}) => cubit
               .addCustomItem(desc, qty, sourceInventoryId: sourceInventoryId),

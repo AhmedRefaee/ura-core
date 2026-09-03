@@ -210,7 +210,7 @@ class _StatusBadge extends StatelessWidget {
   String get _label => switch (status) {
         OrderStatus.assigned || OrderStatus.pickedUp => 'قبل التنقل',
         OrderStatus.onTheMove => 'في الطريق',
-        OrderStatus.delivered || OrderStatus.deliveredToStorage => 'مكتمل',
+        OrderStatus.delivered => 'مكتمل',
       };
 
   @override

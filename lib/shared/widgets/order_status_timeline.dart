@@ -3,6 +3,7 @@ import '../models/audit_log_entry.dart';
 import '../models/order.dart';
 import '../models/profile.dart';
 import '../order_status_theme.dart';
+import 'off_stock.dart';
 
 class OrderStatusTimeline extends StatelessWidget {
   final Order order;
@@ -40,8 +41,7 @@ class OrderStatusTimeline extends StatelessWidget {
   }
 
   DateTime? _overallDeliveredAt(List<_TimelineStep> steps) {
-    if (order.status != OrderStatus.delivered &&
-        order.status != OrderStatus.deliveredToStorage) {
+    if (order.status != OrderStatus.delivered) {
       return null;
     }
     for (final step in steps.reversed) {
@@ -57,7 +57,6 @@ class OrderStatusTimeline extends StatelessWidget {
     final pickedUpEntry = _entryFor(OrderStatus.pickedUp);
     final onTheMoveEntry = _entryFor(OrderStatus.onTheMove);
     final deliveredEntry = _entryFor(OrderStatus.delivered);
-    final deliveredToStorageEntry = _entryFor(OrderStatus.deliveredToStorage);
 
     final dir = order.direction;
     final status = order.status;
@@ -77,15 +76,13 @@ class OrderStatusTimeline extends StatelessWidget {
         ),
         _TimelineStep(
           label: 'تم الاستلام في المخزن',
-          icon: OrderStatus.deliveredToStorage.icon,
-          color: OrderStatus.deliveredToStorage.color,
+          icon: OrderStatus.delivered.icon,
+          color: OrderStatus.delivered.color,
           timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
           performer: deliveredEntry?.performer,
           notes: deliveredEntry?.notes,
           countsAsDelivery: true,
-          reached:
-              status == OrderStatus.delivered ||
-              status == OrderStatus.deliveredToStorage,
+          reached: status == OrderStatus.delivered,
         ),
       ];
     } else if (dir == OrderDirection.inboundRep) {
@@ -117,28 +114,23 @@ class OrderStatusTimeline extends StatelessWidget {
           notes: onTheMoveEntry?.notes,
           reached:
               status == OrderStatus.onTheMove ||
-              status == OrderStatus.delivered ||
-              status == OrderStatus.deliveredToStorage,
+              status == OrderStatus.delivered,
         ),
         _TimelineStep(
           label: 'استلام المخزن',
-          icon: OrderStatus.deliveredToStorage.icon,
-          color: OrderStatus.deliveredToStorage.color,
-          timestamp:
-              deliveredToStorageEntry?.serverTimestamp ??
-              order.deliveredAt ??
-              deliveredEntry?.serverTimestamp,
-          performer:
-              deliveredToStorageEntry?.performer ?? deliveredEntry?.performer,
-          notes: deliveredToStorageEntry?.notes ?? deliveredEntry?.notes,
+          icon: OrderStatus.delivered.icon,
+          color: OrderStatus.delivered.color,
+          timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
+          performer: deliveredEntry?.performer,
+          notes: deliveredEntry?.notes,
           countsAsDelivery: true,
-          reached:
-              status == OrderStatus.delivered ||
-              status == OrderStatus.deliveredToStorage,
+          reached: status == OrderStatus.delivered,
         ),
       ];
-    } else {
-      // outbound
+    } else if (dir == OrderDirection.outbound && !order.involvesStorage) {
+      // Flow 2 -- pure خارج المخزون, nothing to pick up from storage, so
+      // there is no pickedUp step in this flow at all (mirrors
+      // order_status_stepper.dart's same split).
       steps = [
         _TimelineStep(
           label: 'تم الإنشاء',
@@ -150,9 +142,41 @@ class OrderStatusTimeline extends StatelessWidget {
           reached: true,
         ),
         _TimelineStep(
-          label: order.involvesStorage
-              ? 'تم الاستلام من المخزن'
-              : 'تم الاستلام',
+          label: 'في الطريق',
+          icon: OrderStatus.onTheMove.icon,
+          color: OrderStatus.onTheMove.color,
+          timestamp: order.moveStartedAt ?? onTheMoveEntry?.serverTimestamp,
+          performer: onTheMoveEntry?.performer,
+          notes: onTheMoveEntry?.notes,
+          reached:
+              status == OrderStatus.onTheMove ||
+              status == OrderStatus.delivered,
+        ),
+        _TimelineStep(
+          label: 'تم التسليم',
+          icon: OrderStatus.delivered.icon,
+          color: OrderStatus.delivered.color,
+          timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
+          performer: deliveredEntry?.performer,
+          notes: deliveredEntry?.notes,
+          countsAsDelivery: true,
+          reached: status == OrderStatus.delivered,
+        ),
+      ];
+    } else {
+      // outbound Flow 1 -- involvesStorage
+      steps = [
+        _TimelineStep(
+          label: 'تم الإنشاء',
+          icon: OrderStatus.assigned.icon,
+          color: OrderStatus.assigned.color,
+          timestamp: order.assignedAt ?? order.createdAt,
+          performer: order.creator,
+          notes: _creationNotes,
+          reached: true,
+        ),
+        _TimelineStep(
+          label: 'تم الاستلام من المخزن',
           icon: OrderStatus.pickedUp.icon,
           color: OrderStatus.pickedUp.color,
           timestamp: order.pickedUpAt,
@@ -213,6 +237,13 @@ class OrderStatusTimeline extends StatelessWidget {
             const SizedBox(height: 12),
             if (overallDuration != null) ...[
               _OverallDurationBadge(duration: overallDuration),
+              const SizedBox(height: 12),
+            ],
+            if (order.hasOffStockItems) ...[
+              _OffStockProgressBadge(
+                purchased: order.offStockPurchasedCount,
+                total: order.offStockItemsCount,
+              ),
               const SizedBox(height: 12),
             ],
             ...tiles,
@@ -299,6 +330,50 @@ class _OverallDurationBadge extends StatelessWidget {
               fontWeight: FontWeight.w700,
               color: accent,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Read-only, non-sequential summary of خارج المخزون purchase progress.
+/// Deliberately not a _TimelineStep -- checking these off has no fixed slot
+/// in the linear status chain, so it doesn't belong in it.
+class _OffStockProgressBadge extends StatelessWidget {
+  final int purchased;
+  final int total;
+
+  const _OffStockProgressBadge({required this.purchased, required this.total});
+
+  @override
+  Widget build(BuildContext context) {
+    final complete = purchased == total;
+    final color = OffStock.color;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.2)),
+      ),
+      child: Row(
+        children: [
+          Icon(complete ? Icons.check_circle : OffStock.icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'شراء أصناف ${OffStock.label}',
+              style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Text(
+            '$purchased من $total',
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
           ),
         ],
       ),

@@ -20,6 +20,8 @@ class OrderItem extends Equatable {
   final DateTime? checkedAt;
   final Profile? checker;
   final bool wasUnavailableAtCreation;
+  final DateTime? purchasedAt;
+  final String? purchasedBy;
 
   const OrderItem({
     required this.id,
@@ -36,6 +38,8 @@ class OrderItem extends Equatable {
     this.checkedAt,
     this.checker,
     this.wasUnavailableAtCreation = false,
+    this.purchasedAt,
+    this.purchasedBy,
   });
 
   /// The quantity that should be used for inventory changes.
@@ -73,6 +77,10 @@ class OrderItem extends Equatable {
           : null,
       checker: checkerMap != null ? Profile.fromMap(checkerMap) : null,
       wasUnavailableAtCreation: map['was_unavailable_at_creation'] as bool? ?? false,
+      purchasedAt: map['purchased_at'] != null
+          ? DateTime.parse(map['purchased_at'] as String)
+          : null,
+      purchasedBy: map['purchased_by'] as String?,
     );
   }
 
@@ -94,5 +102,5 @@ class OrderItem extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, orderId, inventoryId, quantity, finalQuantity, isCustom, sourceInventoryId, checkStatus, wasUnavailableAtCreation];
+  List<Object?> get props => [id, orderId, inventoryId, quantity, finalQuantity, isCustom, sourceInventoryId, checkStatus, wasUnavailableAtCreation, purchasedAt, purchasedBy];
 }

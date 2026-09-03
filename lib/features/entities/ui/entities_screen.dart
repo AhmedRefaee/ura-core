@@ -116,29 +116,28 @@ class _FilterBar extends StatelessWidget {
         
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _FilterChip(
-                  label: 'الكل',
-                  isSelected: selectedFilter == null,
-                  onTap: () => context.read<EntitiesCubit>().filterByCategory(null),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: EntityCategory.incoming.label,
-                  isSelected: selectedFilter == EntityCategory.incoming,
-                  onTap: () => context.read<EntitiesCubit>().filterByCategory(EntityCategory.incoming),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: EntityCategory.outgoing.label,
-                  isSelected: selectedFilter == EntityCategory.outgoing,
-                  onTap: () => context.read<EntitiesCubit>().filterByCategory(EntityCategory.outgoing),
-                ),
-              ],
-            ),
+          // Wrap rather than a horizontal scroll strip -- a mouse cannot drag
+          // one, so on desktop web any chip past the right edge is unreachable.
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _FilterChip(
+                label: 'الكل',
+                isSelected: selectedFilter == null,
+                onTap: () => context.read<EntitiesCubit>().filterByCategory(null),
+              ),
+              _FilterChip(
+                label: EntityCategory.incoming.label,
+                isSelected: selectedFilter == EntityCategory.incoming,
+                onTap: () => context.read<EntitiesCubit>().filterByCategory(EntityCategory.incoming),
+              ),
+              _FilterChip(
+                label: EntityCategory.outgoing.label,
+                isSelected: selectedFilter == EntityCategory.outgoing,
+                onTap: () => context.read<EntitiesCubit>().filterByCategory(EntityCategory.outgoing),
+              ),
+            ],
           ),
         );
       },

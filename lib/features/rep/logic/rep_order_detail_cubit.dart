@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/audit_log_entry.dart';
@@ -74,7 +75,14 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
     final results = await Future.wait([
       _repo.fetchOrderDetail(orderId),
       _repo.fetchAuditLog(orderId),
-      _chatRepo.getOrderCommunicationHistory(orderId),
+      // Chat off: skip the call rather than let it fail. Unlike the audit log
+      // above, a history failure is treated as fatal below -- so once the
+      // server stopped granting chat reads, this one call would have taken
+      // every rep's order screen down with it.
+      if (kChatEnabled)
+        _chatRepo.getOrderCommunicationHistory(orderId)
+      else
+        Future.value(const AppSuccess<List<ChatMessage>>(<ChatMessage>[])),
     ]);
 
     if (isClosed) return;
@@ -134,6 +142,27 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
         await load();
       case AppFailure(:final error):
         logger.e('RepOrderDetailCubit → markPickedUp failed: ${error.message}');
+        safeEmit(RepOrderDetailError(error.message));
+    }
+  }
+
+  Future<void> toggleOffStockPurchased(
+    String orderItemId,
+    bool purchased, {
+    String? notes,
+  }) async {
+    final s = state;
+    if (s is! RepOrderDetailLoaded) return;
+    logger.d('RepOrderDetailCubit → toggleOffStockPurchased: $orderItemId -> $purchased');
+    safeEmit(s.copyWith(isActing: true));
+    final result = await _repo.toggleOffStockPurchased(orderItemId, purchased, notes: notes);
+    switch (result) {
+      case AppSuccess():
+        await load();
+      case AppFailure(:final error):
+        logger.e(
+          'RepOrderDetailCubit → toggleOffStockPurchased failed: ${error.message}',
+        );
         safeEmit(RepOrderDetailError(error.message));
     }
   }

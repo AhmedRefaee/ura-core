@@ -14,6 +14,11 @@ class InventoryItem extends Equatable {
   final double minQuantity;
   final String? description;
   final String? notes;
+  final String? brand;
+  final String? variety;
+  final double? packagingSize;
+  final String? packagingSizeUnit;
+  final List<String>? aliases;
   // Number of distinct orders that include this item; null means not yet loaded.
   final int? usageCount;
 
@@ -27,6 +32,11 @@ class InventoryItem extends Equatable {
     this.minQuantity = 0,
     this.description,
     this.notes,
+    this.brand,
+    this.variety,
+    this.packagingSize,
+    this.packagingSizeUnit,
+    this.aliases,
     this.usageCount,
   });
 
@@ -52,6 +62,11 @@ class InventoryItem extends Equatable {
         minQuantity: minQuantity,
         description: description,
         notes: notes,
+        brand: brand,
+        variety: variety,
+        packagingSize: packagingSize,
+        packagingSizeUnit: packagingSizeUnit,
+        aliases: aliases,
         usageCount: count,
       );
 
@@ -66,9 +81,30 @@ class InventoryItem extends Equatable {
       minQuantity: (map['min_quantity'] as num?)?.toDouble() ?? 0,
       description: map['description'] as String?,
       notes: map['notes'] as String?,
+      brand: map['brand'] as String?,
+      variety: map['variety'] as String?,
+      packagingSize: (map['packaging_size'] as num?)?.toDouble(),
+      packagingSizeUnit: map['packaging_size_unit'] as String?,
+      aliases: (map['aliases'] as List?)?.cast<String>(),
     );
   }
 
   @override
-  List<Object?> get props => [id, itemName, sku, quantity, unit, category, minQuantity, description, notes, usageCount];
+  List<Object?> get props => [
+        id,
+        itemName,
+        sku,
+        quantity,
+        unit,
+        category,
+        minQuantity,
+        description,
+        notes,
+        brand,
+        variety,
+        packagingSize,
+        packagingSizeUnit,
+        aliases,
+        usageCount,
+      ];
 }

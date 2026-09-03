@@ -119,8 +119,8 @@ class InventoryItemCard extends StatelessWidget {
                 ),
               ],
 
-              // ── Secondary tags: category + SKU ───────────────────────────
-              if (item.category != null || item.sku != null) ...[
+              // ── Secondary tags: category + brand + SKU ───────────────────
+              if (item.category != null || item.brand != null || item.sku != null) ...[
                 const SizedBox(height: 10),
                 Row(
                   children: [
@@ -129,6 +129,14 @@ class InventoryItemCard extends StatelessWidget {
                         label: item.category!,
                         background: scheme.secondaryContainer,
                         foreground: scheme.onSecondaryContainer,
+                      ),
+                      const SizedBox(width: 8),
+                    ],
+                    if (item.brand != null) ...[
+                      _Tag(
+                        label: item.brand!,
+                        background: scheme.tertiaryContainer,
+                        foreground: scheme.onTertiaryContainer,
                       ),
                       const SizedBox(width: 8),
                     ],

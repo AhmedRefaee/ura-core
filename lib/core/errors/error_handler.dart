@@ -127,6 +127,14 @@ class ErrorHandler {
     // Standard Postgres error codes
     switch (error.code) {
       case '23505':
+        // A function that raises unique_violation with its own Arabic message
+        // is naming WHICH uniqueness rule was broken (see
+        // inventory_create_item, which lists name + brand + variety +
+        // packaging). That is strictly more useful than the generic line, so
+        // let it through; a bare index violation still falls back.
+        if (_containsArabic(error.message)) {
+          return AppError(message: error.message, type: AppErrorType.validation);
+        }
         return const AppError(
           message: 'هذا العنصر موجود مسبقاً',
           type: AppErrorType.validation,

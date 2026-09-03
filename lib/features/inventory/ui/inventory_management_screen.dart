@@ -4,7 +4,10 @@ import '../../../core/design_system/theme/theme.dart';
 import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/inventory_item.dart';
+import '../../../shared/models/profile.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../auth/logic/auth_cubit.dart';
+import '../../auth/logic/auth_state.dart';
 import '../logic/inventory_list_cubit.dart';
 import 'inventory_bulk_edit_screen.dart';
 import 'inventory_form_screen.dart';
@@ -73,6 +76,16 @@ class _InventoryManagementViewState extends State<_InventoryManagementView> {
 
   @override
   Widget build(BuildContext context) {
+    // A verifier gets this screen for everything that describes an item -- add,
+    // edit, archive -- but not for the stock count. The two bulk paths below
+    // exist only to set quantities in volume, and the server refuses both for
+    // verifiers (20260902140000 / 20260902150000), so showing them would only
+    // offer buttons that error.
+    final authState = context.watch<AuthCubit>().state;
+    final isVerifier =
+        authState is AuthAuthenticated &&
+        authState.profile.role == UserRole.verifier;
+
     return CollapsingHeaderWrapper(
       title: const Text('إدارة المخزون'),
       actions: [
@@ -81,37 +94,39 @@ class _InventoryManagementViewState extends State<_InventoryManagementView> {
           tooltip: 'إضافة صنف',
           onPressed: () => _openCreate(context),
         ),
-        PopupMenuButton<_ExcelAction>(
-          icon: const Icon(Icons.table_chart_outlined),
-          tooltip: 'خيارات Excel',
-          onSelected: (action) {
-            if (action == _ExcelAction.importNew) _openImport(context);
-            if (action == _ExcelAction.bulkEdit) _openBulkEditExcel(context);
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(
-              value: _ExcelAction.importNew,
-              child: ListTile(
-                leading: Icon(Icons.upload_file_outlined),
-                title: Text('استيراد عناصر جديدة'),
-                contentPadding: EdgeInsets.zero,
+        if (!isVerifier)
+          PopupMenuButton<_ExcelAction>(
+            icon: const Icon(Icons.table_chart_outlined),
+            tooltip: 'خيارات Excel',
+            onSelected: (action) {
+              if (action == _ExcelAction.importNew) _openImport(context);
+              if (action == _ExcelAction.bulkEdit) _openBulkEditExcel(context);
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: _ExcelAction.importNew,
+                child: ListTile(
+                  leading: Icon(Icons.upload_file_outlined),
+                  title: Text('استيراد عناصر جديدة'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            ),
-            PopupMenuItem(
-              value: _ExcelAction.bulkEdit,
-              child: ListTile(
-                leading: Icon(Icons.sync_alt_outlined),
-                title: Text('تعديل جماعي عبر Excel'),
-                contentPadding: EdgeInsets.zero,
+              PopupMenuItem(
+                value: _ExcelAction.bulkEdit,
+                child: ListTile(
+                  leading: Icon(Icons.sync_alt_outlined),
+                  title: Text('تعديل جماعي عبر Excel'),
+                  contentPadding: EdgeInsets.zero,
+                ),
               ),
-            ),
-          ],
-        ),
-        IconButton(
-          icon: const Icon(Icons.edit_note_outlined),
-          tooltip: 'تعديل الكميات',
-          onPressed: () => _openBulkEdit(context),
-        ),
+            ],
+          ),
+        if (!isVerifier)
+          IconButton(
+            icon: const Icon(Icons.edit_note_outlined),
+            tooltip: 'تعديل الكميات',
+            onPressed: () => _openBulkEdit(context),
+          ),
         IconButton(
           icon: const Icon(Icons.refresh),
           tooltip: 'تحديث',
@@ -489,6 +504,15 @@ class _InventoryManagementFilterCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Read the role here rather than threading a flag down from the screen --
+    // this card is nested two widgets deep and the callbacks it receives are
+    // already opaque VoidCallbacks, so a passed-down bool would be one more
+    // thing to keep in step with the app bar.
+    final authState = context.watch<AuthCubit>().state;
+    final isVerifier =
+        authState is AuthAuthenticated &&
+        authState.profile.role == UserRole.verifier;
+
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
@@ -508,21 +532,27 @@ class _InventoryManagementFilterCard extends StatelessWidget {
                     label: 'إضافة صنف',
                     onPressed: onCreate,
                   ),
-                  _ManagementActionChip(
-                    icon: Icons.edit_note_outlined,
-                    label: 'تعديل الكميات',
-                    onPressed: onBulkEdit,
-                  ),
-                  _ManagementActionChip(
-                    icon: Icons.upload_file_outlined,
-                    label: 'استيراد Excel',
-                    onPressed: onImport,
-                  ),
-                  _ManagementActionChip(
-                    icon: Icons.sync_alt_outlined,
-                    label: 'تعديل Excel',
-                    onPressed: onBulkEditExcel,
-                  ),
+                  // The same three quantity/Excel actions the app bar hides
+                  // from verifiers -- this card is a second entry point to
+                  // them, so it has to make the same distinction.
+                  if (!isVerifier)
+                    _ManagementActionChip(
+                      icon: Icons.edit_note_outlined,
+                      label: 'تعديل الكميات',
+                      onPressed: onBulkEdit,
+                    ),
+                  if (!isVerifier)
+                    _ManagementActionChip(
+                      icon: Icons.upload_file_outlined,
+                      label: 'استيراد Excel',
+                      onPressed: onImport,
+                    ),
+                  if (!isVerifier)
+                    _ManagementActionChip(
+                      icon: Icons.sync_alt_outlined,
+                      label: 'تعديل Excel',
+                      onPressed: onBulkEditExcel,
+                    ),
                 ],
               ),
             ),
@@ -774,12 +804,13 @@ class _InventoryManagementGridCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
               const Spacer(),
-              if (item.category != null || item.sku != null)
+              if (item.category != null || item.brand != null || item.sku != null)
                 Wrap(
                   spacing: 6,
                   runSpacing: 6,
                   children: [
                     if (item.category != null) _MiniTag(label: item.category!),
+                    if (item.brand != null) _MiniTag(label: item.brand!),
                     if (item.sku != null) _MiniTag(label: 'SKU: ${item.sku}'),
                   ],
                 ),

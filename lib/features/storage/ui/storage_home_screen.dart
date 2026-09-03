@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/widgets/notification_dot.dart';
 import '../../../shared/models/order.dart';
@@ -28,8 +29,12 @@ class StorageHomeScreen extends StatelessWidget {
       providers: [
         BlocProvider(create: (_) => sl<StorageOrdersCubit>()..loadOrders()),
         BlocProvider.value(value: sl<NotificationsBadgeCubit>()),
-        BlocProvider.value(value: sl<ChatBadgeCubit>()),
-        BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
+        // Chat off: these two subscribe to chat tables the server no longer
+        // grants us, so creating them would only produce a stream of
+        // permission errors behind a tab nobody can open.
+        if (kChatEnabled) BlocProvider.value(value: sl<ChatBadgeCubit>()),
+        if (kChatEnabled)
+          BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
       ],
       child: const _StorageHomeView(),
     );
@@ -48,14 +53,18 @@ class _StorageHomeViewState extends State<_StorageHomeView> {
 
   @override
   Widget build(BuildContext context) {
+    // Tabs and destinations are built from the same `if (kChatEnabled)`, so the
+    // two lists cannot drift out of alignment when chat is toggled -- which is
+    // exactly what hardcoded switch-on-index would have risked.
+    final tabs = <Widget>[
+      const _OrdersTab(),
+      const InventoryManagementScreen(),
+      if (kChatEnabled) const ChatHubSection(),
+      _SettingsTab(onLogout: () => context.read<AuthCubit>().signOut()),
+    ];
+
     return Scaffold(
-      body: switch (_navIndex) {
-        0 => const _OrdersTab(),
-        1 => const InventoryManagementScreen(),
-        2 => const ChatHubSection(),
-        3 => _SettingsTab(onLogout: () => context.read<AuthCubit>().signOut()),
-        _ => const SizedBox.shrink(),
-      },
+      body: tabs[_navIndex],
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navIndex,
         onDestinationSelected: (i) => setState(() => _navIndex = i),
@@ -70,21 +79,22 @@ class _StorageHomeViewState extends State<_StorageHomeView> {
             selectedIcon: Icon(Icons.inventory_2),
             label: 'المخزون',
           ),
-          NavigationDestination(
-            icon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble_outline),
+          if (kChatEnabled)
+            NavigationDestination(
+              icon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble_outline),
+                ),
               ),
-            ),
-            selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble),
+              selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble),
+                ),
               ),
+              label: 'المحادثات',
             ),
-            label: 'المحادثات',
-          ),
           const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),

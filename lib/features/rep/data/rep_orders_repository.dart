@@ -103,6 +103,29 @@ class RepOrdersRepository {
     }
   }
 
+  Future<AppResult<void>> toggleOffStockPurchased(
+    String orderItemId,
+    bool purchased, {
+    String? notes,
+  }) async {
+    try {
+      logger.d('RepOrdersRepository → toggleOffStockPurchased: $orderItemId -> $purchased');
+      final result = await _supabase.rpc('toggle_off_stock_item_purchased', params: {
+        'target_item_id': orderItemId,
+        'p_purchased': purchased,
+        'p_notes': notes,
+      });
+      if (result['success'] as bool? ?? false) {
+        logger.i('RepOrdersRepository → toggleOffStockPurchased success: $orderItemId');
+        return const AppSuccess(null);
+      }
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
+    } catch (e, st) {
+      logger.e('RepOrdersRepository → toggleOffStockPurchased failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
   Future<AppResult<List<AuditLogEntry>>> fetchAuditLog(String orderId) async {
     try {
       logger.d('RepOrdersRepository → fetchAuditLog: $orderId');

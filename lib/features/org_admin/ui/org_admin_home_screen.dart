@@ -1,6 +1,8 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/widgets/notification_dot.dart';
 import '../../../core/design_system/widgets/widgets.dart';
@@ -44,8 +46,12 @@ class OrgAdminHomeScreen extends StatelessWidget {
         BlocProvider(create: (_) => sl<StorageOrdersCubit>()..loadOrders()),
         BlocProvider(create: (_) => sl<ManagerPendingUsersCubit>()..load()),
         BlocProvider.value(value: sl<NotificationsBadgeCubit>()),
-        BlocProvider.value(value: sl<ChatBadgeCubit>()),
-        BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
+        // Chat off: these two subscribe to chat tables the server no longer
+        // grants us, so creating them would only produce a stream of
+        // permission errors behind a tab nobody can open.
+        if (kChatEnabled) BlocProvider.value(value: sl<ChatBadgeCubit>()),
+        if (kChatEnabled)
+          BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
       ],
       child: const _OrgAdminHomeView(),
     );
@@ -64,15 +70,20 @@ class _OrgAdminHomeViewState extends State<_OrgAdminHomeView> {
 
   @override
   Widget build(BuildContext context) {
+    // Tabs and destinations are built from the same `if (kChatEnabled)`, so the
+    // two lists cannot drift out of alignment when chat is toggled -- which is
+    // exactly what hardcoded switch-on-index would have risked.
+    final tabs = <Widget>[
+      const _OrdersTab(),
+      const InventoryManagementScreen(),
+      const _StorageCheckTab(),
+      if (kChatEnabled) const ChatHubSection(),
+      const _UsersTab(),
+      _SettingsTab(onLogout: () => context.read<AuthCubit>().signOut()),
+    ];
+
     return Scaffold(
-      body: switch (_navIndex) {
-        0 => const _OrdersTab(),
-        1 => const InventoryManagementScreen(),
-        2 => const _StorageCheckTab(),
-        3 => const ChatHubSection(),
-        4 => const _UsersTab(),
-        _ => _SettingsTab(onLogout: () => context.read<AuthCubit>().signOut()),
-      },
+      body: tabs[_navIndex],
       floatingActionButton: _navIndex == 0
           ? FloatingActionButton.extended(
               onPressed: () => _openCreateOrder(context),
@@ -99,21 +110,22 @@ class _OrgAdminHomeViewState extends State<_OrgAdminHomeView> {
             selectedIcon: Icon(Icons.fact_check),
             label: 'فحص المخزن',
           ),
-          NavigationDestination(
-            icon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble_outline),
+          if (kChatEnabled)
+            NavigationDestination(
+              icon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble_outline),
+                ),
               ),
-            ),
-            selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble),
+              selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble),
+                ),
               ),
+              label: 'المحادثات',
             ),
-            label: 'المحادثات',
-          ),
           const NavigationDestination(
             icon: Icon(Icons.people_outline),
             selectedIcon: Icon(Icons.people),
@@ -245,10 +257,7 @@ class _OrdersTabState extends State<_OrdersTab>
             );
           }
           if (state is OrdersLoaded) {
-            const doneStatuses = {
-              OrderStatus.delivered,
-              OrderStatus.deliveredToStorage,
-            };
+            const doneStatuses = {OrderStatus.delivered};
             final active = state.orders
                 .where((o) => !doneStatuses.contains(o.status))
                 .toList();
@@ -580,6 +589,7 @@ class _AllUsersTab extends StatefulWidget {
 class _AllUsersTabState extends State<_AllUsersTab> {
   String _role = 'rep';
   late final UserTypeCubit _cubit;
+  final _roleScrollController = ScrollController();
 
   @override
   void initState() {
@@ -589,6 +599,7 @@ class _AllUsersTabState extends State<_AllUsersTab> {
 
   @override
   void dispose() {
+    _roleScrollController.dispose();
     _cubit.close();
     super.dispose();
   }
@@ -601,23 +612,44 @@ class _AllUsersTabState extends State<_AllUsersTab> {
         children: [
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'rep', label: Text('مناديب')),
-                  ButtonSegment(
-                      value: 'storage_actor', label: Text('أمناء المخزن')),
-                  ButtonSegment(value: 'verifier', label: Text('مشرفون')),
-                  ButtonSegment(value: 'manager', label: Text('مديرون')),
-                  ButtonSegment(
-                      value: 'admin', label: Text('مديرون عامون')),
-                ],
-                selected: {_role},
-                onSelectionChanged: (s) {
-                  setState(() => _role = s.first);
-                  _cubit.load(s.first);
+            // Five long Arabic labels overflow a narrow window, and a
+            // horizontal scroll view cannot be dragged with a mouse -- Flutter
+            // leaves PointerDeviceKind.mouse out of the default drag devices --
+            // so on desktop web the last roles were simply unreachable. A
+            // SegmentedButton cannot wrap the way the chip rows elsewhere now
+            // do, so instead the scroll is made mouse-draggable and given a
+            // visible scrollbar. Appearance is unchanged on touch.
+            child: ScrollConfiguration(
+              behavior: ScrollConfiguration.of(context).copyWith(
+                dragDevices: {
+                  PointerDeviceKind.touch,
+                  PointerDeviceKind.mouse,
+                  PointerDeviceKind.trackpad,
+                  PointerDeviceKind.stylus,
                 },
+              ),
+              child: Scrollbar(
+                controller: _roleScrollController,
+                child: SingleChildScrollView(
+                  controller: _roleScrollController,
+                  scrollDirection: Axis.horizontal,
+                  child: SegmentedButton<String>(
+                    segments: const [
+                      ButtonSegment(value: 'rep', label: Text('مناديب')),
+                      ButtonSegment(
+                          value: 'storage_actor', label: Text('أمناء المخزن')),
+                      ButtonSegment(value: 'verifier', label: Text('مشرفون')),
+                      ButtonSegment(value: 'manager', label: Text('مديرون')),
+                      ButtonSegment(
+                          value: 'admin', label: Text('مديرون عامون')),
+                    ],
+                    selected: {_role},
+                    onSelectionChanged: (s) {
+                      setState(() => _role = s.first);
+                      _cubit.load(s.first);
+                    },
+                  ),
+                ),
               ),
             ),
           ),

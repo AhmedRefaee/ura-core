@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/widgets/notification_dot.dart';
 import '../../../core/design_system/theme/theme.dart';
@@ -13,7 +14,7 @@ import '../../chat/ui/chat_hub_screen.dart';
 import '../../profile/ui/profile_screen.dart';
 import '../../notifications/logic/chat_badge_cubit.dart';
 import '../../notifications/logic/notifications_badge_cubit.dart';
-import '../../inventory/ui/inventory_availability_screen.dart';
+import '../../inventory/ui/inventory_management_screen.dart';
 import '../../manager/logic/stats_cubit.dart';
 import '../../manager/ui/rep_list_screen.dart';
 import '../../manager/ui/stats_screen.dart';
@@ -52,7 +53,11 @@ class _VerifierHomeViewState extends State<_VerifierHomeView> {
   @override
   void initState() {
     super.initState();
-    sl<OrderChatBadgeCubit>().subscribe();
+    // Subscribing is what reaches chat_messages; constructing the cubit does
+    // not. It stays provided below (the order list reads its state to float
+    // urgent orders to the top) but with chat off it simply never fills, and
+    // that sort quietly becomes a no-op.
+    if (kChatEnabled) sl<OrderChatBadgeCubit>().subscribe();
   }
 
   @override
@@ -61,8 +66,12 @@ class _VerifierHomeViewState extends State<_VerifierHomeView> {
       providers: [
         BlocProvider.value(value: sl<OrderChatBadgeCubit>()),
         BlocProvider.value(value: sl<NotificationsBadgeCubit>()),
-        BlocProvider.value(value: sl<ChatBadgeCubit>()),
-        BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
+        // Chat off: these two subscribe to chat tables the server no longer
+        // grants us, so creating them would only produce a stream of
+        // permission errors behind a tab nobody can open.
+        if (kChatEnabled) BlocProvider.value(value: sl<ChatBadgeCubit>()),
+        if (kChatEnabled)
+          BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
       ],
       child: _ScaffoldBody(
         navIndex: _navIndex,
@@ -72,6 +81,11 @@ class _VerifierHomeViewState extends State<_VerifierHomeView> {
   }
 }
 
+/// The verifier's bottom-bar destinations, in display order. Named rather than
+/// numbered so that omitting one (chat) shifts nothing that has to be kept in
+/// sync by hand.
+enum _VerifierTab { orders, inventory, chat, reps, settings }
+
 class _ScaffoldBody extends StatelessWidget {
   final int navIndex;
   final ValueChanged<int> onNavChanged;
@@ -79,19 +93,39 @@ class _ScaffoldBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Switching on a named tab rather than a raw index: this screen keeps
+    // orders and inventory alive in an IndexedStack, so their positions in the
+    // bar cannot be recomputed from `navIndex` once chat is dropped from the
+    // middle of the list. The bar below is built from the same
+    // `if (kChatEnabled)`, so the two stay aligned by construction.
+    final tabs = <_VerifierTab>[
+      _VerifierTab.orders,
+      _VerifierTab.inventory,
+      if (kChatEnabled) _VerifierTab.chat,
+      _VerifierTab.reps,
+      _VerifierTab.settings,
+    ];
+    final current = tabs[navIndex];
+
     return Scaffold(
-      body: switch (navIndex) {
-        0 || 1 => IndexedStack(
-          index: navIndex,
-          children: const [_OrdersTab(), InventoryAvailabilityScreen()],
+      body: switch (current) {
+        _VerifierTab.orders || _VerifierTab.inventory => IndexedStack(
+          index: current == _VerifierTab.orders ? 0 : 1,
+          // The management screen, not the read-only availability one: a
+          // verifier owns everything that describes an item (add, edit,
+          // archive) and needs a deliberate place to undo an item they added by
+          // mistake. It is a superset of the availability screen -- same
+          // متوفر/منخفض/نفد filters -- and hides its own quantity and Excel
+          // actions for verifiers. Reps and managers keep the read-only screen.
+          children: const [_OrdersTab(), InventoryManagementScreen()],
         ),
-        2 => const ChatHubSection(),
-        3 => const RepListScreen(),
-        _ => _SettingsTab(
+        _VerifierTab.chat => const ChatHubSection(),
+        _VerifierTab.reps => const RepListScreen(),
+        _VerifierTab.settings => _SettingsTab(
           onLogout: () => context.read<AuthCubit>().signOut(),
         ),
       },
-      floatingActionButton: navIndex == 0
+      floatingActionButton: current == _VerifierTab.orders
           ? FloatingActionButton.extended(
               onPressed: () => _openCreateOrder(context),
               icon: const Icon(Icons.add),
@@ -112,21 +146,22 @@ class _ScaffoldBody extends StatelessWidget {
             selectedIcon: Icon(Icons.inventory_2),
             label: 'المخزون',
           ),
-          NavigationDestination(
-            icon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble_outline),
+          if (kChatEnabled)
+            NavigationDestination(
+              icon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble_outline),
+                ),
               ),
-            ),
-            selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble),
+              selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble),
+                ),
               ),
+              label: 'المحادثات',
             ),
-            label: 'المحادثات',
-          ),
           const NavigationDestination(
             icon: Icon(Icons.delivery_dining_outlined),
             selectedIcon: Icon(Icons.delivery_dining),
@@ -257,10 +292,7 @@ class _OrdersTabState extends State<_OrdersTab>
             );
           }
           if (state is OrdersLoaded) {
-            const doneStatuses = {
-              OrderStatus.delivered,
-              OrderStatus.deliveredToStorage,
-            };
+            const doneStatuses = {OrderStatus.delivered};
             final active = state.orders
                 .where((o) => !doneStatuses.contains(o.status))
                 .toList();

@@ -56,10 +56,7 @@ class UserOrdersCubit extends Cubit<UserOrdersState>
 
     safeEmit(UserOrdersLoading());
 
-    const doneStatuses = {
-      OrderStatus.delivered,
-      OrderStatus.deliveredToStorage,
-    };
+    const doneStatuses = {OrderStatus.delivered};
 
     switch (user.role) {
       case UserRole.rep:

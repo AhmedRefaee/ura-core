@@ -24,7 +24,7 @@ class InventoryManagementRepository {
       
       var query = _supabase
           .from('inventory')
-          .select('id, item_name, sku, quantity, unit, category, min_quantity, description')
+          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, brand, variety, packaging_size, packaging_size_unit, aliases')
           .isFilter('archived_at', null);
       if (search != null && search.isNotEmpty) {
         query = query.ilike('item_name', '%$search%');
@@ -46,7 +46,7 @@ class InventoryManagementRepository {
     try {
       final data = await _supabase
           .from('inventory')
-          .select('id, item_name, sku, quantity, unit, category, min_quantity, description')
+          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, brand, variety, packaging_size, packaging_size_unit, aliases')
           .eq('id', itemId)
           .single();
       return AppSuccess(InventoryItem.fromMap(data));
@@ -80,9 +80,14 @@ class InventoryManagementRepository {
     required double quantity,
     String? sku,
     String? category,
-    double minQuantity = 0,
+    double minQuantity = 3,
     String? description,
     String? notes,
+    String? brand,
+    String? variety,
+    double? packagingSize,
+    String? packagingSizeUnit,
+    List<String>? aliases,
   }) async {
     try {
       final result = await _supabase.rpc('inventory_create_item', params: {
@@ -94,6 +99,11 @@ class InventoryManagementRepository {
         'p_min_quantity': minQuantity,
         'p_description': description,
         'p_notes': notes,
+        'p_brand': brand,
+        'p_variety': variety,
+        'p_packaging_size': packagingSize,
+        'p_packaging_size_unit': packagingSizeUnit,
+        'p_aliases': aliases,
       });
       if (result is Map && result['success'] == false) {
         return AppFailure(ErrorHandler.fromRpcResult(result));
@@ -114,9 +124,14 @@ class InventoryManagementRepository {
     required double quantity,
     String? sku,
     String? category,
-    double minQuantity = 0,
+    double minQuantity = 3,
     String? description,
     String? notes,
+    String? brand,
+    String? variety,
+    double? packagingSize,
+    String? packagingSizeUnit,
+    List<String>? aliases,
   }) async {
     try {
       final result = await _supabase.rpc('inventory_update_item', params: {
@@ -129,6 +144,11 @@ class InventoryManagementRepository {
         'p_min_quantity': minQuantity,
         'p_description': description,
         'p_notes': notes,
+        'p_brand': brand,
+        'p_variety': variety,
+        'p_packaging_size': packagingSize,
+        'p_packaging_size_unit': packagingSizeUnit,
+        'p_aliases': aliases,
       });
       if (result is Map && result['success'] == false) {
         return AppFailure(ErrorHandler.fromRpcResult(result));
@@ -202,7 +222,16 @@ class InventoryManagementRepository {
     List<Map<String, dynamic>> rows,
   ) async {
     try {
-      await _supabase.from('inventory').insert(rows);
+      // Through the RPC, never a raw insert: the table's INSERT policy lets any
+      // verifier write any quantity, so a direct insert here bypassed the
+      // storage-only-quantity rule and logged nothing to inventory_audit_log.
+      final result = await _supabase.rpc(
+        'inventory_bulk_create_items',
+        params: {'p_items': rows},
+      );
+      if (result is Map && result['success'] == false) {
+        return AppFailure(ErrorHandler.fromRpcResult(result));
+      }
       _inventoryCache.clear();
       logger.i('Bulk import: ${rows.length} items inserted');
       return const AppSuccess(null);
@@ -216,7 +245,7 @@ class InventoryManagementRepository {
     try {
       final data = await _supabase
           .from('inventory')
-          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, notes')
+          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, notes, brand, variety, packaging_size, packaging_size_unit, aliases')
           .isFilter('archived_at', null)
           .order('item_name');
       final result = (data as List)
@@ -253,10 +282,15 @@ class InventoryManagementRepository {
     List<Map<String, dynamic>> rows,
   ) async {
     try {
-      for (final row in rows) {
-        final id = row['id'] as String;
-        final data = Map<String, dynamic>.from(row)..remove('id');
-        await _supabase.from('inventory').update(data).eq('id', id);
+      // One call, one transaction. This used to loop a raw table update per
+      // row, which skipped the storage-only-quantity rule, wrote no audit
+      // history, and left the catalogue half-updated if a row failed partway.
+      final result = await _supabase.rpc(
+        'inventory_bulk_update_items',
+        params: {'p_items': rows},
+      );
+      if (result is Map && result['success'] == false) {
+        return AppFailure(ErrorHandler.fromRpcResult(result));
       }
       _inventoryCache.clear();
       logger.i('Bulk update: ${rows.length} items updated');

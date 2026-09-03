@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/widgets/notification_dot.dart';
 import '../../../core/design_system/widgets/widgets.dart';
@@ -30,13 +31,22 @@ class ManagerHomeScreen extends StatelessWidget {
         BlocProvider(create: (_) => sl<MonitorOrdersCubit>()..load()),
         BlocProvider(create: (_) => sl<ManagerPendingUsersCubit>()..load()),
         BlocProvider.value(value: sl<NotificationsBadgeCubit>()),
-        BlocProvider.value(value: sl<ChatBadgeCubit>()),
-        BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
+        // Chat off: these two subscribe to chat tables the server no longer
+        // grants us, so creating them would only produce a stream of
+        // permission errors behind a tab nobody can open.
+        if (kChatEnabled) BlocProvider.value(value: sl<ChatBadgeCubit>()),
+        if (kChatEnabled)
+          BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
       ],
       child: const _ManagerHomeView(),
     );
   }
 }
+
+/// The manager's bottom-bar destinations, in display order. Named rather than
+/// numbered so that omitting one (chat) shifts nothing that has to be kept in
+/// sync by hand.
+enum _ManagerTab { orders, inventory, chat, users, settings }
 
 class _ManagerHomeView extends StatefulWidget {
   const _ManagerHomeView();
@@ -50,15 +60,29 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
 
   @override
   Widget build(BuildContext context) {
+    // Switching on a named tab rather than a raw index: this screen keeps
+    // orders and inventory alive in an IndexedStack, so their positions in the
+    // bar cannot be recomputed from `_navIndex` once chat is dropped from the
+    // middle of the list. The bar below is built from the same
+    // `if (kChatEnabled)`, so the two stay aligned by construction.
+    final tabs = <_ManagerTab>[
+      _ManagerTab.orders,
+      _ManagerTab.inventory,
+      if (kChatEnabled) _ManagerTab.chat,
+      _ManagerTab.users,
+      _ManagerTab.settings,
+    ];
+    final current = tabs[_navIndex];
+
     return Scaffold(
-      body: switch (_navIndex) {
-        0 || 1 => IndexedStack(
-          index: _navIndex,
+      body: switch (current) {
+        _ManagerTab.orders || _ManagerTab.inventory => IndexedStack(
+          index: current == _ManagerTab.orders ? 0 : 1,
           children: const [MonitorTasksScreen(), InventoryAvailabilityScreen()],
         ),
-        2 => const ChatHubSection(),
-        3 => const _UsersTab(),
-        _ => _SettingsTab(
+        _ManagerTab.chat => const ChatHubSection(),
+        _ManagerTab.users => const _UsersTab(),
+        _ManagerTab.settings => _SettingsTab(
           onLogout: () => context.read<AuthCubit>().signOut(),
         ),
       },
@@ -76,21 +100,22 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
             selectedIcon: Icon(Icons.inventory_2),
             label: 'المخزون',
           ),
-          NavigationDestination(
-            icon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble_outline),
+          if (kChatEnabled)
+            NavigationDestination(
+              icon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble_outline),
+                ),
               ),
-            ),
-            selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble),
+              selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble),
+                ),
               ),
+              label: 'المحادثات',
             ),
-            label: 'المحادثات',
-          ),
           const NavigationDestination(
             icon: Icon(Icons.people_outline),
             selectedIcon: Icon(Icons.people),

@@ -10,7 +10,6 @@ extension OrderStatusTheme on OrderStatus {
     OrderStatus.pickedUp => OrderStatusColors.pickedUp,
     OrderStatus.onTheMove => OrderStatusColors.onTheMove,
     OrderStatus.delivered => OrderStatusColors.delivered,
-    OrderStatus.deliveredToStorage => OrderStatusColors.deliveredToStorage,
   };
 
   IconData get icon => switch (this) {
@@ -18,6 +17,5 @@ extension OrderStatusTheme on OrderStatus {
     OrderStatus.pickedUp => Icons.inventory_2_outlined,
     OrderStatus.onTheMove => Icons.local_shipping_outlined,
     OrderStatus.delivered => Icons.check_circle_outline,
-    OrderStatus.deliveredToStorage => Icons.storage_outlined,
   };
 }

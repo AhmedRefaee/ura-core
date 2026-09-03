@@ -1,0 +1,15 @@
+-- approve_order() is unreachable from the app (never called from Dart --
+-- mark_picked_up/start_move/mark_delivered/storage_confirm_delivery are the
+-- real, guarded RPCs for these transitions) and unfinished: its inbound_rep
+-- branch writes the dead 'delivered_to_storage' status, and both branches
+-- are missing the inventory adjustment they were supposed to make (literal
+-- placeholder comments in the baseline migration instead of real SQL).
+--
+-- It is also GRANTed to "anon" with no internal auth check, so as written
+-- it lets an unauthenticated caller flip any order straight to 'picked_up'
+-- or 'delivered_to_storage' via a direct .rpc() call, bypassing RLS (it is
+-- SECURITY DEFINER) and the direction/status guards added in
+-- 20260828120000_order_rpc_direction_guards.sql. Confirmed via a live query
+-- that zero orders have ever had status = 'delivered_to_storage', so this
+-- function's write path has never actually fired.
+DROP FUNCTION IF EXISTS "public"."approve_order"("target_order_id" "uuid");

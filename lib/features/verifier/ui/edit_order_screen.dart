@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../shared/models/inventory_item.dart';
+import '../../../shared/models/off_stock_kind.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
@@ -107,6 +108,7 @@ class EditOrderScreen extends StatelessWidget {
                           isRemoved: ready.pendingActions.any(
                               (a) => a is RemoveItemAction && a.itemId == item.id),
                           inventory: ready.inventory,
+                          direction: ready.originalOrder.direction,
                           onQuantityChanged: (qty) => context
                               .read<EditOrderCubit>()
                               .updateItemQuantity(item.id, qty),
@@ -119,13 +121,27 @@ class EditOrderScreen extends StatelessWidget {
                       if (ready.addedItems.isNotEmpty) ...[
                         SizedBox(height: AppSpacing.verticalMedium),
                         const _SectionTitle('أصناف مضافة'),
-                        ...ready.addedItems.map((draft) => ListTile(
+                        ...ready.addedItems.map((draft) {
+                          // Not yet inserted, so there is no
+                          // was_unavailable_at_creation to read -- the live
+                          // balance of the row the verifier picked is the
+                          // same fact, one step earlier.
+                          final kind = draftOffStockKind(
+                            isCustom: draft.isCustom,
+                            sourceInventoryId: draft.sourceInventoryId,
+                            direction: ready.originalOrder.direction,
+                            inventoryQuantity: ready.inventory
+                                .where((i) => i.id == draft.inventoryId)
+                                .firstOrNull
+                                ?.quantity,
+                          );
+                          return ListTile(
                               dense: true,
                               leading: Icon(
-                                draft.isCustom
-                                    ? OffStock.icon
-                                    : Icons.inventory_2_outlined,
-                                color: draft.isCustom ? OffStock.color : Colors.teal,
+                                kind == null
+                                    ? Icons.inventory_2_outlined
+                                    : OffStock.iconFor(kind),
+                                color: kind == null ? Colors.teal : OffStock.color,
                                 size: 20,
                               ),
                               title: Text(draft.displayName),
@@ -134,10 +150,10 @@ class EditOrderScreen extends StatelessWidget {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text('الكمية: ${formatQty(draft.quantity)}'),
-                                  if (draft.isCustom)
+                                  if (kind != null)
                                     Padding(
                                       padding: const EdgeInsets.only(top: 2),
-                                      child: OffStock.badge(),
+                                      child: OffStock.badge(kind),
                                     ),
                                 ],
                               ),
@@ -154,7 +170,8 @@ class EditOrderScreen extends StatelessWidget {
                                         color: Colors.green,
                                         fontWeight: FontWeight.bold)),
                               ),
-                            )),
+                            );
+                        }),
                       ],
 
                       SizedBox(height: AppSpacing.verticalXLarge),
@@ -281,6 +298,7 @@ class _EditableItemTile extends StatelessWidget {
   final OrderItem item;
   final bool isRemoved;
   final List<InventoryItem> inventory;
+  final OrderDirection direction;
   final ValueChanged<double> onQuantityChanged;
   final VoidCallback onRemove;
 
@@ -288,6 +306,7 @@ class _EditableItemTile extends StatelessWidget {
     required this.item,
     required this.isRemoved,
     required this.inventory,
+    required this.direction,
     required this.onQuantityChanged,
     required this.onRemove,
   });
@@ -326,14 +345,15 @@ class _EditableItemTile extends StatelessWidget {
     final invItem = item.inventoryId != null
         ? inventory.where((i) => i.id == item.inventoryId).firstOrNull
         : null;
+    final kind = offStockKindOf(item, direction);
 
     return Padding(
       padding: EdgeInsets.symmetric(vertical: AppSpacing.verticalXSmall),
       child: Row(
         children: [
           Icon(
-            item.isCustom ? OffStock.icon : Icons.inventory_2_outlined,
-            color: item.isCustom ? OffStock.color : Colors.teal,
+            kind == null ? Icons.inventory_2_outlined : OffStock.iconFor(kind),
+            color: kind == null ? Colors.teal : OffStock.color,
             size: 20,
           ),
           SizedBox(width: AppSpacing.horizontalSmall),
@@ -344,10 +364,10 @@ class _EditableItemTile extends StatelessWidget {
               children: [
                 SelectableText(item.displayName,
                     style: const TextStyle(fontWeight: FontWeight.w500)),
-                if (item.isCustom)
+                if (kind != null)
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: OffStock.badge(),
+                    child: OffStock.badge(kind),
                   ),
                 if (invItem != null)
                   Text(

@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/config/feature_flags.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../shared/models/order.dart';
+import '../../../shared/models/off_stock_kind.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../../shared/widgets/off_stock.dart';
@@ -311,9 +312,7 @@ class _ItemTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveQty = state.effectiveQuantity(item);
     final effectiveStatus = state.effectiveStatus(item);
-    final showWarning = !item.isCustom &&
-        item.wasUnavailableAtCreation &&
-        state.order.direction == OrderDirection.outbound;
+    final kind = offStockKindOf(item, state.order.direction);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -325,8 +324,8 @@ class _ItemTile extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  item.isCustom ? OffStock.icon : Icons.inventory_outlined,
-                  color: item.isCustom ? OffStock.color : Colors.teal,
+                  kind == null ? Icons.inventory_outlined : OffStock.iconFor(kind),
+                  color: kind == null ? Colors.teal : OffStock.color,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -363,10 +362,10 @@ class _ItemTile extends StatelessWidget {
                 'الكمية: ${formatQty(effectiveQty)}',
                 style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
-            if (item.isCustom) ...[
+            if (kind != null) ...[
               Padding(
                 padding: const EdgeInsets.only(top: 2, bottom: 2),
-                child: OffStock.badge(),
+                child: OffStock.badge(kind),
               ),
               if (state.order.direction == OrderDirection.outbound)
                 Row(
@@ -391,21 +390,10 @@ class _ItemTile extends StatelessWidget {
                   ],
                 ),
             ],
-            if (showWarning)
-              Chip(
-                avatar: const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  size: 16,
-                ),
-                label: const Text(
-                  'غير متوفر',
-                  style: TextStyle(fontSize: 11, color: Colors.orange),
-                ),
-                backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                side: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
-                visualDensity: VisualDensity.compact,
-              ),
+            // "Add to storage" turns a خارج المخزون item into a real
+            // inventory row. Only offered for the genuinely new ones -- an
+            // out-of-stock item is already an inventory row, so there would
+            // be nothing to create and a duplicate to risk.
             if (item.isCustom)
               Align(
                 alignment: AlignmentDirectional.centerEnd,

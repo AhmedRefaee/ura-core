@@ -5,6 +5,7 @@ import '../../../core/config/feature_flags.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
+import '../../../shared/models/off_stock_kind.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../../shared/widgets/off_stock.dart';
@@ -348,16 +349,17 @@ class _ItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showWarning = !item.isCustom &&
-        item.wasUnavailableAtCreation &&
-        direction == OrderDirection.outbound;
+    // One question, one answer: does the rep have to source this himself? The
+    // orange "غير متوفر" warning that used to live here answered it for only
+    // half the items that needed it.
+    final kind = offStockKindOf(item, direction);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Icon(
-          item.isCustom ? OffStock.icon : Icons.inventory_outlined,
-          color: item.isCustom ? OffStock.color : Colors.teal,
+          kind == null ? Icons.inventory_outlined : OffStock.iconFor(kind),
+          color: kind == null ? Colors.teal : OffStock.color,
         ),
         title: Text(item.displayName),
         subtitle: Column(
@@ -365,29 +367,17 @@ class _ItemTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text('الكمية: ${formatQty(item.effectiveQuantity)}'),
-            if (item.isCustom)
+            if (kind != null)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: OffStock.badge(),
-              ),
-            if (showWarning)
-              Chip(
-                avatar: const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  size: 16,
-                ),
-                label: const Text(
-                  'غير متوفر',
-                  style: TextStyle(fontSize: 11, color: Colors.orange),
-                ),
-                backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                side: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
-                visualDensity: VisualDensity.compact,
+                child: OffStock.badge(kind),
               ),
           ],
         ),
-        trailing: item.isCustom ? null : _CheckStatusIcon(item.checkStatus),
+        // A check status is the storage actor's verdict on handing an item
+        // over. Nothing is handed over for an item the rep buys outside, so
+        // the icon would only ever read "pending" forever.
+        trailing: kind != null ? null : _CheckStatusIcon(item.checkStatus),
       ),
     );
   }
@@ -434,7 +424,7 @@ class _OffStockChecklistSection extends StatelessWidget {
       return const SizedBox.shrink();
     }
 
-    final offStockItems = order.items.where((i) => i.isCustom).toList();
+    final offStockItems = order.offStockItems;
     final interactive = order.status != OrderStatus.delivered && !state.isActing;
 
     return OffStock.section(
@@ -466,6 +456,19 @@ class _OffStockChecklistSection extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('الكمية: ${formatQty(item.effectiveQuantity)}'),
+                    // Spelled out rather than badged here: this is the one
+                    // screen where the rep is deciding what to go and buy, so
+                    // "we don't carry it" and "we carry it but ran out" are
+                    // worth a full sentence each.
+                    Text(
+                      OffStock.explanationFor(
+                        offStockKindOf(item, order.direction)!,
+                      ),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: OffStock.color.withValues(alpha: 0.8),
+                      ),
+                    ),
                     if (item.purchasedAt != null)
                       Text(
                         'تم الشراء ${_fmtPurchasedAt(item.purchasedAt!)}',
@@ -476,7 +479,7 @@ class _OffStockChecklistSection extends StatelessWidget {
                       ),
                   ],
                 ),
-                isThreeLine: item.purchasedAt != null,
+                isThreeLine: true,
               ),
             if (!interactive && order.status == OrderStatus.delivered)
               Padding(

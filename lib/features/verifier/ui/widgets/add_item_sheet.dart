@@ -331,7 +331,13 @@ class _AddItemSheetState extends State<AddItemSheet> {
     if (qty <= 0) return null;
     final result = item.checkStock(qty);
     if (result == StockCheckResult.partial) return 'المتوفر فقط: ${formatQty(item.quantity)}';
-    if (result == StockCheckResult.outOfStock) return 'غير متوفر في المخزون';
+    // Says what will happen, not just what is wrong: adding this row to an
+    // outbound order makes it the rep's errand, and the verifier should know
+    // that at the moment of typing rather than discover it on the rep's
+    // screen later.
+    if (result == StockCheckResult.outOfStock) {
+      return 'غير متوفر — سيُضاف كـ ${OffStock.label}';
+    }
     return null;
   }
 
@@ -688,7 +694,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                                 : warning != null
                                                     ? OutlineInputBorder(
                                                         borderSide: BorderSide(
-                                                          color: isOutOfStock ? Colors.red : Colors.orange,
+                                                          color: isOutOfStock
+                                                              ? OffStock.color
+                                                              : Colors.orange,
                                                           width: 2,
                                                         ),
                                                       )
@@ -707,7 +715,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                     warning,
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: isOutOfStock ? Colors.red : Colors.orange,
+                                      color: isOutOfStock
+                                          ? OffStock.color
+                                          : Colors.orange,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
@@ -718,7 +728,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                   child: TextButton.icon(
                                     onPressed: () => _convertToCustom(item),
                                     icon: const Icon(Icons.swap_horiz, size: 16),
-                                    label: Text('تحويل إلى ${OffStock.label}'),
+                                    label: const Text('تعديل الوصف كصنف مستقل'),
                                     style: TextButton.styleFrom(
                                       foregroundColor: OffStock.color,
                                       padding: EdgeInsets.zero,

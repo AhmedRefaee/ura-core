@@ -8,6 +8,7 @@ import '../../../core/errors/app_result.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_edit_log_entry.dart';
+import '../../../shared/models/off_stock_kind.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../../shared/widgets/off_stock.dart';
@@ -422,6 +423,8 @@ class _ItemRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final kind = offStockKindOf(item, orderDirection);
+
     Color checkColor;
     IconData checkIcon;
     String checkLabel;
@@ -446,9 +449,9 @@ class _ItemRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            item.isCustom ? OffStock.icon : Icons.inventory_outlined,
+            kind == null ? Icons.inventory_outlined : OffStock.iconFor(kind),
             size: 18,
-            color: item.isCustom ? OffStock.color : Colors.teal,
+            color: kind == null ? Colors.teal : OffStock.color,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -465,10 +468,10 @@ class _ItemRow extends StatelessWidget {
                       : 'الكمية: ${formatQty(item.quantity)}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-                if (item.isCustom) ...[
+                if (kind != null) ...[
                   Padding(
                     padding: const EdgeInsets.only(top: 2),
-                    child: OffStock.badge(),
+                    child: OffStock.badge(kind),
                   ),
                   if (orderDirection == OrderDirection.outbound)
                     Padding(
@@ -504,26 +507,7 @@ class _ItemRow extends StatelessWidget {
                       style: const TextStyle(fontSize: 11, color: Colors.grey),
                     ),
                 ],
-                if (!item.isCustom &&
-                    item.wasUnavailableAtCreation &&
-                    orderDirection == OrderDirection.outbound)
-                  Chip(
-                    avatar: const Icon(
-                      Icons.warning_amber_rounded,
-                      color: Colors.orange,
-                      size: 16,
-                    ),
-                    label: const Text(
-                      'غير متوفر',
-                      style: TextStyle(fontSize: 11, color: Colors.orange),
-                    ),
-                    backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                    side: BorderSide(
-                      color: Colors.orange.withValues(alpha: 0.4),
-                    ),
-                    visualDensity: VisualDensity.compact,
-                  ),
-                if (!item.isCustom &&
+                if (kind == null &&
                     !(item.checkStatus == ItemCheckStatus.pending &&
                         orderStatus == OrderStatus.delivered)) ...[
                   Row(

@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'entity.dart';
+import 'off_stock_kind.dart';
 import 'order_item.dart';
 import 'profile.dart';
 
@@ -74,14 +75,24 @@ class Order extends Equatable {
   /// Distinguishes outbound-storage (Flow 1) from outbound-external (Flow 2).
   bool get involvesStorage => items.any((i) => i.inventoryId != null);
 
-  /// True when the order has at least one خارج المخزون (is_custom) item --
-  /// whether or not it's mixed with real inventory items.
-  bool get hasOffStockItems => items.any((i) => i.isCustom);
+  /// Every item the rep has to source himself, in list order.
+  ///
+  /// Wider than `is_custom`: an inventory row that had a zero balance when the
+  /// order was written is the same errand for the rep, and used to be shown as
+  /// a passive orange warning instead of joining this list. See
+  /// [offStockKindOf] for how the two are told apart.
+  List<OrderItem> get offStockItems =>
+      items.where((i) => offStockKindOf(i, direction) != null).toList();
 
-  int get offStockItemsCount => items.where((i) => i.isCustom).length;
+  /// True when the order has at least one item the rep must source himself --
+  /// whether or not it's mixed with real inventory items.
+  bool get hasOffStockItems =>
+      items.any((i) => offStockKindOf(i, direction) != null);
+
+  int get offStockItemsCount => offStockItems.length;
 
   int get offStockPurchasedCount =>
-      items.where((i) => i.isCustom && i.purchasedAt != null).length;
+      offStockItems.where((i) => i.purchasedAt != null).length;
 
   factory Order.fromMap(Map<String, dynamic> map) {
     OrderDirection direction;

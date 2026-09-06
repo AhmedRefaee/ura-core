@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../features/inventory/ui/inventory_item_detail_screen.dart';
 import '../models/draft_order_item.dart';
 import '../models/inventory_item.dart';
+import '../models/off_stock_kind.dart';
 import '../models/order.dart';
 import '../utils/quantity_format.dart';
 import 'off_stock.dart';
@@ -43,7 +44,7 @@ class DraftOrderItemsList extends StatelessWidget {
     final stockIndices = <int>[];
     final offStockIndices = <int>[];
     for (var i = 0; i < items.length; i++) {
-      (items[i].isCustom ? offStockIndices : stockIndices).add(i);
+      (_kindOf(items[i]) == null ? stockIndices : offStockIndices).add(i);
     }
 
     return Column(
@@ -63,12 +64,29 @@ class DraftOrderItemsList extends StatelessWidget {
     );
   }
 
+  /// The inventory row behind a draft item, when there is one and it is
+  /// relevant. Null on an inbound order: the rep is bringing stock in, so
+  /// what is on the shelf right now says nothing about the request.
+  InventoryItem? _inventoryRowFor(DraftOrderItem item) =>
+      direction == OrderDirection.outbound && item.inventoryId != null
+          ? inventory.where((inv) => inv.id == item.inventoryId).firstOrNull
+          : null;
+
+  OffStockKind? _kindOf(DraftOrderItem item) => draftOffStockKind(
+        isCustom: item.isCustom,
+        sourceInventoryId: item.sourceInventoryId,
+        direction: direction,
+        inventoryQuantity: _inventoryRowFor(item)?.quantity,
+      );
+
   Widget _buildItemTile(BuildContext context, int index, DraftOrderItem item) {
-    final invItem =
-        direction == OrderDirection.outbound && item.inventoryId != null
-        ? inventory.where((inv) => inv.id == item.inventoryId).firstOrNull
-        : null;
-    final isOverStock = invItem != null && item.quantity > invItem.quantity;
+    final invItem = _inventoryRowFor(item);
+    final kind = _kindOf(item);
+    // "Only N available" is the partial case -- some on the shelf, not enough.
+    // At zero the purple badge already says it, and stacking an orange
+    // "المتوفر فقط: 0" on top would be two chips for one fact.
+    final isOverStock =
+        kind == null && invItem != null && item.quantity > invItem.quantity;
 
     return ListTile(
       dense: true,
@@ -78,10 +96,10 @@ class DraftOrderItemsList extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text('الكمية: ${formatQty(item.quantity)}'),
-          if (item.isCustom)
+          if (kind != null)
             Padding(
               padding: const EdgeInsets.only(top: 2),
-              child: OffStock.badge(),
+              child: OffStock.badge(kind),
             ),
           if (isOverStock)
             GestureDetector(

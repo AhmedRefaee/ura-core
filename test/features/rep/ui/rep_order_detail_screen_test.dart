@@ -7,8 +7,10 @@ import 'package:ura_core/features/chat/data/chat_repository.dart';
 import 'package:ura_core/features/rep/data/rep_orders_repository.dart';
 import 'package:ura_core/features/rep/logic/rep_order_detail_cubit.dart';
 import 'package:ura_core/features/rep/ui/rep_order_detail_screen.dart';
+import 'package:ura_core/shared/models/off_stock_kind.dart';
 import 'package:ura_core/shared/models/order.dart';
 import 'package:ura_core/shared/models/order_item.dart';
+import 'package:ura_core/shared/widgets/off_stock.dart';
 
 class MockRepOrdersRepository extends Mock implements RepOrdersRepository {}
 
@@ -44,6 +46,22 @@ void main() {
         isCustom: true,
         customDescription: 'صنف خارج المخزون',
         checkStatus: ItemCheckStatus.pending,
+        purchasedAt: purchasedAt,
+      );
+
+  /// A catalogue item that happened to have a zero balance when the order was
+  /// written. The rep has to go and buy it exactly like a خارج المخزون item,
+  /// which is the whole point -- before this it showed an orange warning and
+  /// no checkbox.
+  OrderItem unavailableItem({DateTime? purchasedAt}) => OrderItem(
+        id: 'item-empty',
+        orderId: orderId,
+        inventoryId: 'inv-2',
+        inventoryName: 'شاي ليبتون',
+        quantity: 4,
+        isCustom: false,
+        checkStatus: ItemCheckStatus.pending,
+        wasUnavailableAtCreation: true,
         purchasedAt: purchasedAt,
       );
 
@@ -179,5 +197,72 @@ void main() {
     final tile = tester.widget<CheckboxListTile>(find.byType(CheckboxListTile));
     expect(tile.onChanged, isNull);
     expect(find.text('تم تسليم الطلب — هذا السجل للعرض فقط'), findsOneWidget);
+  });
+
+  group('an out-of-stock catalogue item is treated as خارج المخزون', () {
+    testWidgets('it reaches the purchase checklist', (tester) async {
+      final cubit = await loadedCubit(buildOrder(items: [unavailableItem()]));
+      await pumpTall(tester, wrap(cubit));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CheckboxListTile), findsOneWidget);
+      expect(find.text('شاي ليبتون'), findsWidgets);
+    });
+
+    testWidgets('the rep can tick it, same as a brand new item', (tester) async {
+      final cubit = await loadedCubit(buildOrder(items: [unavailableItem()]));
+      when(() => repo.toggleOffStockPurchased('item-empty', true,
+          notes: any(named: 'notes'))).thenAnswer((_) async => const AppSuccess(null));
+
+      await pumpTall(tester, wrap(cubit));
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.byType(CheckboxListTile));
+      await tester.pumpAndSettle();
+
+      verify(() => repo.toggleOffStockPurchased('item-empty', true,
+          notes: any(named: 'notes'))).called(1);
+    });
+
+    testWidgets('the badge says which kind it is', (tester) async {
+      final cubit = await loadedCubit(
+        buildOrder(items: [unavailableItem(), offStockItem()]),
+      );
+      await pumpTall(tester, wrap(cubit));
+      await tester.pumpAndSettle();
+
+      // Same colour, different word -- that is the distinction the rep asked
+      // for, and the reason both are not simply merged.
+      expect(
+        find.textContaining(OffStock.labelFor(OffStockKind.outOfStock)),
+        findsWidgets,
+      );
+      expect(
+        find.textContaining(OffStock.labelFor(OffStockKind.newItem)),
+        findsWidgets,
+      );
+    });
+
+    testWidgets('the old orange warning chip is gone', (tester) async {
+      final cubit = await loadedCubit(buildOrder(items: [unavailableItem()]));
+      await pumpTall(tester, wrap(cubit));
+      await tester.pumpAndSettle();
+
+      expect(find.byIcon(Icons.warning_amber_rounded), findsNothing);
+    });
+
+    testWidgets('a zero balance on an inbound order stays ordinary stock',
+        (tester) async {
+      // The rep is bringing this in. Nothing to buy, so no checklist.
+      final cubit = await loadedCubit(buildOrder(
+        items: [unavailableItem()],
+        direction: OrderDirection.inboundRep,
+      ));
+      await pumpTall(tester, wrap(cubit));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(CheckboxListTile), findsNothing);
+      expect(find.textContaining(OffStock.label), findsNothing);
+    });
   });
 }

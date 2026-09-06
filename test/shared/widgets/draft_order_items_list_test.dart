@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ura_core/shared/models/draft_order_item.dart';
 import 'package:ura_core/shared/models/inventory_item.dart';
+import 'package:ura_core/shared/models/off_stock_kind.dart';
 import 'package:ura_core/shared/models/order.dart';
 import 'package:ura_core/shared/widgets/draft_order_items_list.dart';
 import 'package:ura_core/shared/widgets/off_stock.dart';
@@ -217,6 +218,86 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.edit_outlined).last);
       expect(editedIndex, 2);
+    });
+  });
+
+  group('a catalogue row with nothing on the shelf', () {
+    // The draft list has no was_unavailable_at_creation to read -- the row is
+    // not inserted yet -- so it classifies off the live balance instead.
+    const empty = InventoryItem(
+      id: 'tea',
+      itemName: 'شاي ليبتون',
+      quantity: 0,
+      unit: 'علبة',
+    );
+
+    const draftOfEmpty = DraftOrderItem(
+      inventoryId: 'tea',
+      inventoryName: 'شاي ليبتون',
+      quantity: 2,
+      isCustom: false,
+    );
+
+    testWidgets('is grouped with the outside-inventory items', (tester) async {
+      await tester.pumpWidget(wrap(DraftOrderItemsList(
+        items: const [draftOfEmpty],
+        inventory: const [empty],
+        direction: OrderDirection.outbound,
+        onRemove: (_) {},
+      )));
+
+      expect(find.textContaining(OffStock.label), findsWidgets);
+      expect(
+        find.textContaining(OffStock.labelFor(OffStockKind.outOfStock)),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('does not also get the orange "only N available" chip',
+        (tester) async {
+      // Two chips for one fact. "المتوفر فقط: 0" says nothing the purple
+      // badge has not already said, louder.
+      await tester.pumpWidget(wrap(DraftOrderItemsList(
+        items: const [draftOfEmpty],
+        inventory: const [empty],
+        direction: OrderDirection.outbound,
+        onRemove: (_) {},
+      )));
+
+      expect(find.textContaining('المتوفر فقط'), findsNothing);
+    });
+
+    testWidgets('a partial shortfall still warns in orange, not purple',
+        (tester) async {
+      // Some on the shelf, just not enough -- a different situation, and the
+      // rep is not being sent shopping for it.
+      await tester.pumpWidget(wrap(DraftOrderItemsList(
+        items: const [
+          DraftOrderItem(
+            inventoryId: 'water',
+            inventoryName: 'مياه نوفا 330 مل',
+            quantity: 500,
+            isCustom: false,
+          ),
+        ],
+        inventory: const [water],
+        direction: OrderDirection.outbound,
+        onRemove: (_) {},
+      )));
+
+      expect(find.textContaining('المتوفر فقط'), findsOneWidget);
+      expect(find.textContaining(OffStock.label), findsNothing);
+    });
+
+    testWidgets('stays ordinary stock on an inbound order', (tester) async {
+      await tester.pumpWidget(wrap(DraftOrderItemsList(
+        items: const [draftOfEmpty],
+        inventory: const [empty],
+        direction: OrderDirection.inboundRep,
+        onRemove: (_) {},
+      )));
+
+      expect(find.textContaining(OffStock.label), findsNothing);
     });
   });
 }

@@ -1,6 +1,7 @@
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../cache/local_profile_source.dart';
+import '../location/location_capture.dart';
 import '../notifications/notification_service.dart';
 import '../../features/notifications/data/notifications_repository.dart';
 import '../../features/notifications/logic/chat_badge_cubit.dart';
@@ -154,12 +155,14 @@ Future<void> setupDependencies() async {
   );
 
   // Rep
+  sl.registerLazySingleton<LocationCapture>(() => GeolocatorLocationCapture());
   sl.registerFactory<RepOrdersCubit>(() => RepOrdersCubit(sl<RepOrdersRepository>()));
   sl.registerFactoryParam<RepOrderDetailCubit, String, void>(
     (orderId, _) => RepOrderDetailCubit(
       sl<RepOrdersRepository>(),
       orderId,
       sl<ChatRepository>(),
+      sl<LocationCapture>(),
     ),
   );
 

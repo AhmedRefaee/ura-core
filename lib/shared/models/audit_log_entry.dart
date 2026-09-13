@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'order.dart';
 import 'profile.dart';
@@ -13,6 +14,8 @@ class AuditLogEntry extends Equatable {
   final String? details;
   final String? notes;
   final DateTime? serverTimestamp;
+  final double? locationLat;
+  final double? locationLng;
 
   const AuditLogEntry({
     required this.id,
@@ -25,6 +28,8 @@ class AuditLogEntry extends Equatable {
     this.details,
     this.notes,
     this.serverTimestamp,
+    this.locationLat,
+    this.locationLng,
   });
 
   factory AuditLogEntry.fromMap(Map<String, dynamic> map) {
@@ -42,6 +47,8 @@ class AuditLogEntry extends Equatable {
       serverTimestamp: map['server_timestamp'] != null
           ? DateTime.parse(map['server_timestamp'] as String)
           : null,
+      locationLat: (map['location_lat'] as num?)?.toDouble(),
+      locationLng: (map['location_lng'] as num?)?.toDouble(),
     );
   }
 
@@ -60,6 +67,18 @@ class AuditLogEntry extends Equatable {
     }
   }
 
+  /// Correlate a per-item toggle-purchase action: extract the item ID from details JSON.
+  String? get offStockItemId {
+    if (action != 'toggle_off_stock_item_purchased' || details == null) {
+      return null;
+    }
+    try {
+      return (jsonDecode(details!) as Map<String, dynamic>)['item_id'] as String?;
+    } catch (_) {
+      return null;
+    }
+  }
+
   @override
-  List<Object?> get props => [id, orderId, action, newStatus, notes, serverTimestamp];
+  List<Object?> get props => [id, orderId, action, newStatus, notes, serverTimestamp, locationLat, locationLng];
 }

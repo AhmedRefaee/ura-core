@@ -338,7 +338,7 @@ class ManagerRepository {
       logger.d('ManagerRepository → fetchAuditLog: $orderId');
       final data = await _supabase
           .from('audit_log')
-          .select('id, order_id, action, old_status, new_status, performed_by, details, notes, server_timestamp, performer:profiles!audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)')
+          .select('id, order_id, action, old_status, new_status, performed_by, details, notes, server_timestamp, location_lat, location_lng, performer:profiles!audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)')
           .eq('order_id', orderId)
           .order('server_timestamp');
       return AppSuccess((data as List)

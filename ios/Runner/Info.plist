@@ -68,5 +68,7 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>يستخدم التطبيق موقعك لتوثيق مكان تنفيذ إجراءات الطلب.</string>
 	</dict>
 </plist>

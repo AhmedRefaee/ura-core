@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/config/feature_flags.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
+import '../../../core/location/location_capture.dart';
 import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
@@ -63,9 +64,10 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
     with SafeEmit<RepOrderDetailState> {
   final RepOrdersRepository _repo;
   final ChatRepository _chatRepo;
+  final LocationCapture _locationCapture;
   final String orderId;
 
-  RepOrderDetailCubit(this._repo, this.orderId, this._chatRepo)
+  RepOrderDetailCubit(this._repo, this.orderId, this._chatRepo, this._locationCapture)
     : super(RepOrderDetailInitial());
 
   Future<void> load() async {
@@ -121,7 +123,8 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
     if (s is! RepOrderDetailLoaded) return;
     logger.d('RepOrderDetailCubit → startMove');
     safeEmit(s.copyWith(isActing: true));
-    final result = await _repo.startMove(orderId, notes: notes);
+    final fix = await _locationCapture.capture();
+    final result = await _repo.startMove(orderId, notes: notes, lat: fix?.lat, lng: fix?.lng);
     switch (result) {
       case AppSuccess():
         await load();
@@ -136,7 +139,8 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
     if (s is! RepOrderDetailLoaded) return;
     logger.d('RepOrderDetailCubit → markPickedUp');
     safeEmit(s.copyWith(isActing: true));
-    final result = await _repo.markPickedUp(orderId, notes: notes);
+    final fix = await _locationCapture.capture();
+    final result = await _repo.markPickedUp(orderId, notes: notes, lat: fix?.lat, lng: fix?.lng);
     switch (result) {
       case AppSuccess():
         await load();
@@ -155,7 +159,8 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
     if (s is! RepOrderDetailLoaded) return;
     logger.d('RepOrderDetailCubit → toggleOffStockPurchased: $orderItemId -> $purchased');
     safeEmit(s.copyWith(isActing: true));
-    final result = await _repo.toggleOffStockPurchased(orderItemId, purchased, notes: notes);
+    final fix = await _locationCapture.capture();
+    final result = await _repo.toggleOffStockPurchased(orderItemId, purchased, notes: notes, lat: fix?.lat, lng: fix?.lng);
     switch (result) {
       case AppSuccess():
         await load();
@@ -172,7 +177,8 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
     if (s is! RepOrderDetailLoaded) return;
     logger.d('RepOrderDetailCubit → markDelivered');
     safeEmit(s.copyWith(isActing: true));
-    final result = await _repo.markDelivered(orderId, notes: notes);
+    final fix = await _locationCapture.capture();
+    final result = await _repo.markDelivered(orderId, notes: notes, lat: fix?.lat, lng: fix?.lng);
     switch (result) {
       case AppSuccess():
         await load();

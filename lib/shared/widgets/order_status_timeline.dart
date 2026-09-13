@@ -4,6 +4,7 @@ import '../models/order.dart';
 import '../models/profile.dart';
 import '../order_status_theme.dart';
 import 'off_stock.dart';
+import 'location_link.dart';
 
 class OrderStatusTimeline extends StatelessWidget {
   final Order order;
@@ -81,6 +82,8 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
           performer: deliveredEntry?.performer,
           notes: deliveredEntry?.notes,
+          locationLat: deliveredEntry?.locationLat,
+          locationLng: deliveredEntry?.locationLng,
           countsAsDelivery: true,
           reached: status == OrderStatus.delivered,
         ),
@@ -103,6 +106,8 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.pickedUpAt,
           performer: pickedUpEntry?.performer,
           notes: pickedUpEntry?.notes,
+          locationLat: pickedUpEntry?.locationLat,
+          locationLng: pickedUpEntry?.locationLng,
           reached: status != OrderStatus.assigned,
         ),
         _TimelineStep(
@@ -112,6 +117,8 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.moveStartedAt ?? onTheMoveEntry?.serverTimestamp,
           performer: onTheMoveEntry?.performer,
           notes: onTheMoveEntry?.notes,
+          locationLat: onTheMoveEntry?.locationLat,
+          locationLng: onTheMoveEntry?.locationLng,
           reached:
               status == OrderStatus.onTheMove ||
               status == OrderStatus.delivered,
@@ -123,6 +130,8 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
           performer: deliveredEntry?.performer,
           notes: deliveredEntry?.notes,
+          locationLat: deliveredEntry?.locationLat,
+          locationLng: deliveredEntry?.locationLng,
           countsAsDelivery: true,
           reached: status == OrderStatus.delivered,
         ),
@@ -148,6 +157,8 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.moveStartedAt ?? onTheMoveEntry?.serverTimestamp,
           performer: onTheMoveEntry?.performer,
           notes: onTheMoveEntry?.notes,
+          locationLat: onTheMoveEntry?.locationLat,
+          locationLng: onTheMoveEntry?.locationLng,
           reached:
               status == OrderStatus.onTheMove ||
               status == OrderStatus.delivered,
@@ -159,6 +170,8 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
           performer: deliveredEntry?.performer,
           notes: deliveredEntry?.notes,
+          locationLat: deliveredEntry?.locationLat,
+          locationLng: deliveredEntry?.locationLng,
           countsAsDelivery: true,
           reached: status == OrderStatus.delivered,
         ),
@@ -182,6 +195,8 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.pickedUpAt,
           performer: pickedUpEntry?.performer,
           notes: pickedUpEntry?.notes,
+          locationLat: pickedUpEntry?.locationLat,
+          locationLng: pickedUpEntry?.locationLng,
           reached: status != OrderStatus.assigned,
         ),
         _TimelineStep(
@@ -191,6 +206,8 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.moveStartedAt ?? onTheMoveEntry?.serverTimestamp,
           performer: onTheMoveEntry?.performer,
           notes: onTheMoveEntry?.notes,
+          locationLat: onTheMoveEntry?.locationLat,
+          locationLng: onTheMoveEntry?.locationLng,
           reached:
               status == OrderStatus.onTheMove ||
               status == OrderStatus.delivered,
@@ -202,6 +219,8 @@ class OrderStatusTimeline extends StatelessWidget {
           timestamp: order.deliveredAt ?? deliveredEntry?.serverTimestamp,
           performer: deliveredEntry?.performer,
           notes: deliveredEntry?.notes,
+          locationLat: deliveredEntry?.locationLat,
+          locationLng: deliveredEntry?.locationLng,
           countsAsDelivery: true,
           reached: status == OrderStatus.delivered,
         ),
@@ -261,6 +280,8 @@ class _TimelineStep {
   final DateTime? timestamp;
   final Profile? performer;
   final String? notes;
+  final double? locationLat;
+  final double? locationLng;
   final bool countsAsDelivery;
   final bool reached;
 
@@ -271,6 +292,8 @@ class _TimelineStep {
     required this.timestamp,
     required this.performer,
     this.notes,
+    this.locationLat,
+    this.locationLng,
     this.countsAsDelivery = false,
     required this.reached,
   });
@@ -476,6 +499,11 @@ class _StepTile extends StatelessWidget {
                           ),
                         ],
                       ),
+                    ),
+                  if (step.locationLat != null && step.locationLng != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: LocationLink(lat: step.locationLat!, lng: step.locationLng!),
                     ),
                 ] else
                   Text(

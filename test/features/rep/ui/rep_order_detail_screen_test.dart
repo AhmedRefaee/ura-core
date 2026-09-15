@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:ura_core/core/errors/app_result.dart';
+import 'package:ura_core/core/location/location_capture.dart';
 import 'package:ura_core/features/chat/data/chat_repository.dart';
 import 'package:ura_core/features/rep/data/rep_orders_repository.dart';
 import 'package:ura_core/features/rep/logic/rep_order_detail_cubit.dart';
@@ -16,17 +17,22 @@ class MockRepOrdersRepository extends Mock implements RepOrdersRepository {}
 
 class MockChatRepository extends Mock implements ChatRepository {}
 
+class MockLocationCapture extends Mock implements LocationCapture {}
+
 void main() {
   late MockRepOrdersRepository repo;
   late MockChatRepository chatRepo;
+  late MockLocationCapture locationCapture;
   const orderId = 'order-1';
 
   setUp(() {
     repo = MockRepOrdersRepository();
     chatRepo = MockChatRepository();
+    locationCapture = MockLocationCapture();
     when(() => repo.fetchAuditLog(orderId)).thenAnswer((_) async => const AppSuccess([]));
     when(() => chatRepo.getOrderCommunicationHistory(orderId))
         .thenAnswer((_) async => const AppSuccess([]));
+    when(() => locationCapture.capture()).thenAnswer((_) async => null);
   });
 
   OrderItem realItem() => const OrderItem(
@@ -82,7 +88,7 @@ void main() {
 
   Future<RepOrderDetailCubit> loadedCubit(Order order) async {
     when(() => repo.fetchOrderDetail(orderId)).thenAnswer((_) async => AppSuccess(order));
-    final cubit = RepOrderDetailCubit(repo, orderId, chatRepo);
+    final cubit = RepOrderDetailCubit(repo, orderId, chatRepo, locationCapture);
     await cubit.load();
     return cubit;
   }

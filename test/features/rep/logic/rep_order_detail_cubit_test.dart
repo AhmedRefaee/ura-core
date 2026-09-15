@@ -4,6 +4,7 @@ import 'package:mocktail/mocktail.dart';
 import 'package:ura_core/core/config/feature_flags.dart';
 import 'package:ura_core/core/errors/app_error.dart';
 import 'package:ura_core/core/errors/app_result.dart';
+import 'package:ura_core/core/location/location_capture.dart';
 import 'package:ura_core/features/chat/data/chat_repository.dart';
 import 'package:ura_core/features/rep/data/rep_orders_repository.dart';
 import 'package:ura_core/features/rep/logic/rep_order_detail_cubit.dart';
@@ -14,9 +15,12 @@ class MockRepOrdersRepository extends Mock implements RepOrdersRepository {}
 
 class MockChatRepository extends Mock implements ChatRepository {}
 
+class MockLocationCapture extends Mock implements LocationCapture {}
+
 void main() {
   late MockRepOrdersRepository repo;
   late MockChatRepository chatRepo;
+  late MockLocationCapture locationCapture;
 
   const orderId = 'order-1';
   const itemId = 'item-1';
@@ -44,12 +48,14 @@ void main() {
   setUp(() {
     repo = MockRepOrdersRepository();
     chatRepo = MockChatRepository();
+    locationCapture = MockLocationCapture();
     when(() => repo.fetchAuditLog(orderId)).thenAnswer((_) async => const AppSuccess([]));
     when(() => chatRepo.getOrderCommunicationHistory(orderId))
         .thenAnswer((_) async => const AppSuccess([]));
+    when(() => locationCapture.capture()).thenAnswer((_) async => null);
   });
 
-  RepOrderDetailCubit buildCubit() => RepOrderDetailCubit(repo, orderId, chatRepo);
+  RepOrderDetailCubit buildCubit() => RepOrderDetailCubit(repo, orderId, chatRepo, locationCapture);
 
   group('RepOrderDetailCubit.toggleOffStockPurchased', () {
     blocTest<RepOrderDetailCubit, RepOrderDetailState>(

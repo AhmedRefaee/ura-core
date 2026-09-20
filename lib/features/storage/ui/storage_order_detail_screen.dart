@@ -3,10 +3,12 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/config/feature_flags.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
+import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/off_stock_kind.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../../shared/widgets/location_link.dart';
 import '../../../shared/widgets/off_stock.dart';
 import '../../inventory/ui/inventory_form_screen.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
@@ -367,7 +369,7 @@ class _ItemTile extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 2, bottom: 2),
                 child: OffStock.badge(kind),
               ),
-              if (state.order.direction == OrderDirection.outbound)
+              if (state.order.direction == OrderDirection.outbound) ...[
                 Row(
                   children: [
                     Icon(
@@ -389,6 +391,14 @@ class _ItemTile extends StatelessWidget {
                     ),
                   ],
                 ),
+                if (item.purchasedAt != null)
+                  if (state.auditLog.forOffStockItem(item.id) case final entry?
+                    when entry.locationLat != null && entry.locationLng != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: LocationLink(lat: entry.locationLat!, lng: entry.locationLng!),
+                    ),
+              ],
             ],
             // "Add to storage" turns a خارج المخزون item into a real
             // inventory row. Only offered for the genuinely new ones -- an

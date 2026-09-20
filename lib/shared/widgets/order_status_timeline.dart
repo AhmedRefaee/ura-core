@@ -16,18 +16,22 @@ class OrderStatusTimeline extends StatelessWidget {
     required this.auditLog,
   });
 
-  // Prefer an entry that has notes; fall back to any entry for that status.
+  // Every status transition gets a second, generic 'status_change' audit_log
+  // row from the order_status_audit DB trigger, inserted in the same
+  // transaction as (and thus with the identical server_timestamp to) the
+  // RPC's own row -- so sorting by timestamp alone can't tell them apart.
+  // Prefer whichever matching entry actually carries notes or location; the
+  // trigger's row never has either.
   AuditLogEntry? _entryFor(OrderStatus status) {
-    try {
-      return auditLog.firstWhere(
-        (e) => e.newStatus == status && e.notes != null && e.notes!.isNotEmpty,
-      );
-    } catch (_) {}
-    try {
-      return auditLog.firstWhere((e) => e.newStatus == status);
-    } catch (_) {
-      return null;
+    AuditLogEntry? fallback;
+    for (final e in auditLog) {
+      if (e.newStatus != status) continue;
+      final hasNotes = e.notes != null && e.notes!.isNotEmpty;
+      final hasLocation = e.locationLat != null;
+      if (hasNotes || hasLocation) return e;
+      fallback ??= e;
     }
+    return fallback;
   }
 
   // Verifier creation notes — stored via the orders_log_creation trigger.

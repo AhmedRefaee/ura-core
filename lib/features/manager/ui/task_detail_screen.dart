@@ -5,12 +5,14 @@ import '../../../core/config/feature_flags.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
+import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_edit_log_entry.dart';
 import '../../../shared/models/off_stock_kind.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../../shared/widgets/location_link.dart';
 import '../../../shared/widgets/off_stock.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
@@ -213,6 +215,7 @@ class _TaskDetailView extends StatelessWidget {
                 items: order.items,
                 orderStatus: order.status,
                 orderDirection: order.direction,
+                auditLog: auditLog,
               ),
               const SizedBox(height: 16),
               _EditHistorySection(orderId: order.id),
@@ -365,10 +368,12 @@ class _ItemsCard extends StatelessWidget {
   final List<OrderItem> items;
   final OrderStatus orderStatus;
   final OrderDirection orderDirection;
+  final List<AuditLogEntry> auditLog;
   const _ItemsCard({
     required this.items,
     required this.orderStatus,
     required this.orderDirection,
+    required this.auditLog,
   });
 
   String _fmt(DateTime? dt) {
@@ -400,6 +405,7 @@ class _ItemsCard extends StatelessWidget {
                 fmt: _fmt,
                 orderStatus: orderStatus,
                 orderDirection: orderDirection,
+                auditLog: auditLog,
               ),
             ),
           ],
@@ -414,11 +420,13 @@ class _ItemRow extends StatelessWidget {
   final String Function(DateTime?) fmt;
   final OrderStatus orderStatus;
   final OrderDirection orderDirection;
+  final List<AuditLogEntry> auditLog;
   const _ItemRow({
     required this.item,
     required this.fmt,
     required this.orderStatus,
     required this.orderDirection,
+    required this.auditLog,
   });
 
   @override
@@ -501,11 +509,18 @@ class _ItemRow extends StatelessWidget {
                       ),
                     ),
                   if (orderDirection == OrderDirection.outbound &&
-                      item.purchasedAt != null)
+                      item.purchasedAt != null) ...[
                     Text(
                       fmt(item.purchasedAt),
                       style: const TextStyle(fontSize: 11, color: Colors.grey),
                     ),
+                    if (auditLog.forOffStockItem(item.id) case final entry?
+                      when entry.locationLat != null && entry.locationLng != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: LocationLink(lat: entry.locationLat!, lng: entry.locationLng!),
+                      ),
+                  ],
                 ],
                 if (kind == null &&
                     !(item.checkStatus == ItemCheckStatus.pending &&

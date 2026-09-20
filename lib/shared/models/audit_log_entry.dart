@@ -82,3 +82,13 @@ class AuditLogEntry extends Equatable {
   @override
   List<Object?> get props => [id, orderId, action, newStatus, notes, serverTimestamp, locationLat, locationLng];
 }
+
+extension AuditLogLookup on List<AuditLogEntry> {
+  /// Find the toggle-purchase entry for a given off-stock order item.
+  AuditLogEntry? forOffStockItem(String itemId) {
+    for (final e in this) {
+      if (e.offStockItemId == itemId) return e;
+    }
+    return null;
+  }
+}

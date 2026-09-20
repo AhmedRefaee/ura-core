@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/config/feature_flags.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
+import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/off_stock_kind.dart';
@@ -10,6 +11,7 @@ import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../../shared/widgets/off_stock.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
+import '../../../shared/widgets/location_link.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
@@ -469,7 +471,7 @@ class _OffStockChecklistSection extends StatelessWidget {
                         color: OffStock.color.withValues(alpha: 0.8),
                       ),
                     ),
-                    if (item.purchasedAt != null)
+                    if (item.purchasedAt != null) ...[
                       Text(
                         'تم الشراء ${_fmtPurchasedAt(item.purchasedAt!)}',
                         style: TextStyle(
@@ -477,6 +479,13 @@ class _OffStockChecklistSection extends StatelessWidget {
                           color: OffStock.color.withValues(alpha: 0.8),
                         ),
                       ),
+                      if (state.auditLog.forOffStockItem(item.id) case final entry?
+                        when entry.locationLat != null && entry.locationLng != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: LocationLink(lat: entry.locationLat!, lng: entry.locationLng!),
+                        ),
+                    ],
                   ],
                 ),
                 isThreeLine: true,

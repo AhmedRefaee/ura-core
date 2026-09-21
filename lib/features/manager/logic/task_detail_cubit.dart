@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/audit_log_entry.dart';
@@ -45,6 +46,7 @@ class TaskDetailCubit extends Cubit<TaskDetailState>
   final OrderRepository _verifierRepo;
   final String orderId;
   final bool useVerifierRepository;
+  RealtimeChannel? _channel;
 
   TaskDetailCubit(
     this._repo,
@@ -66,10 +68,19 @@ class TaskDetailCubit extends Cubit<TaskDetailState>
     }
   }
 
+  @override
+  Future<void> close() async {
+    await _channel?.unsubscribe();
+    return super.close();
+  }
+
   Future<void> load() async {
     logger.d('TaskDetailCubit → load: $orderId');
     safeEmit(TaskDetailLoading());
+    await _fetchOrderDetail();
+  }
 
+  Future<void> _fetchOrderDetail() async {
     final results = await Future.wait([
       useVerifierRepository
           ? _verifierRepo.fetchOrderDetail(orderId)
@@ -102,5 +113,15 @@ class TaskDetailCubit extends Cubit<TaskDetailState>
         auditLog: (results[1] as AppSuccess<List<AuditLogEntry>>).data,
       ),
     );
+
+    _channel ??= Supabase.instance.client
+        .channel('task-detail-$orderId-$hashCode')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'orders',
+          callback: (_) => _fetchOrderDetail(),
+        )
+        .subscribe();
   }
 }

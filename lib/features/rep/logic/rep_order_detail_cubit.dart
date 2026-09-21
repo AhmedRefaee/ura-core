@@ -1,5 +1,6 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/config/feature_flags.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
@@ -66,6 +67,7 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
   final ChatRepository _chatRepo;
   final LocationCapture _locationCapture;
   final String orderId;
+  RealtimeChannel? _channel;
 
   RepOrderDetailCubit(this._repo, this.orderId, this._chatRepo, this._locationCapture)
     : super(RepOrderDetailInitial());
@@ -73,7 +75,10 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
   Future<void> load() async {
     logger.d('RepOrderDetailCubit → load: $orderId');
     safeEmit(RepOrderDetailLoading());
+    await _fetchOrderDetail();
+  }
 
+  Future<void> _fetchOrderDetail() async {
     final results = await Future.wait([
       _repo.fetchOrderDetail(orderId),
       _repo.fetchAuditLog(orderId),
@@ -116,6 +121,16 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
             (results[2] as AppSuccess<List<ChatMessage>>).data,
       ),
     );
+
+    _channel ??= Supabase.instance.client
+        .channel('rep-order-detail-$orderId-$hashCode')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'orders',
+          callback: (_) => _fetchOrderDetail(),
+        )
+        .subscribe();
   }
 
   Future<void> startMove({String? notes}) async {
@@ -188,5 +203,11 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
         );
         safeEmit(RepOrderDetailError(error.message));
     }
+  }
+
+  @override
+  Future<void> close() async {
+    await _channel?.unsubscribe();
+    return super.close();
   }
 }

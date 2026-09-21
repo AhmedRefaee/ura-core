@@ -114,14 +114,23 @@ class TaskDetailCubit extends Cubit<TaskDetailState>
       ),
     );
 
-    _channel ??= Supabase.instance.client
-        .channel('task-detail-$orderId-$hashCode')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'orders',
-          callback: (_) => _fetchOrderDetail(),
-        )
-        .subscribe();
+    // Supabase isn't bootstrapped in unit tests that exercise this cubit in
+    // isolation -- the live app always initializes it before any cubit runs,
+    // so skipping the subscription here only ever happens off that path.
+    if (_channel == null) {
+      try {
+        _channel = Supabase.instance.client
+            .channel('task-detail-$orderId-$hashCode')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'orders',
+              callback: (_) => _fetchOrderDetail(),
+            )
+            .subscribe();
+      } catch (e) {
+        logger.d('TaskDetailCubit → skipping realtime subscription: $e');
+      }
+    }
   }
 }

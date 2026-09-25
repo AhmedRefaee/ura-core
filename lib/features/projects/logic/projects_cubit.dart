@@ -61,7 +61,7 @@ class ProjectsCubit extends Cubit<ProjectsState> {
           final updated = await _repo.updateProject(id: project.id, letterheadImageUrl: data);
           if (updated case AppSuccess(:final data)) project = data;
         case AppFailure():
-          warning = 'تم إنشاء المشروع لكن تعذر رفع الترويسة';
+          warning = 'تم إنشاء المشروع لكن تعذر رفع نموذج السند';
       }
     }
 

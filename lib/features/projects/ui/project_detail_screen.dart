@@ -78,7 +78,7 @@ class ProjectDetailScreen extends StatelessWidget {
     final picked = await pickLetterhead();
     if (picked == null) return;
     final error = await cubit.replaceLetterhead(picked);
-    messenger.showSnackBar(SnackBar(content: Text(error ?? 'تم تحديث الترويسة')));
+    messenger.showSnackBar(SnackBar(content: Text(error ?? 'تم تحديث نموذج السند')));
   }
 
   Future<void> _deleteItem(BuildContext context, ProjectItem item) async {
@@ -129,7 +129,7 @@ class _LetterheadCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Row(children: [
-              Text('الترويسة', style: Theme.of(context).textTheme.titleSmall),
+              Text('نموذج السند', style: Theme.of(context).textTheme.titleSmall),
               const Spacer(),
               if (onChange != null)
                 TextButton.icon(
@@ -141,7 +141,7 @@ class _LetterheadCard extends StatelessWidget {
             if (url == null)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 8),
-                child: Text('لا توجد ترويسة -- السند سيُنشأ بدونها'),
+                child: Text('لا يوجد نموذج سند -- السند سيُنشأ بدون رأس'),
               )
             else
               Image.network(url!, height: 90, fit: BoxFit.contain),

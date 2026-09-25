@@ -57,7 +57,7 @@ class ProjectsScreen extends StatelessWidget {
                     child: ListTile(
                       leading: const Icon(Icons.work_outline),
                       title: Text(p.name),
-                      subtitle: Text(p.letterheadImageUrl == null ? 'بدون ترويسة' : 'بترويسة'),
+                      subtitle: Text(p.letterheadImageUrl == null ? 'بدون نموذج سند' : 'بنموذج سند'),
                       trailing: const Icon(Icons.chevron_left),
                       onTap: () => openProjectDetail(context, p, entity),
                     ),
@@ -119,7 +119,7 @@ class ProjectsScreen extends StatelessWidget {
                         if (picked != null) setLocal(() => letterhead = picked);
                       },
                 icon: const Icon(Icons.image_outlined),
-                label: Text(letterhead == null ? 'إضافة ترويسة (اختياري)' : 'تغيير الترويسة'),
+                label: Text(letterhead == null ? 'إضافة نموذج سند (اختياري)' : 'تغيير نموذج السند'),
               ),
             ],
           ),

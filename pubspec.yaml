@@ -62,6 +62,8 @@ dependencies:
   http: ^1.6.0
   firebase_ai: ^3.15.0
   firebase_app_check: ^0.4.7
+  pdf: ^3.11.3
+  printing: ^5.14.2
 
 dev_dependencies:
   flutter_test:

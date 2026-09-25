@@ -48,6 +48,12 @@ import '../../features/inventory/logic/inventory_form_cubit.dart';
 import '../../features/inventory/logic/inventory_list_cubit.dart';
 import '../../features/chat/data/chat_repository.dart';
 import '../../features/chat/logic/chat_directory_cubit.dart';
+import '../../features/projects/data/project_repository.dart';
+import '../../features/projects/data/project_storage_service.dart';
+import '../../features/projects/logic/projects_cubit.dart';
+import '../../features/delivery_receipts/data/delivery_receipt_repository.dart';
+import '../../features/delivery_receipts/data/delivery_receipt_storage_service.dart';
+import '../../features/delivery_receipts/logic/create_delivery_receipt_cubit.dart';
 import '../../features/chat/logic/chat_threads_cubit.dart';
 import '../../features/chat/logic/order_chat_badge_cubit.dart';
 import '../../features/entities/logic/entities_cubit.dart';
@@ -85,6 +91,10 @@ Future<void> setupDependencies() async {
   sl.registerLazySingleton<OrderTemplateRepository>(() => OrderTemplateRepository());
   sl.registerLazySingleton<RepOrdersRepository>(() => RepOrdersRepository());
   sl.registerLazySingleton<ChatRepository>(() => ChatRepository());
+  sl.registerLazySingleton<ProjectRepository>(() => ProjectRepository());
+  sl.registerLazySingleton<ProjectStorageService>(() => ProjectStorageService());
+  sl.registerLazySingleton<DeliveryReceiptRepository>(() => DeliveryReceiptRepository());
+  sl.registerLazySingleton<DeliveryReceiptStorageService>(() => DeliveryReceiptStorageService());
   // Matches locally first (instant, free, no quota) and only calls Gemini for
   // the lines the local matcher couldn't confidently place -- see
   // HybridItemMatchRepository's own doc for why, and
@@ -157,6 +167,13 @@ Future<void> setupDependencies() async {
   // Rep
   sl.registerLazySingleton<LocationCapture>(() => GeolocatorLocationCapture());
   sl.registerFactory<RepOrdersCubit>(() => RepOrdersCubit(sl<RepOrdersRepository>()));
+  sl.registerFactory<ProjectsCubit>(() => ProjectsCubit(sl<ProjectRepository>()));
+  sl.registerFactory<CreateDeliveryReceiptCubit>(
+    () => CreateDeliveryReceiptCubit(
+      sl<DeliveryReceiptRepository>(),
+      sl<DeliveryReceiptStorageService>(),
+    ),
+  );
   sl.registerFactoryParam<RepOrderDetailCubit, String, void>(
     (orderId, _) => RepOrderDetailCubit(
       sl<RepOrdersRepository>(),

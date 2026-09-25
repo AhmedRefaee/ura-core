@@ -14,6 +14,7 @@ import '../../chat/logic/chat_threads_cubit.dart';
 import '../../chat/ui/chat_hub_screen.dart';
 import '../../notifications/logic/chat_badge_cubit.dart';
 import '../../notifications/logic/notifications_badge_cubit.dart';
+import '../../delivery_receipts/ui/rep_delivery_receipts_tab.dart';
 import '../../inventory/ui/inventory_availability_screen.dart';
 import '../../profile/ui/profile_screen.dart';
 import '../logic/rep_order_detail_cubit.dart';
@@ -59,6 +60,7 @@ class _RepHomeViewState extends State<_RepHomeView> {
     final tabs = <Widget>[
       _OrdersTab(onOpenDetail: (id) => _openDetail(context, id)),
       const InventoryAvailabilityScreen(),
+      const RepDeliveryReceiptsTab(),
       if (kChatEnabled) const ChatHubSection(),
       _SettingsTab(onLogout: () => context.read<AuthCubit>().signOut()),
     ];
@@ -78,6 +80,11 @@ class _RepHomeViewState extends State<_RepHomeView> {
             icon: Icon(Icons.inventory_2_outlined),
             selectedIcon: Icon(Icons.inventory_2),
             label: 'المخزون',
+          ),
+          const NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long),
+            label: 'السندات',
           ),
           if (kChatEnabled)
             NavigationDestination(

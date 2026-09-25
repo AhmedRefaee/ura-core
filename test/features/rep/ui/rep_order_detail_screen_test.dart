@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
+import 'package:ura_core/core/di/injection.dart';
 import 'package:ura_core/core/errors/app_result.dart';
 import 'package:ura_core/core/location/location_capture.dart';
 import 'package:ura_core/features/chat/data/chat_repository.dart';
+import 'package:ura_core/features/delivery_receipts/data/delivery_receipt_repository.dart';
 import 'package:ura_core/features/rep/data/rep_orders_repository.dart';
 import 'package:ura_core/features/rep/logic/rep_order_detail_cubit.dart';
 import 'package:ura_core/features/rep/ui/rep_order_detail_screen.dart';
@@ -18,6 +20,8 @@ class MockRepOrdersRepository extends Mock implements RepOrdersRepository {}
 class MockChatRepository extends Mock implements ChatRepository {}
 
 class MockLocationCapture extends Mock implements LocationCapture {}
+
+class MockDeliveryReceiptRepository extends Mock implements DeliveryReceiptRepository {}
 
 void main() {
   late MockRepOrdersRepository repo;
@@ -33,7 +37,13 @@ void main() {
     when(() => chatRepo.getOrderCommunicationHistory(orderId))
         .thenAnswer((_) async => const AppSuccess([]));
     when(() => locationCapture.capture()).thenAnswer((_) async => null);
+
+    final receipts = MockDeliveryReceiptRepository();
+    when(() => receipts.fetchReceiptsForOrder(any())).thenAnswer((_) async => const AppSuccess([]));
+    sl.registerSingleton<DeliveryReceiptRepository>(receipts);
   });
+
+  tearDown(() => sl.unregister<DeliveryReceiptRepository>());
 
   OrderItem realItem() => const OrderItem(
         id: 'item-real',
@@ -203,6 +213,23 @@ void main() {
     final tile = tester.widget<CheckboxListTile>(find.byType(CheckboxListTile));
     expect(tile.onChanged, isNull);
     expect(find.text('تم تسليم الطلب — هذا السجل للعرض فقط'), findsOneWidget);
+  });
+
+  testWidgets('a delivered order offers an optional سند, never forces one', (tester) async {
+    final cubit = await loadedCubit(buildOrder(items: [realItem()], status: OrderStatus.delivered));
+    await pumpTall(tester, wrap(cubit));
+    await tester.pumpAndSettle();
+
+    expect(find.text('تم تسليم هذا الطلب'), findsOneWidget);
+    expect(find.text('إنشاء سند استلام'), findsOneWidget);
+  });
+
+  testWidgets('no سند action before the order is delivered', (tester) async {
+    final cubit = await loadedCubit(buildOrder(items: [realItem()], status: OrderStatus.onTheMove));
+    await pumpTall(tester, wrap(cubit));
+    await tester.pumpAndSettle();
+
+    expect(find.text('إنشاء سند استلام'), findsNothing);
   });
 
   group('an out-of-stock catalogue item is treated as خارج المخزون', () {

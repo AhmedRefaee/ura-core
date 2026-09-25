@@ -50,7 +50,9 @@ import '../../features/chat/data/chat_repository.dart';
 import '../../features/chat/logic/chat_directory_cubit.dart';
 import '../../features/projects/data/project_repository.dart';
 import '../../features/projects/data/project_storage_service.dart';
+import '../../features/projects/logic/project_detail_cubit.dart';
 import '../../features/projects/logic/projects_cubit.dart';
+import '../../shared/models/project.dart';
 import '../../features/delivery_receipts/data/delivery_receipt_repository.dart';
 import '../../features/delivery_receipts/data/delivery_receipt_storage_service.dart';
 import '../../features/delivery_receipts/logic/create_delivery_receipt_cubit.dart';
@@ -167,11 +169,23 @@ Future<void> setupDependencies() async {
   // Rep
   sl.registerLazySingleton<LocationCapture>(() => GeolocatorLocationCapture());
   sl.registerFactory<RepOrdersCubit>(() => RepOrdersCubit(sl<RepOrdersRepository>()));
-  sl.registerFactory<ProjectsCubit>(() => ProjectsCubit(sl<ProjectRepository>()));
-  sl.registerFactory<CreateDeliveryReceiptCubit>(
-    () => CreateDeliveryReceiptCubit(
+  sl.registerFactory<ProjectsCubit>(
+    () => ProjectsCubit(sl<ProjectRepository>(), sl<ProjectStorageService>()),
+  );
+  sl.registerFactoryParam<ProjectDetailCubit, Project, void>(
+    (project, _) => ProjectDetailCubit(
+      sl<ProjectRepository>(),
+      sl<ProjectStorageService>(),
+      project,
+    ),
+  );
+  sl.registerFactoryParam<CreateDeliveryReceiptCubit, DeliveryReceiptLaunch, void>(
+    (launch, _) => CreateDeliveryReceiptCubit(
+      sl<EntityRepository>(),
+      sl<ProjectRepository>(),
       sl<DeliveryReceiptRepository>(),
       sl<DeliveryReceiptStorageService>(),
+      launch,
     ),
   );
   sl.registerFactoryParam<RepOrderDetailCubit, String, void>(

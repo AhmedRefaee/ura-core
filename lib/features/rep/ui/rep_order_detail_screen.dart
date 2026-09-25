@@ -16,6 +16,9 @@ import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
+import '../../delivery_receipts/logic/create_delivery_receipt_cubit.dart';
+import '../../delivery_receipts/ui/create_delivery_receipt_screen.dart';
+import '../../delivery_receipts/ui/delivery_receipts_section.dart';
 import '../logic/rep_order_detail_cubit.dart';
 
 class RepOrderDetailScreen extends StatelessWidget {
@@ -520,6 +523,7 @@ class _ActionSection extends StatefulWidget {
 
 class _ActionSectionState extends State<_ActionSection> {
   final _notesController = TextEditingController();
+  final _receiptsKey = GlobalKey<DeliveryReceiptsSectionState>();
 
   @override
   void dispose() {
@@ -543,9 +547,35 @@ class _ActionSectionState extends State<_ActionSection> {
     if (status == OrderStatus.delivered &&
         (dir == OrderDirection.outbound ||
             dir == OrderDirection.inboundExternal)) {
-      return _CompletedCard(
+      const completed = _CompletedCard(
         icon: Icons.check_circle,
         message: 'تم تسليم هذا الطلب',
+      );
+      if (dir != OrderDirection.outbound) return completed;
+      // Optional, never forced: a سند can also be filed later from the
+      // سندات tab, detached from this order.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          completed,
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final filed = await openCreateDeliveryReceipt(
+                context,
+                launch: DeliveryReceiptLaunch(
+                  orderId: order.id,
+                  entity: order.entity,
+                  projectId: order.projectId,
+                ),
+              );
+              if (filed) _receiptsKey.currentState?.reload();
+            },
+            icon: const Icon(Icons.receipt_long_outlined),
+            label: const Text('إنشاء سند استلام'),
+          ),
+          DeliveryReceiptsSection.forOrder(order.id, key: _receiptsKey),
+        ],
       );
     }
 

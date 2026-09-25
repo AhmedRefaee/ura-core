@@ -49,13 +49,20 @@ class ProjectRepository {
 
   Future<AppResult<Project>> updateProject({
     required String id,
-    required String name,
+    String? name,
     String? letterheadImageUrl,
   }) async {
     try {
       logger.d('ProjectRepository → updateProject | id: $id');
-      final project = Project(id: id, entityId: '', name: name.trim(), letterheadImageUrl: letterheadImageUrl);
-      final data = await _supabase.from('projects').update(project.toUpdateMap()).eq('id', id).select().single();
+      final data = await _supabase
+          .from('projects')
+          .update({
+            if (name != null) 'name': name.trim(),
+            'letterhead_image_url': ?letterheadImageUrl,
+          })
+          .eq('id', id)
+          .select()
+          .single();
       logger.i('ProjectRepository → project updated: $id');
       return AppSuccess(Project.fromMap(data));
     } catch (e, st) {
@@ -76,6 +83,19 @@ class ProjectRepository {
       return AppSuccess(items);
     } catch (e, st) {
       logger.e('ProjectRepository → fetchProjectItems failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  /// Asks the server rather than checking the role locally, so who may see
+  /// and edit quotation pricing stays defined in exactly one place:
+  /// `project_item_pricing_visible()`.
+  Future<AppResult<bool>> canEditPricing() async {
+    try {
+      final result = await _supabase.rpc('project_item_pricing_visible');
+      return AppSuccess(result as bool? ?? false);
+    } catch (e, st) {
+      logger.e('ProjectRepository → canEditPricing failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

@@ -17,6 +17,7 @@ import '../../../shared/widgets/order_status_timeline.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
 import '../logic/storage_order_detail_cubit.dart';
+import '../../delivery_receipts/ui/delivery_receipts_section.dart';
 
 class StorageOrderDetailScreen extends StatelessWidget {
   const StorageOrderDetailScreen({super.key});
@@ -95,6 +96,7 @@ class StorageOrderDetailScreen extends StatelessWidget {
               OrderStatusStepper(order: order),
               const SizedBox(height: 16),
               OrderStatusTimeline(order: order, auditLog: state.auditLog),
+              DeliveryReceiptsSection.forOrder(order.id),
               const SizedBox(height: 16),
               _ItemsSection(state: state),
               const SizedBox(height: 24),

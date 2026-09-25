@@ -1,57 +1,72 @@
-import 'package:flutter_bloc/flutter_bloc.dart';
+import 'dart:typed_data';
 import 'package:equatable/equatable.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/errors/app_result.dart';
-import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/project.dart';
 import '../data/project_repository.dart';
+import '../data/project_storage_service.dart';
 
 part 'projects_state.dart';
 
+/// A picked letterhead image, ready to upload.
+class LetterheadImage {
+  final Uint8List bytes;
+  final String extension;
+  final String mimeType;
+  const LetterheadImage({required this.bytes, required this.extension, required this.mimeType});
+}
+
 class ProjectsCubit extends Cubit<ProjectsState> {
   final ProjectRepository _repo;
-  ProjectsCubit(this._repo) : super(ProjectsInitial());
+  final ProjectStorageService _storage;
+  ProjectsCubit(this._repo, this._storage) : super(const ProjectsInitial());
 
   Future<void> loadProjects(String entityId) async {
-    try {
-      emit(const ProjectsLoading());
-      final result = await _repo.fetchProjectsForEntity(entityId);
-      switch (result) {
-        case AppSuccess(:final data):
-          emit(ProjectsLoaded(data));
-        case AppFailure(:final error):
-          emit(ProjectsError(error.message));
-      }
-    } catch (e, st) {
-      logger.e('ProjectsCubit → loadProjects failed', error: e, stackTrace: st);
-      emit(const ProjectsError('حدث خطأ غير متوقع'));
+    emit(const ProjectsLoading());
+    final result = await _repo.fetchProjectsForEntity(entityId);
+    switch (result) {
+      case AppSuccess(:final data):
+        emit(ProjectsLoaded(data));
+      case AppFailure(:final error):
+        emit(ProjectsError(error.message));
     }
   }
 
-  Future<void> createProject({
+  /// Returns an error message, or null on success. The letterhead is uploaded
+  /// after the row exists because its storage path is keyed by project id.
+  Future<String?> createProject({
     required String entityId,
     required String name,
-    String? letterheadImageUrl,
+    LetterheadImage? letterhead,
   }) async {
-    try {
-      final result = await _repo.createProject(
-        entityId: entityId,
-        name: name,
-        letterheadImageUrl: letterheadImageUrl,
-      );
-      switch (result) {
-        case AppSuccess(:final data):
-          if (state is ProjectsLoaded) {
-            final current = (state as ProjectsLoaded).projects;
-            emit(ProjectsLoaded([data, ...current]));
-          } else {
-            emit(ProjectsLoaded([data]));
-          }
-        case AppFailure(:final error):
-          emit(ProjectsError(error.message));
-      }
-    } catch (e, st) {
-      logger.e('ProjectsCubit → createProject failed', error: e, stackTrace: st);
-      emit(const ProjectsError('فشل إنشاء المشروع'));
+    final created = await _repo.createProject(entityId: entityId, name: name);
+    Project project;
+    switch (created) {
+      case AppSuccess(:final data):
+        project = data;
+      case AppFailure(:final error):
+        return error.message;
     }
+
+    String? warning;
+    if (letterhead != null) {
+      final upload = await _storage.uploadLetterhead(
+        projectId: project.id,
+        bytes: letterhead.bytes,
+        fileExtension: letterhead.extension,
+        mimeType: letterhead.mimeType,
+      );
+      switch (upload) {
+        case AppSuccess(:final data):
+          final updated = await _repo.updateProject(id: project.id, letterheadImageUrl: data);
+          if (updated case AppSuccess(:final data)) project = data;
+        case AppFailure():
+          warning = 'تم إنشاء المشروع لكن تعذر رفع الترويسة';
+      }
+    }
+
+    final current = state is ProjectsLoaded ? (state as ProjectsLoaded).projects : const <Project>[];
+    emit(ProjectsLoaded([project, ...current]));
+    return warning;
   }
 }

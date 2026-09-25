@@ -36,6 +36,7 @@ class Order extends Equatable {
   final OrderDirection direction;
   final String entityId;
   final Entity? entity;
+  final String? projectId;
   final String? repId;
   final Profile? rep;
   final Profile? creator;
@@ -56,6 +57,7 @@ class Order extends Equatable {
     required this.direction,
     required this.entityId,
     this.entity,
+    this.projectId,
     this.repId,
     this.rep,
     this.creator,
@@ -128,6 +130,7 @@ class Order extends Equatable {
       direction: direction,
       entityId: map['entity_id'] as String,
       entity: entityMap != null ? Entity.fromMap(entityMap) : null,
+      projectId: map['project_id'] as String?,
       repId: map['rep_id'] as String?,
       rep: repMap != null ? Profile.fromMap(repMap) : null,
       creator: creatorMap != null ? Profile.fromMap(creatorMap) : null,

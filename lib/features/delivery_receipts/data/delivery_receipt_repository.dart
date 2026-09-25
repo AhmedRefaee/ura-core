@@ -50,6 +50,23 @@ class DeliveryReceiptRepository {
     }
   }
 
+  Future<AppResult<List<DeliveryReceipt>>> fetchMyReceipts() async {
+    try {
+      final uid = _supabase.auth.currentUser!.id;
+      logger.d('DeliveryReceiptRepository → fetchMyReceipts: $uid');
+      final data = await _supabase
+          .from('delivery_receipts')
+          .select(_receiptSelect)
+          .eq('rep_id', uid)
+          .order('created_at', ascending: false);
+      final receipts = (data as List).map((e) => DeliveryReceipt.fromMap(e as Map<String, dynamic>)).toList();
+      return AppSuccess(receipts);
+    } catch (e, st) {
+      logger.e('DeliveryReceiptRepository → fetchMyReceipts failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
   /// Create a delivery receipt via the server-side RPC for atomicity.
   /// [items] is a list of {"project_item_id": uuid, "quantity_delivered": num}
   Future<AppResult<String>> createDeliveryReceipt({

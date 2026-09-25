@@ -36,11 +36,6 @@ class Project extends Equatable {
         if (letterheadImageUrl != null) 'letterhead_image_url': letterheadImageUrl,
       };
 
-  Map<String, dynamic> toUpdateMap() => {
-        'name': name,
-        'letterhead_image_url': letterheadImageUrl,
-      };
-
   @override
   List<Object?> get props => [id, entityId, name, letterheadImageUrl];
 }

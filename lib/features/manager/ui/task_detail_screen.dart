@@ -27,6 +27,7 @@ import '../../../features/verifier/ui/create_order_screen.dart';
 import '../../../features/verifier/ui/edit_order_screen.dart';
 import '../logic/task_detail_cubit.dart';
 import '../../profile/ui/profile_screen.dart';
+import '../../delivery_receipts/ui/delivery_receipts_section.dart';
 
 class TaskDetailScreen extends StatelessWidget {
   final String orderId;
@@ -210,6 +211,7 @@ class _TaskDetailView extends StatelessWidget {
               OrderStatusStepper(order: order),
               const SizedBox(height: 16),
               OrderStatusTimeline(order: order, auditLog: auditLog),
+              DeliveryReceiptsSection.forOrder(order.id),
               const SizedBox(height: 16),
               _ItemsCard(
                 items: order.items,

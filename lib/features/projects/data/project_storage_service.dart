@@ -1,60 +1,46 @@
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/logging/app_logger.dart';
 
-/// Handles letterhead image upload for projects.
+/// Uploads a project's letterhead image to the `project-letterheads` bucket.
+///
+/// The path must start with the uploader's organization_id: the bucket's RLS
+/// checks that first segment against auth_org_id() (see
+/// 20260925120300_delivery_receipt_storage_buckets.sql).
 class ProjectStorageService {
   final SupabaseClient _supabase = Supabase.instance.client;
   static const _bucket = 'project-letterheads';
 
   Future<AppResult<String>> uploadLetterhead({
     required String projectId,
-    required String localPath,
-    required String fileName,
+    required Uint8List bytes,
+    required String fileExtension,
     required String mimeType,
   }) async {
     try {
-      logger.d('ProjectStorageService → upload: $fileName for project $projectId');
-      final uid = _supabase.auth.currentUser?.id ?? 'unknown';
-      final orgId = _supabase.auth.currentUser?.userMetadata?['organization_id'] as String?;
+      final uid = _supabase.auth.currentUser!.id;
+      final profile = await _supabase
+          .from('profiles')
+          .select('organization_id')
+          .eq('id', uid)
+          .single();
+      final orgId = profile['organization_id'] as String;
+      final path =
+          '$orgId/$projectId/${DateTime.now().millisecondsSinceEpoch}.$fileExtension';
+      logger.d('ProjectStorageService → upload letterhead: $path');
 
-      if (orgId == null) {
-        return AppFailure(ErrorHandler.handle(
-          Exception('Organization context not found'),
-        ));
-      }
-
-      final ext = fileName.contains('.') ? fileName.split('.').last : '';
-      final storagePath = '$orgId/$projectId/$uid/${DateTime.now().millisecondsSinceEpoch}${ext.isNotEmpty ? '.$ext' : ''}';
-
-      await _supabase.storage.from(_bucket).upload(
-            storagePath,
-            File(localPath),
+      await _supabase.storage.from(_bucket).uploadBinary(
+            path,
+            bytes,
             fileOptions: FileOptions(contentType: mimeType, upsert: false),
           );
-
-      final url = _supabase.storage.from(_bucket).getPublicUrl(storagePath);
+      final url = _supabase.storage.from(_bucket).getPublicUrl(path);
       logger.i('ProjectStorageService → uploaded → $url');
       return AppSuccess(url);
     } catch (e, st) {
       logger.e('ProjectStorageService → upload failed', error: e, stackTrace: st);
-      return AppFailure(ErrorHandler.handle(e));
-    }
-  }
-
-  Future<AppResult<void>> deleteLetterhead(String publicUrl) async {
-    try {
-      final uri = Uri.parse(publicUrl);
-      final segments = uri.pathSegments;
-      final bucketIdx = segments.indexOf(_bucket);
-      if (bucketIdx == -1) return const AppSuccess(null);
-      final path = segments.sublist(bucketIdx + 1).join('/');
-      await _supabase.storage.from(_bucket).remove([path]);
-      return const AppSuccess(null);
-    } catch (e, st) {
-      logger.e('ProjectStorageService → delete failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

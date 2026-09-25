@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/entity.dart';
+import '../../projects/ui/projects_screen.dart';
 import '../logic/entities_cubit.dart';
 import '../logic/import_entities_cubit.dart';
 import 'import_entities_screen.dart';
@@ -237,6 +238,7 @@ class _EntityTile extends StatelessWidget {
     return Card(
       margin: EdgeInsets.zero,
       child: ListTile(
+        onTap: () => openProjectsScreen(context, entity),
         leading: CircleAvatar(
           backgroundColor: color.withValues(alpha: 0.15),
           child: Icon(icon, color: color, size: 20),

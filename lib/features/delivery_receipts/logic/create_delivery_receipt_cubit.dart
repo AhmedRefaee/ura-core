@@ -110,11 +110,16 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
         projectName: project.name,
         repName: repName,
         date: DateTime.now(),
-        letterheadBytes: await _fetchLetterhead(project.letterheadImageUrl),
+        clientLogoBytes: await _fetchLetterhead(project.letterheadImageUrl),
         notes: notes,
         lines: [
           for (final i in chosen)
-            ReceiptPdfLine(itemName: i.itemName, unit: i.unit, quantity: state.quantities[i.id]!),
+            ReceiptPdfLine(
+              itemName: i.itemName,
+              description: i.description,
+              unit: i.unit,
+              quantity: state.quantities[i.id]!,
+            ),
         ],
       );
 

@@ -19,6 +19,9 @@ class CreateDeliveryReceiptState extends Equatable {
   /// scrolls away and back still shows what was typed). Blocks submitting:
   /// a typo must never silently drop a line from the سند.
   final Map<String, String> invalid;
+
+  /// Editing: lines of the old سند no longer in the quotation (not carried).
+  final int droppedFromOriginal;
   final bool submitting;
   final String? error;
 
@@ -36,6 +39,7 @@ class CreateDeliveryReceiptState extends Equatable {
     this.items = const [],
     this.quantities = const {},
     this.invalid = const {},
+    this.droppedFromOriginal = 0,
     this.submitting = false,
     this.error,
     this.pdfBytes,
@@ -67,6 +71,7 @@ class CreateDeliveryReceiptState extends Equatable {
     List<ProjectItem>? items,
     Map<String, double>? quantities,
     Map<String, String>? invalid,
+    int? droppedFromOriginal,
     bool? submitting,
     String? error,
     bool clearError = false,
@@ -83,6 +88,7 @@ class CreateDeliveryReceiptState extends Equatable {
       items: items ?? this.items,
       quantities: quantities ?? this.quantities,
       invalid: invalid ?? this.invalid,
+      droppedFromOriginal: droppedFromOriginal ?? this.droppedFromOriginal,
       submitting: submitting ?? this.submitting,
       error: clearError ? null : (error ?? this.error),
       pdfBytes: pdfBytes ?? this.pdfBytes,
@@ -101,6 +107,7 @@ class CreateDeliveryReceiptState extends Equatable {
         items,
         quantities,
         invalid,
+        droppedFromOriginal,
         submitting,
         error,
         receiptId,

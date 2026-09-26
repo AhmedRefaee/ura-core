@@ -76,6 +76,7 @@ class DeliveryReceiptRepository {
     String? orderId,
     String? pdfUrl,
     String? notes,
+    String? replacesReceiptId,
   }) async {
     try {
       logger.d('DeliveryReceiptRepository → createDeliveryReceipt | projectId: $projectId items: ${items.length}');
@@ -86,6 +87,7 @@ class DeliveryReceiptRepository {
         'p_order_id': orderId,
         'p_pdf_url': pdfUrl,
         'p_notes': notes,
+        'p_replaces': replacesReceiptId,
       });
 
       if (result['success'] as bool? ?? false) {
@@ -96,6 +98,20 @@ class DeliveryReceiptRepository {
       return AppFailure(ErrorHandler.fromRpcResult(result as Map));
     } catch (e, st) {
       logger.e('DeliveryReceiptRepository → createDeliveryReceipt failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  /// Archives a سند (hidden everywhere, kept for audit). Only its creator
+  /// or an admin may; the server enforces it.
+  Future<AppResult<void>> deleteDeliveryReceipt(String receiptId) async {
+    try {
+      logger.d('DeliveryReceiptRepository → deleteDeliveryReceipt: $receiptId');
+      final result = await _supabase.rpc('delete_delivery_receipt', params: {'p_receipt_id': receiptId});
+      if (result['success'] as bool? ?? false) return const AppSuccess(null);
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
+    } catch (e, st) {
+      logger.e('DeliveryReceiptRepository → deleteDeliveryReceipt failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

@@ -7,6 +7,7 @@ import 'package:ura_core/features/delivery_receipts/data/delivery_receipt_storag
 import 'package:ura_core/features/delivery_receipts/logic/create_delivery_receipt_cubit.dart';
 import 'package:ura_core/features/projects/data/project_repository.dart';
 import 'package:ura_core/features/verifier/data/entity_repository.dart';
+import 'package:ura_core/shared/models/delivery_receipt.dart';
 import 'package:ura_core/shared/models/entity.dart';
 import 'package:ura_core/shared/models/project.dart';
 import 'package:ura_core/shared/models/project_item.dart';
@@ -119,6 +120,29 @@ void main() {
 
     expect(cubit.state.project, projectB);
     expect(cubit.state.items, [item]);
+  });
+
+  test('editing pre-fills the old quantities onto lines that still exist', () async {
+    const old = DeliveryReceipt(
+      id: 'r1',
+      entityId: 'e1',
+      entity: entity,
+      projectId: 'p2',
+      repId: 'u1',
+      notes: 'ملاحظة قديمة',
+      items: [
+        DeliveryReceiptItem(id: 'x', deliveryReceiptId: 'r1', projectItemId: 'i1', itemNameSnapshot: 'كرسي', unitSnapshot: 'حبة', quantityDelivered: 4),
+        DeliveryReceiptItem(id: 'y', deliveryReceiptId: 'r1', projectItemId: 'gone', itemNameSnapshot: 'محذوف', unitSnapshot: 'حبة', quantityDelivered: 2),
+      ],
+    );
+    final cubit = build(DeliveryReceiptLaunch.edit(old));
+    await cubit.init();
+
+    expect(cubit.launch.isEdit, isTrue);
+    expect(cubit.state.project, projectB);
+    expect(cubit.state.quantities, {'i1': 4.0});
+    expect(cubit.state.droppedFromOriginal, 1, reason: 'the line no longer in the quotation is reported');
+    expect(cubit.state.canSubmit, isTrue);
   });
 
   test('switching entity clears the previous project and quantities', () async {

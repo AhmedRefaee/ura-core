@@ -67,11 +67,13 @@ class CreateDeliveryReceiptScreen extends StatelessWidget {
           },
           child: Scaffold(
             appBar: AppBar(
-              title: Text(switch (step) {
-                _Step.entity => 'سند جديد — الجهة',
-                _Step.project => 'سند جديد — المشروع',
-                _Step.items => 'سند جديد — البنود',
-              }),
+              title: Text(
+                '${context.read<CreateDeliveryReceiptCubit>().launch.isEdit ? 'تعديل السند' : 'سند جديد'} — ${switch (step) {
+                  _Step.entity => 'الجهة',
+                  _Step.project => 'المشروع',
+                  _Step.items => 'البنود',
+                }}',
+              ),
               leading: BackButton(
                 onPressed: state.submitting
                     ? null
@@ -503,7 +505,7 @@ class _ItemsStepState extends State<_ItemsStep> {
   String _query = '';
   String? _category;
   bool _selectedOnly = false;
-  String _notes = '';
+  late String _notes = context.read<CreateDeliveryReceiptCubit>().launch.replacing?.notes ?? '';
 
   // Search keys folded once per items list, not per keystroke.
   List<ProjectItem>? _keyedFor;
@@ -589,6 +591,12 @@ class _ItemsStepState extends State<_ItemsStep> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _Breadcrumb(state: state),
+        if (state.droppedFromOriginal > 0)
+          _ErrorBanner(
+            state.droppedFromOriginal == 1
+                ? 'بند واحد من السند السابق لم يعد في عرض المشروع ولن يُنقل'
+                : '${state.droppedFromOriginal} بنود من السند السابق لم تعد في عرض المشروع ولن تُنقل',
+          ),
         if (state.loading)
           const Expanded(child: Center(child: CircularProgressIndicator()))
         else if (state.items.isEmpty)
@@ -916,7 +924,9 @@ class _SubmitBar extends StatelessWidget {
                         )
                       : const Icon(Icons.picture_as_pdf_outlined),
                   label: Text(
-                    state.submitting ? 'جارٍ إنشاء السند...' : 'إنشاء السند',
+                    state.submitting
+                        ? 'جارٍ الحفظ...'
+                        : (context.read<CreateDeliveryReceiptCubit>().launch.isEdit ? 'حفظ التعديل' : 'إنشاء السند'),
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -947,7 +957,9 @@ class _FiledView extends StatelessWidget {
       },
       child: Scaffold(
         appBar: AppBar(
-          title: const Text('تم إنشاء السند'),
+          title: Text(
+            context.read<CreateDeliveryReceiptCubit>().launch.isEdit ? 'تم تعديل السند' : 'تم إنشاء السند',
+          ),
           automaticallyImplyLeading: false,
           actions: [
             Padding(

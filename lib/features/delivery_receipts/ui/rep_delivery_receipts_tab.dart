@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
-import '../../../core/storage/signed_storage_url.dart';
 import '../../../shared/models/delivery_receipt.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../data/delivery_receipt_repository.dart';
 import 'create_delivery_receipt_screen.dart';
+import 'receipt_actions.dart';
 
 /// The rep's سندات: file one later in the day, detached from any order, and
 /// find the ones already filed -- grouped by day, newest first.
@@ -83,7 +82,7 @@ class _RepDeliveryReceiptsTabState extends State<RepDeliveryReceiptsTab> {
                     ),
                   ),
                 ),
-              AppSuccess(:final data) => _ReceiptList(receipts: data),
+              AppSuccess(:final data) => _ReceiptList(receipts: data, onChanged: _refresh),
             },
           );
         },
@@ -146,7 +145,8 @@ class _Message extends StatelessWidget {
 
 class _ReceiptList extends StatelessWidget {
   final List<DeliveryReceipt> receipts;
-  const _ReceiptList({required this.receipts});
+  final VoidCallback onChanged;
+  const _ReceiptList({required this.receipts, required this.onChanged});
 
   static const _weekdays = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
 
@@ -187,7 +187,7 @@ class _ReceiptList extends StatelessWidget {
             child: Text(row, style: Theme.of(context).textTheme.titleSmall),
           );
         }
-        return _ReceiptCard(receipt: row as DeliveryReceipt);
+        return _ReceiptCard(receipt: row as DeliveryReceipt, onChanged: onChanged);
       },
     );
   }
@@ -195,7 +195,8 @@ class _ReceiptList extends StatelessWidget {
 
 class _ReceiptCard extends StatefulWidget {
   final DeliveryReceipt receipt;
-  const _ReceiptCard({required this.receipt});
+  final VoidCallback onChanged;
+  const _ReceiptCard({required this.receipt, required this.onChanged});
 
   @override
   State<_ReceiptCard> createState() => _ReceiptCardState();
@@ -206,14 +207,8 @@ class _ReceiptCardState extends State<_ReceiptCard> {
 
   Future<void> _openPdf() async {
     setState(() => _opening = true);
-    final url = await SignedStorageUrl.resolve('delivery-receipts', widget.receipt.pdfUrl);
-    if (!mounted) return;
-    setState(() => _opening = false);
-    if (url == null) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('تعذر فتح ملف السند')));
-      return;
-    }
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    await openReceiptPdf(context, widget.receipt);
+    if (mounted) setState(() => _opening = false);
   }
 
   @override
@@ -275,12 +270,21 @@ class _ReceiptCardState extends State<_ReceiptCard> {
                   ],
                 ),
               ),
-              IconButton(
-                tooltip: 'فتح السند',
-                onPressed: hasPdf && !_opening ? _openPdf : null,
-                icon: _opening
-                    ? const SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2))
-                    : Icon(Icons.picture_as_pdf, color: hasPdf ? scheme.primary : scheme.outline),
+              Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_opening)
+                    const Padding(
+                      padding: EdgeInsets.all(12),
+                      child: SizedBox(width: 22, height: 22, child: CircularProgressIndicator(strokeWidth: 2)),
+                    )
+                  else
+                    Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Icon(Icons.picture_as_pdf, color: hasPdf ? scheme.primary : scheme.outline),
+                    ),
+                  ReceiptMenuButton(receipt: r, onChanged: widget.onChanged),
+                ],
               ),
             ],
           ),

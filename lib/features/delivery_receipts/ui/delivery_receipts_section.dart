@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../shared/models/delivery_receipt.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../data/delivery_receipt_repository.dart';
-import '../../../core/storage/signed_storage_url.dart';
+import 'receipt_actions.dart';
 
 /// Read-only list of سندات attached to an order or a project. Shown inside
 /// the record a role already opens, never as its own top-level section.
@@ -90,7 +89,7 @@ class DeliveryReceiptsSectionState extends State<DeliveryReceiptsSection> {
                     child: Text('لا توجد سندات بعد'),
                   )
                 else
-                  for (final r in receipts) DeliveryReceiptTile(receipt: r),
+                  for (final r in receipts) DeliveryReceiptTile(receipt: r, onChanged: reload),
               ],
             ),
           ),
@@ -102,7 +101,10 @@ class DeliveryReceiptsSectionState extends State<DeliveryReceiptsSection> {
 
 class DeliveryReceiptTile extends StatelessWidget {
   final DeliveryReceipt receipt;
-  const DeliveryReceiptTile({super.key, required this.receipt});
+
+  /// After the creator edits or deletes it from the ⋮ menu.
+  final VoidCallback? onChanged;
+  const DeliveryReceiptTile({super.key, required this.receipt, this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -121,13 +123,10 @@ class DeliveryReceiptTile extends StatelessWidget {
         overflow: TextOverflow.ellipsis,
       ),
       isThreeLine: true,
-      trailing: receipt.pdfUrl == null ? null : const Icon(Icons.open_in_new, size: 18),
-      onTap: receipt.pdfUrl == null
-          ? null
-          : () async {
-              final url = await SignedStorageUrl.resolve('delivery-receipts', receipt.pdfUrl);
-              if (url != null) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
-            },
+      trailing: onChanged != null && isOwnReceipt(receipt)
+          ? ReceiptMenuButton(receipt: receipt, onChanged: onChanged!)
+          : (receipt.pdfUrl == null ? null : const Icon(Icons.open_in_new, size: 18)),
+      onTap: receipt.pdfUrl == null ? null : () => openReceiptPdf(context, receipt),
     );
   }
 }

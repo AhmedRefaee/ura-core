@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
+import '../../../shared/models/delivery_receipt.dart';
 import '../../../shared/models/entity.dart';
 import '../../../shared/models/project.dart';
 import '../../../shared/models/project_item.dart';
@@ -24,7 +25,20 @@ class DeliveryReceiptLaunch {
   final String? orderId;
   final Entity? entity;
   final String? projectId;
-  const DeliveryReceiptLaunch({this.orderId, this.entity, this.projectId});
+
+  /// Editing: the سند being replaced. Its entity, project, quantities and
+  /// note are pre-filled; filing archives it in the same transaction.
+  final DeliveryReceipt? replacing;
+
+  const DeliveryReceiptLaunch({this.orderId, this.entity, this.projectId, this.replacing});
+
+  DeliveryReceiptLaunch.edit(DeliveryReceipt receipt)
+      : orderId = receipt.orderId,
+        entity = receipt.entity,
+        projectId = receipt.projectId,
+        replacing = receipt;
+
+  bool get isEdit => replacing != null;
 }
 
 class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
@@ -129,9 +143,26 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     switch (result) {
       case AppSuccess(:final data):
         emit(state.copyWith(loading: false, items: data));
+        _prefillFromReplaced(project, data);
       case AppFailure(:final error):
         emit(state.copyWith(loading: false, error: error.message));
     }
+  }
+
+  bool _prefilled = false;
+
+  /// Editing: carry the old سند's quantities over, once, onto the lines that
+  /// still exist in the (possibly re-imported) quotation.
+  void _prefillFromReplaced(Project project, List<ProjectItem> items) {
+    final old = launch.replacing;
+    if (old == null || _prefilled || project.id != old.projectId) return;
+    _prefilled = true;
+    final present = {for (final i in items) i.id};
+    final quantities = <String, double>{
+      for (final line in old.items)
+        if (line.projectItemId != null && present.contains(line.projectItemId)) line.projectItemId!: line.quantityDelivered,
+    };
+    emit(state.copyWith(quantities: quantities, droppedFromOriginal: old.items.length - quantities.length));
   }
 
   /// Quantity exactly as typed. Empty clears the line; anything that isn't a
@@ -200,6 +231,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
         entityId: entity.id,
         projectId: project.id,
         orderId: launch.orderId,
+        replacesReceiptId: launch.replacing?.id,
         pdfUrl: pdfUrl,
         notes: (notes?.trim().isEmpty ?? true) ? null : notes!.trim(),
         items: [

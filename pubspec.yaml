@@ -65,6 +65,7 @@ dependencies:
   firebase_app_check: ^0.4.7
   pdf: ^3.11.3
   printing: ^5.14.2
+  two_dimensional_scrollables: ^0.5.5
 
 dev_dependencies:
   flutter_test:

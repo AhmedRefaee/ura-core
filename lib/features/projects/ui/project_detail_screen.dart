@@ -95,7 +95,7 @@ class ProjectDetailScreen extends StatelessWidget {
             ),
             floatingActionButton: state.canEditItems
                 ? FloatingActionButton.extended(
-                    onPressed: () => _editItem(context, null),
+                    onPressed: () => showProjectItemForm(context, null),
                     icon: const Icon(Icons.add),
                     label: const Text('بند جديد'),
                   )
@@ -117,11 +117,7 @@ class ProjectDetailScreen extends StatelessWidget {
                         : null,
                   ),
                   const SizedBox(height: 16),
-                  _ItemsCard(
-                    state: state,
-                    onEdit: (item) => _editItem(context, item),
-                    onDelete: (item) => _deleteItem(context, item),
-                  ),
+                  _ItemsCard(state: state),
                   DeliveryReceiptsSection.forProject(state.project.id),
                 ],
               ),
@@ -173,55 +169,56 @@ class ProjectDetailScreen extends StatelessWidget {
     );
   }
 
-  Future<void> _deleteItem(BuildContext context, ProjectItem item) async {
-    final cubit = context.read<ProjectDetailCubit>();
-    final messenger = ScaffoldMessenger.of(context);
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('حذف البند'),
-        content: Text(
-          'حذف "${item.itemName}" من عرض المشروع؟ السندات السابقة لن تتأثر.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('حذف'),
-          ),
-        ],
-      ),
-    );
-    if (ok != true) return;
-    final error = await cubit.deleteItem(item.id);
-    if (error != null) messenger.showSnackBar(SnackBar(content: Text(error)));
-  }
+}
 
-  Future<void> _editItem(BuildContext context, ProjectItem? item) async {
-    final cubit = context.read<ProjectDetailCubit>();
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      builder: (_) => _ItemForm(
-        projectId: cubit.state.project.id,
-        item: item,
-        categories: [
-          for (final c in groupByCategory(cubit.state.items))
-            if (c.name.isNotEmpty) c.name,
-        ],
-        nextSortOrder:
-            cubit.state.items.fold<int>(
-              0,
-              (m, i) => i.sortOrder > m ? i.sortOrder : m,
-            ) +
-            1,
-        onSave: cubit.saveItem,
+Future<void> confirmDeleteProjectItem(BuildContext context, ProjectItem item) async {
+  final cubit = context.read<ProjectDetailCubit>();
+  final messenger = ScaffoldMessenger.of(context);
+  final ok = await showDialog<bool>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: const Text('حذف البند'),
+      content: Text(
+        'حذف "${item.itemName}" من عرض المشروع؟ السندات السابقة لن تتأثر.',
       ),
-    );
-  }
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(ctx, false),
+          child: const Text('إلغاء'),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(ctx, true),
+          child: const Text('حذف'),
+        ),
+      ],
+    ),
+  );
+  if (ok != true) return;
+  final error = await cubit.deleteItem(item.id);
+  if (error != null) messenger.showSnackBar(SnackBar(content: Text(error)));
+}
+
+Future<void> showProjectItemForm(BuildContext context, ProjectItem? item) async {
+  final cubit = context.read<ProjectDetailCubit>();
+  await showModalBottomSheet<void>(
+    context: context,
+    isScrollControlled: true,
+    builder: (_) => _ItemForm(
+      projectId: cubit.state.project.id,
+      item: item,
+      categories: [
+        for (final c in groupByCategory(cubit.state.items))
+          if (c.name.isNotEmpty) c.name,
+      ],
+      nextSortOrder:
+          cubit.state.items.fold<int>(
+            0,
+            (m, i) => i.sortOrder > m ? i.sortOrder : m,
+          ) +
+          1,
+      onSave: cubit.saveItem,
+    ),
+  );
 }
 
 class _LetterheadCard extends StatelessWidget {
@@ -269,71 +266,106 @@ class _LetterheadCard extends StatelessWidget {
 
 class _ItemsCard extends StatelessWidget {
   final ProjectDetailState state;
-  final ValueChanged<ProjectItem> onEdit;
-  final ValueChanged<ProjectItem> onDelete;
-  const _ItemsCard({
-    required this.state,
-    required this.onEdit,
-    required this.onDelete,
-  });
+  const _ItemsCard({required this.state});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final showPrices = state.items.any(
-      (i) => i.unitPrice != null || i.totalPrice != null,
-    );
+    final hasPrices = state.items.any((i) => i.totalPrice != null);
+    final totals = BoqTotals.of(state.items);
+    final categories = groupByCategory(state.items).length;
     return Card(
       margin: EdgeInsets.zero,
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 4, 16, 4),
-              child: Text('بنود العرض', style: theme.textTheme.titleSmall),
-            ),
+            Text('بنود العرض', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
             if (state.loading)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: LinearProgressIndicator(),
-              )
+              const LinearProgressIndicator()
             else if (state.error != null)
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  state.error!,
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
-              )
+              Text(state.error!, style: TextStyle(color: theme.colorScheme.error))
             else if (state.items.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(16),
-                child: Text('لا توجد بنود بعد'),
-              )
+              Text(state.canEditItems
+                  ? 'لا توجد بنود بعد. أضف بنداً أو استورد ملف Excel من الأعلى.'
+                  : 'لا توجد بنود بعد')
             else ...[
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 8),
-                child: BoqTable(
-                  items: state.items,
-                  showPrices: showPrices || state.canEditItems,
-                  onTap: state.canEditItems ? onEdit : null,
-                  onLongPress: state.canEditItems ? onDelete : null,
-                ),
-              ),
-              if (state.canEditItems)
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-                  child: Text(
-                    'اضغط للتعديل، اضغط مطولاً للحذف',
-                    style: theme.textTheme.bodySmall,
-                  ),
-                ),
+              Text('${state.items.length} بند في $categories ${categories == 1 ? 'فئة' : 'فئات'}'),
+              if (hasPrices) ...[
+                const SizedBox(height: 4),
+                Text('الإجمالي: ${formatMoney(totals.subtotal)}  ·  شامل الضريبة: ${formatMoney(totals.total)}',
+                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+              ],
             ],
+            const SizedBox(height: 12),
+            FilledButton.tonalIcon(
+              onPressed: state.loading || (state.items.isEmpty && !state.canEditItems)
+                  ? null
+                  : () => openProjectItemsTable(context),
+              icon: const Icon(Icons.table_chart_outlined),
+              label: const Text('عرض الجدول'),
+            ),
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The full quotation table on its own screen, so it gets the whole height
+/// and stays lazy. Shares the project's cubit, so edits show up everywhere.
+void openProjectItemsTable(BuildContext context) {
+  final cubit = context.read<ProjectDetailCubit>();
+  Navigator.of(context).push(MaterialPageRoute(
+    builder: (_) => BlocProvider.value(value: cubit, child: const _ProjectItemsTableScreen()),
+  ));
+}
+
+class _ProjectItemsTableScreen extends StatelessWidget {
+  const _ProjectItemsTableScreen();
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<ProjectDetailCubit, ProjectDetailState>(
+      builder: (context, state) {
+        final canEdit = state.canEditItems;
+        return Scaffold(
+          appBar: AppBar(title: Text('بنود العرض — ${state.project.name}')),
+          floatingActionButton: canEdit
+              ? FloatingActionButton.extended(
+                  onPressed: () => showProjectItemForm(context, null),
+                  icon: const Icon(Icons.add),
+                  label: const Text('بند جديد'),
+                )
+              : null,
+          body: state.items.isEmpty
+              ? const Center(child: Text('لا توجد بنود بعد'))
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    if (canEdit)
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                        child: Text('اضغط على الصف للتعديل، اضغط مطولاً للحذف',
+                            style: Theme.of(context).textTheme.bodySmall),
+                      ),
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(8, 4, 8, 88),
+                        child: BoqTable(
+                          items: state.items,
+                          showPrices: canEdit || state.items.any((i) => i.totalPrice != null),
+                          onTap: canEdit ? (item) => showProjectItemForm(context, item) : null,
+                          onLongPress: canEdit ? (item) => confirmDeleteProjectItem(context, item) : null,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+        );
+      },
     );
   }
 }

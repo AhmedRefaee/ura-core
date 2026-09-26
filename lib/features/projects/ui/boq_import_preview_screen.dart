@@ -33,50 +33,55 @@ class BoqImportPreviewScreen extends StatelessWidget {
           },
           child: Scaffold(
             appBar: AppBar(title: const Text('مراجعة ملف البنود')),
-            body: ListView(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
-              children: [
-                Text(state.fileName, style: theme.textTheme.bodySmall),
-                const SizedBox(height: 4),
-                Text(
-                  '${result.items.length} بند في ${categories.length} ${categories.length == 1 ? 'جدول' : 'جداول'}',
-                  style: theme.textTheme.titleMedium,
-                ),
-                const SizedBox(height: 12),
-                if (currentItemCount > 0)
-                  _Banner(
-                    color: theme.colorScheme.tertiaryContainer,
-                    icon: Icons.swap_horiz,
-                    text: 'سيتم استبدال $currentItemCount بند حالي بـ ${result.items.length} بند من الملف. '
-                        'السندات السابقة لن تتأثر.',
+            // Summary on top, the lazy table takes the rest of the height.
+            body: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(state.fileName, style: theme.textTheme.bodySmall),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${result.items.length} بند في ${categories.length} ${categories.length == 1 ? 'فئة' : 'فئات'}',
+                    style: theme.textTheme.titleMedium,
                   ),
-                if (result.errors.isNotEmpty) ...[
-                  _Banner(
-                    color: theme.colorScheme.errorContainer,
-                    icon: Icons.error_outline,
-                    text: 'يوجد ${result.errors.length} صف لم تتم قراءته. صحح الملف ثم أعد الاستيراد.',
-                  ),
-                  Card(
-                    child: Column(children: [
-                      for (final e in result.errors)
-                        ListTile(
-                          dense: true,
-                          leading: Text('صف ${e.rowNumber}', style: TextStyle(color: theme.colorScheme.error)),
-                          title: Text(e.preview.isEmpty ? '(بدون اسم)' : e.preview),
-                          subtitle: Text(e.errors.join('، ')),
-                        ),
-                    ]),
-                  ),
-                ],
-                if (result.items.isNotEmpty)
-                  Card(
-                    margin: const EdgeInsets.only(top: 12),
-                    child: Padding(
-                      padding: const EdgeInsets.all(8),
-                      child: BoqTable(items: result.items, showPrices: true),
+                  const SizedBox(height: 12),
+                  if (currentItemCount > 0)
+                    _Banner(
+                      color: theme.colorScheme.tertiaryContainer,
+                      icon: Icons.swap_horiz,
+                      text: 'سيتم استبدال $currentItemCount بند حالي بـ ${result.items.length} بند من الملف. '
+                          'السندات السابقة لن تتأثر.',
                     ),
-                  ),
-              ],
+                  if (result.errors.isNotEmpty) ...[
+                    _Banner(
+                      color: theme.colorScheme.errorContainer,
+                      icon: Icons.error_outline,
+                      text: 'يوجد ${result.errors.length} صف لم تتم قراءته. صحح الملف ثم أعد الاستيراد.',
+                    ),
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(maxHeight: 180),
+                      child: Card(
+                        child: ListView.builder(
+                          shrinkWrap: true,
+                          itemCount: result.errors.length,
+                          itemBuilder: (_, i) {
+                            final e = result.errors[i];
+                            return ListTile(
+                              dense: true,
+                              leading: Text('صف ${e.rowNumber}', style: TextStyle(color: theme.colorScheme.error)),
+                              title: Text(e.preview.isEmpty ? '(بدون اسم)' : e.preview),
+                              subtitle: Text(e.errors.join('، ')),
+                            );
+                          },
+                        ),
+                      ),
+                    ),
+                  ],
+                  if (result.items.isNotEmpty)
+                    Expanded(child: BoqTable(items: result.items, showPrices: true)),
+                ],
+              ),
             ),
             bottomNavigationBar: SafeArea(
               child: Padding(

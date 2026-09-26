@@ -84,6 +84,31 @@ Uint8List buildBoqWorkbook({
   title.cellStyle = CellStyle(bold: true, fontSize: 14);
   row += 2;
 
+  // An empty project exports a fill-in template, not just the title: a
+  // category line, the header row, and numbered blank rows. The importer
+  // skips rows that carry only a م number, so unused rows are harmless.
+  if (items.isEmpty) {
+    final hint = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row - 1));
+    hint.value = TextCellValue(
+        'اكتب اسم الفئة بعد النقطتين. لأكثر من فئة: انسخ الجدول كاملاً (سطر الفئة + العناوين + البنود) أسفل هذا الجدول.');
+    hint.cellStyle = CellStyle(italic: true, fontColorHex: ExcelColor.grey);
+    final heading = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row));
+    heading.value = TextCellValue('جدول الكميات : ');
+    heading.cellStyle = CellStyle(bold: true, fontSize: 12);
+    row++;
+    for (var c = 0; c < _headers.length; c++) {
+      put(row, c, TextCellValue(_headers[c]), style(bold: true, grey: true));
+    }
+    row++;
+    for (var i = 1; i <= 20; i++) {
+      put(row, 0, IntCellValue(i), style());
+      for (var c = 1; c < _headers.length; c++) {
+        put(row, c, TextCellValue(''), style(money: c == 3 || c >= 5, align: c <= 2 ? HorizontalAlign.Right : null));
+      }
+      row++;
+    }
+  }
+
   for (final category in groupByCategory(items)) {
     final heading = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: row));
     heading.value = TextCellValue(categoryTitle(category.name));

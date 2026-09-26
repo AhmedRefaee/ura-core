@@ -104,6 +104,39 @@ void main() {
     }
   });
 
+  test('an empty project exports a fill-in template that imports once filled', () {
+    final template = buildBoqWorkbook(projectName: 'مشروع', entityName: 'جهة', items: const []);
+    final out = Platform.environment['BOQ_TEMPLATE_OUT'];
+    if (out != null) File(out).writeAsBytesSync(template);
+
+    final empty = parseBoqWorkbook(template);
+    expect(empty.noHeaderFound, isFalse, reason: 'the template must carry the header row');
+    expect(empty.items, isEmpty);
+    expect(empty.errors, isEmpty, reason: 'numbered blank rows are not errors');
+
+    // Fill it the way a person would in Excel.
+    final excel = Excel.decodeBytes(template);
+    final sheet = excel.tables.values.first;
+    final rows = sheet.rows;
+    final titleRow = rows.indexWhere((r) => r.any((c) => c?.value.toString().startsWith('جدول الكميات') ?? false));
+    final firstItemRow = titleRow + 2;
+    void set(int r, int c, CellValue v) =>
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value = v;
+    set(titleRow, 0, TextCellValue('جدول الكميات : المخبوزات'));
+    set(firstItemRow, 1, TextCellValue('خبز عربي'));
+    set(firstItemRow, 3, IntCellValue(100));
+    set(firstItemRow, 4, TextCellValue('كيس'));
+    set(firstItemRow, 5, DoubleCellValue(1.25));
+
+    final filled = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
+    expect(filled.errors, isEmpty);
+    final item = filled.items.single;
+    expect(item.category, 'المخبوزات');
+    expect(item.itemName, 'خبز عربي');
+    expect(item.quantity, 100);
+    expect(item.totalPrice, 125);
+  });
+
   test('bad rows are reported with their Excel row number and block the import', () {
     final excel = Excel.createExcel();
     final sheet = excel['Sheet1'];

@@ -179,7 +179,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
           for (final i in chosen)
             ReceiptPdfLine(
               itemName: i.itemName,
-              description: i.description,
+              description: packagingOf(i.description),
               unit: i.unit,
               quantity: state.quantities[i.id]!,
             ),

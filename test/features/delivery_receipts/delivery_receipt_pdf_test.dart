@@ -36,4 +36,14 @@ void main() {
     final out = Platform.environment['RECEIPT_PDF_OUT'];
     if (out != null) File(out).writeAsBytesSync(bytes);
   });
+
+  test('the سند shows only the packaging part of a description', () {
+    expect(packagingOf('جودة عالية مصنوعه من 100 % دسم الحليب الابقار / كرتون 4*2.75كيلو جرام'), 'كرتون 4*2.75كيلو جرام');
+    expect(packagingOf('طازج مبرد من حليب الأبقار الطبيعي بروتين لا يقل عن 6 ملغم/ 180مل'), '180مل');
+    expect(packagingOf('مصنوع من الحليب الطبيعي إنتاج جديد جودة عالية/ 16كيلو جرام'), '16كيلو جرام');
+    expect(packagingOf('كرتون 20*240 جرام'), 'كرتون 20*240 جرام', reason: 'already short');
+    expect(packagingOf('عصرة أولى عضوي طبيعي معصور على البارد نسبة حموضة لا تزيد عن 5% إنتاج جديد'), isNull);
+    expect(packagingOf(null), isNull);
+    expect(packagingOf('  '), isNull);
+  });
 }

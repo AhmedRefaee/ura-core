@@ -18,6 +18,24 @@ class ReceiptPdfLine {
   });
 }
 
+/// The packaging part of a quotation description, for the سند.
+///
+/// Descriptions are long specs that end with the packaging after the last
+/// "/" ("…جودة عالية / كرتون 4*2.75كيلو جرام", "…بروتين لا يقل عن 6 ملغم/
+/// 180مل"). Returns that tail; a short description without "/" as-is;
+/// otherwise null -- the سند shows just the item name rather than a spec
+/// paragraph.
+String? packagingOf(String? description) {
+  final d = description?.trim() ?? '';
+  if (d.isEmpty) return null;
+  final slash = d.lastIndexOf('/');
+  if (slash >= 0) {
+    final tail = d.substring(slash + 1).trim();
+    if (tail.isNotEmpty && tail.length <= 40) return tail;
+  }
+  return d.length <= 30 ? d : null;
+}
+
 /// Builds the سند استلام بضاعة PDF, laid out after the company's paper form:
 /// URA's logo always on the left, the receiving side's logo on the right.
 /// No pricing on purpose -- this is a logistics document, not the quotation.
@@ -36,11 +54,19 @@ class DeliveryReceiptPdf {
     String? notes,
     @visibleForTesting pw.ThemeData? theme,
   }) async {
-    // The PDF's built-in fonts have no Arabic glyphs; Cairo is fetched once
-    // and cached by `printing`, and works on both mobile and web.
+    // The PDF's built-in fonts have no Arabic glyphs. Noto Sans Arabic, not
+    // Cairo: with the pdf package's shaper Cairo (and Tajawal) mangle a final
+    // yaa after a non-joining letter -- "لنادي" printed as "لناه", "زبادي"
+    // as "زباج". Noto Sans Arabic has no "*" or "/", hence the Latin
+    // fallback for packaging like "كرتون 4*2.75". Fetched once and cached by
+    // `printing`; works on mobile and web.
     theme ??= pw.ThemeData.withFont(
-      base: await PdfGoogleFonts.cairoRegular(),
-      bold: await PdfGoogleFonts.cairoBold(),
+      base: await PdfGoogleFonts.notoSansArabicRegular(),
+      bold: await PdfGoogleFonts.notoSansArabicBold(),
+      fontFallback: [
+        await PdfGoogleFonts.notoSansRegular(),
+        await PdfGoogleFonts.notoSansBold(),
+      ],
     );
     final uraLogo = (await rootBundle.load('assets/branding/ura_logo.png')).buffer.asUint8List();
 

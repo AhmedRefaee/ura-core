@@ -7,6 +7,7 @@ import '../../../shared/models/project.dart';
 import '../../../shared/models/project_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../auth/logic/auth_cubit.dart';
+import '../../projects/logic/boq_excel.dart';
 import '../../auth/logic/auth_state.dart';
 import '../logic/create_delivery_receipt_cubit.dart';
 
@@ -163,13 +164,21 @@ class _FormState extends State<_Form> {
                       : state.items.isEmpty
                           ? const Text('لا توجد بنود في هذا المشروع بعد.')
                           : Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
-                                for (final item in state.items)
-                                  _ItemRow(
-                                    key: ValueKey(item.id),
-                                    item: item,
-                                    onChanged: (q) => cubit.setQuantity(item.id, q),
-                                  ),
+                                for (final category in groupByCategory(state.items)) ...[
+                                  if (category.name.isNotEmpty)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 12, bottom: 4),
+                                      child: Text(category.name, style: theme.textTheme.labelLarge),
+                                    ),
+                                  for (final item in category.items)
+                                    _ItemRow(
+                                      key: ValueKey(item.id),
+                                      item: item,
+                                      onChanged: (q) => cubit.setQuantity(item.id, q),
+                                    ),
+                                ],
                               ],
                             ),
                 ),

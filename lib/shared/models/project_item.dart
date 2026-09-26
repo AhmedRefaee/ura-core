@@ -11,6 +11,10 @@ import 'package:equatable/equatable.dart';
 class ProjectItem extends Equatable {
   final String id;
   final String projectId;
+
+  /// Which جدول الكميات table this line sits in. Empty = uncategorized.
+  final String category;
+  final int sortOrder;
   final String itemName;
   final String? description;
   final double quantity;
@@ -22,6 +26,8 @@ class ProjectItem extends Equatable {
   const ProjectItem({
     required this.id,
     required this.projectId,
+    this.category = '',
+    this.sortOrder = 0,
     required this.itemName,
     this.description,
     required this.quantity,
@@ -35,6 +41,8 @@ class ProjectItem extends Equatable {
     return ProjectItem(
       id: map['id'] as String,
       projectId: map['project_id'] as String,
+      category: map['category'] as String? ?? '',
+      sortOrder: (map['sort_order'] as num?)?.toInt() ?? 0,
       itemName: map['item_name'] as String,
       description: map['description'] as String?,
       quantity: (map['quantity'] as num).toDouble(),
@@ -49,6 +57,8 @@ class ProjectItem extends Equatable {
 
   Map<String, dynamic> toInsertMap() => {
         'project_id': projectId,
+        'category': category,
+        'sort_order': sortOrder,
         'item_name': itemName,
         if (description != null) 'description': description,
         'quantity': quantity,
@@ -57,7 +67,20 @@ class ProjectItem extends Equatable {
         if (totalPrice != null) 'total_price': totalPrice,
       };
 
+  /// One element of `replace_project_items`' p_items; the server assigns
+  /// sort_order from array position.
+  Map<String, dynamic> toReplaceJson() => {
+        'category': category,
+        'item_name': itemName,
+        'description': description,
+        'quantity': quantity,
+        'unit': unit,
+        'unit_price': unitPrice,
+        'total_price': totalPrice,
+      };
+
   Map<String, dynamic> toUpdateMap() => {
+        'category': category,
         'item_name': itemName,
         'description': description,
         'quantity': quantity,
@@ -68,5 +91,5 @@ class ProjectItem extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, projectId, itemName, description, quantity, unit, unitPrice, totalPrice];
+      [id, projectId, category, sortOrder, itemName, description, quantity, unit, unitPrice, totalPrice];
 }

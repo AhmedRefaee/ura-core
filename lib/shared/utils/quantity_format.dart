@@ -16,6 +16,19 @@ String formatQty(num q) {
   return s;
 }
 
+/// Two decimals with thousands separators, as on the paper quotation.
+String formatMoney(double v) {
+  final fixed = v.toStringAsFixed(2);
+  final dot = fixed.indexOf('.');
+  final whole = fixed.substring(0, dot);
+  final buf = StringBuffer();
+  for (var i = 0; i < whole.length; i++) {
+    if (i > 0 && (whole.length - i) % 3 == 0 && whole[i - 1] != '-') buf.write(',');
+    buf.write(whole[i]);
+  }
+  return '$buf${fixed.substring(dot)}';
+}
+
 /// Parses user-entered text into a quantity, or `null` if invalid.
 double? parseQty(String? text) {
   if (text == null) return null;

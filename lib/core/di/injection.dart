@@ -50,6 +50,7 @@ import '../../features/chat/data/chat_repository.dart';
 import '../../features/chat/logic/chat_directory_cubit.dart';
 import '../../features/projects/data/project_repository.dart';
 import '../../features/projects/data/project_storage_service.dart';
+import '../../features/projects/logic/boq_excel_cubit.dart';
 import '../../features/projects/logic/project_detail_cubit.dart';
 import '../../features/projects/logic/projects_cubit.dart';
 import '../../shared/models/project.dart';
@@ -172,6 +173,7 @@ Future<void> setupDependencies() async {
   sl.registerFactory<ProjectsCubit>(
     () => ProjectsCubit(sl<ProjectRepository>(), sl<ProjectStorageService>()),
   );
+  sl.registerFactory<BoqExcelCubit>(() => BoqExcelCubit(sl<ProjectRepository>()));
   sl.registerFactoryParam<ProjectDetailCubit, Project, void>(
     (project, _) => ProjectDetailCubit(
       sl<ProjectRepository>(),

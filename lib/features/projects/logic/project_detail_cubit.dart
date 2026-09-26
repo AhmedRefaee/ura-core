@@ -25,8 +25,6 @@ class ProjectDetailState extends Equatable {
     this.error,
   });
 
-  double get quotationTotal => items.fold(0, (sum, i) => sum + (i.totalPrice ?? 0));
-
   ProjectDetailState copyWith({
     Project? project,
     bool? loading,

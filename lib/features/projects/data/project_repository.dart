@@ -125,6 +125,27 @@ class ProjectRepository {
     }
   }
 
+  /// Replaces every line of the project's quotation in one transaction (Excel
+  /// import). Order in [items] becomes sort_order.
+  Future<AppResult<int>> replaceProjectItems(String projectId, List<ProjectItem> items) async {
+    try {
+      logger.d('ProjectRepository → replaceProjectItems | $projectId: ${items.length} items');
+      final result = await _supabase.rpc('replace_project_items', params: {
+        'p_project_id': projectId,
+        'p_items': [for (final i in items) i.toReplaceJson()],
+      });
+      if (result['success'] as bool? ?? false) {
+        final count = (result['count'] as num?)?.toInt() ?? items.length;
+        logger.i('ProjectRepository → replaced project items: $count');
+        return AppSuccess(count);
+      }
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
+    } catch (e, st) {
+      logger.e('ProjectRepository → replaceProjectItems failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
   Future<AppResult<void>> deleteProjectItem(String id) async {
     try {
       logger.d('ProjectRepository → deleteProjectItem | id: $id');

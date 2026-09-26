@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/design_system/theme/theme.dart';
 import '../../../core/design_system/widgets/widgets.dart';
 import '../../../core/di/injection.dart';
+import '../../../core/logic/debouncer.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/profile.dart';
 import '../../../shared/utils/quantity_format.dart';
@@ -208,7 +209,7 @@ class _InventoryManagementViewState extends State<_InventoryManagementView> {
       MaterialPageRoute(builder: (_) => InventoryItemDetailScreen(item: item)),
     );
     if (context.mounted) {
-      context.read<InventoryListCubit>().loadInventory();
+      context.read<InventoryListCubit>().refresh();
     }
   }
 
@@ -287,6 +288,16 @@ class _LoadedView extends StatefulWidget {
 }
 
 class _LoadedViewState extends State<_LoadedView> {
+  // Filtering + sorting the whole inventory ran twice per keystroke (a cubit
+  // emit plus a setState); now once, after typing pauses.
+  final _searchDebounce = Debouncer(const Duration(milliseconds: 250));
+
+  @override
+  void dispose() {
+    _searchDebounce.cancel();
+    super.dispose();
+  }
+
   bool _filtersVisible = false;
   _InventoryViewMode _viewMode = _InventoryViewMode.list;
   _InventorySortMode _sortMode = _InventorySortMode.name;
@@ -330,6 +341,7 @@ class _LoadedViewState extends State<_LoadedView> {
                                     variant: AppIconButtonVariant.text,
                                     onPressed: () {
                                       widget.searchController.clear();
+                                      _searchDebounce.cancel();
                                       context
                                           .read<InventoryListCubit>()
                                           .setSearch('');
@@ -348,8 +360,11 @@ class _LoadedViewState extends State<_LoadedView> {
                             ),
                           ),
                           onChanged: (v) {
-                            context.read<InventoryListCubit>().setSearch(v);
-                            setState(() {});
+                            final cubit = context.read<InventoryListCubit>();
+                            _searchDebounce.run(() => cubit.setSearch(v));
+                            // Only the clear button depends on the text, and
+                            // only on whether it's empty.
+                            if (v.length <= 1) setState(() {});
                           },
                         ),
                       ),

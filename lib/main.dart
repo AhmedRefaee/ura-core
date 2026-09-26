@@ -82,23 +82,25 @@ Future<void> main() async {
   // for AI Logic its Gemini calls are rejected by design. Everything else in
   // the web app works normally.
   if (!kIsWeb) {
-    await FirebaseAppCheck.instance.activate(
-      providerAndroid: kDebugMode
-          ? const AndroidDebugProvider()
-          : const AndroidPlayIntegrityProvider(),
-    );
-  }
-
-  if (!kIsWeb) {
     FirebaseMessaging.onBackgroundMessage(firebaseBackgroundHandler);
-    await _initCrashReporting();
   }
 
-  await Supabase.initialize(
-    url: SupabaseConfig.url,
-    anonKey: SupabaseConfig.anonKey,
-    debug: false,
-  );
+  // Independent of each other once Firebase is up, so they run in parallel
+  // instead of one after another behind the splash screen.
+  await Future.wait([
+    if (!kIsWeb)
+      FirebaseAppCheck.instance.activate(
+        providerAndroid: kDebugMode
+            ? const AndroidDebugProvider()
+            : const AndroidPlayIntegrityProvider(),
+      ),
+    if (!kIsWeb) _initCrashReporting(),
+    Supabase.initialize(
+      url: SupabaseConfig.url,
+      anonKey: SupabaseConfig.anonKey,
+      debug: false,
+    ),
+  ]);
 
   // Ties crash reports to whoever is signed in, so a report from the warehouse
   // can be traced back to the account that hit it.
@@ -107,10 +109,13 @@ Future<void> main() async {
   });
 
   await setupDependencies();
-  await sl<NotificationService>().init();
 
-  // Handle cold-start deep link (app was not running when link was tapped)
-  final initialUri = await AppLinks().getInitialLink();
+  // Handle cold-start deep link (app was not running when link was tapped).
+  // Read alongside notification setup rather than after it.
+  final (_, initialUri) = await (
+    sl<NotificationService>().init(),
+    AppLinks().getInitialLink(),
+  ).wait;
   if (initialUri != null) {
     logger.d('main → cold-start deep link: $initialUri');
     if (_isAuthCallback(initialUri)) {

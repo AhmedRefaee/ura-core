@@ -20,6 +20,7 @@ import '../logic/user_type_cubit.dart';
 import 'manager_pending_users_screen.dart';
 import 'monitor_tasks_screen.dart';
 import 'stats_screen.dart';
+import '../../../shared/widgets/lazy_indexed_stack.dart';
 
 class ManagerHomeScreen extends StatelessWidget {
   const ManagerHomeScreen({super.key});
@@ -72,20 +73,23 @@ class _ManagerHomeViewState extends State<_ManagerHomeView> {
       _ManagerTab.users,
       _ManagerTab.settings,
     ];
-    final current = tabs[_navIndex];
 
     return Scaffold(
-      body: switch (current) {
-        _ManagerTab.orders || _ManagerTab.inventory => IndexedStack(
-          index: current == _ManagerTab.orders ? 0 : 1,
-          children: const [MonitorTasksScreen(), InventoryAvailabilityScreen()],
-        ),
-        _ManagerTab.chat => const ChatHubSection(),
-        _ManagerTab.users => const _UsersTab(),
-        _ManagerTab.settings => _SettingsTab(
-          onLogout: () => context.read<AuthCubit>().signOut(),
-        ),
-      },
+      body: LazyIndexedStack(
+        index: _navIndex,
+        children: [
+          for (final tab in tabs)
+            switch (tab) {
+              _ManagerTab.orders => const MonitorTasksScreen(),
+              _ManagerTab.inventory => const InventoryAvailabilityScreen(),
+              _ManagerTab.chat => const ChatHubSection(),
+              _ManagerTab.users => const _UsersTab(),
+              _ManagerTab.settings => _SettingsTab(
+                onLogout: () => context.read<AuthCubit>().signOut(),
+              ),
+            },
+        ],
+      ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navIndex,
         onDestinationSelected: (i) => setState(() => _navIndex = i),

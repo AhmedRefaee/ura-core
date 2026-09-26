@@ -20,6 +20,7 @@ import '../../profile/ui/profile_screen.dart';
 import '../logic/rep_order_detail_cubit.dart';
 import '../logic/rep_orders_cubit.dart';
 import 'rep_order_detail_screen.dart';
+import '../../../shared/widgets/lazy_indexed_stack.dart';
 
 class RepHomeScreen extends StatelessWidget {
   const RepHomeScreen({super.key});
@@ -66,7 +67,7 @@ class _RepHomeViewState extends State<_RepHomeView> {
     ];
 
     return Scaffold(
-      body: tabs[_navIndex],
+      body: LazyIndexedStack(index: _navIndex, children: tabs),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navIndex,
         onDestinationSelected: (i) => setState(() => _navIndex = i),

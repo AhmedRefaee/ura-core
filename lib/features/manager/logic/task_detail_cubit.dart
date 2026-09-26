@@ -125,6 +125,13 @@ class TaskDetailCubit extends Cubit<TaskDetailState>
               event: PostgresChangeEvent.all,
               schema: 'public',
               table: 'orders',
+              // Only this order: unfiltered, every change to any order in
+              // the organization refetched this screen's order + audit log.
+              filter: PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: 'id',
+                value: orderId,
+              ),
               callback: (_) => _fetchOrderDetail(),
             )
             .subscribe();

@@ -7,6 +7,7 @@ import '../../../shared/models/order.dart';
 import '../data/storage_repository.dart';
 
 import '../../../core/logic/safe_emit.dart';
+import '../../../core/logic/debouncer.dart';
 
 abstract class StorageOrdersState extends Equatable {
   const StorageOrdersState();
@@ -42,6 +43,7 @@ class StorageOrdersCubit extends Cubit<StorageOrdersState>
     with SafeEmit<StorageOrdersState> {
   final StorageRepository _repo;
   RealtimeChannel? _channel;
+  final _realtimeDebounce = Debouncer();
 
   StorageOrdersCubit(this._repo) : super(StorageOrdersInitial());
 
@@ -84,13 +86,14 @@ class StorageOrdersCubit extends Cubit<StorageOrdersState>
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'orders',
-          callback: (_) => _fetchOrders(),
+          callback: (_) => _realtimeDebounce.run(_fetchOrders),
         )
         .subscribe();
   }
 
   @override
   Future<void> close() async {
+    _realtimeDebounce.cancel();
     await _channel?.unsubscribe();
     return super.close();
   }

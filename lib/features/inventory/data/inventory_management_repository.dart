@@ -10,6 +10,10 @@ class InventoryManagementRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
   final _inventoryCache = MemoryCache<String, List<InventoryItem>>(ttl: Duration(minutes: 2));
 
+  /// Realtime refetches must skip the 2-minute cache or they'd just re-read
+  /// the stale list the change was supposed to replace.
+  void invalidateInventoryCache() => _inventoryCache.clear();
+
   Future<AppResult<List<InventoryItem>>> fetchInventory({
     String? search,
     String? category,
@@ -62,7 +66,10 @@ class InventoryManagementRepository {
           .from('inventory_audit_log')
           .select('id, item_id, action, old_quantity, new_quantity, performed_by, notes, performed_at, performer:profiles!inventory_audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)')
           .eq('item_id', itemId)
-          .order('performed_at', ascending: false);
+          .order('performed_at', ascending: false)
+          // The detail screen renders the log eagerly; an item's full history
+          // grows without bound, the latest 100 changes are what matter.
+          .limit(100);
       return AppSuccess(
         (data as List)
             .map((m) => InventoryAuditLogEntry.fromMap(m as Map<String, dynamic>))

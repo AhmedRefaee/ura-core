@@ -27,6 +27,8 @@ import 'widgets/order_card.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/widgets/order_list_tile.dart';
 import '../../../shared/widgets/order_sort_filter_bar.dart';
+import '../../../shared/widgets/lazy_indexed_stack.dart';
+import '../../../core/logic/debouncer.dart';
 
 class VerifierHomeScreen extends StatelessWidget {
   const VerifierHomeScreen({super.key});
@@ -108,23 +110,27 @@ class _ScaffoldBody extends StatelessWidget {
     final current = tabs[navIndex];
 
     return Scaffold(
-      body: switch (current) {
-        _VerifierTab.orders || _VerifierTab.inventory => IndexedStack(
-          index: current == _VerifierTab.orders ? 0 : 1,
-          // The management screen, not the read-only availability one: a
-          // verifier owns everything that describes an item (add, edit,
-          // archive) and needs a deliberate place to undo an item they added by
-          // mistake. It is a superset of the availability screen -- same
-          // متوفر/منخفض/نفد filters -- and hides its own quantity and Excel
-          // actions for verifiers. Reps and managers keep the read-only screen.
-          children: const [_OrdersTab(), InventoryManagementScreen()],
-        ),
-        _VerifierTab.chat => const ChatHubSection(),
-        _VerifierTab.reps => const RepListScreen(),
-        _VerifierTab.settings => _SettingsTab(
-          onLogout: () => context.read<AuthCubit>().signOut(),
-        ),
-      },
+      // The management screen, not the read-only availability one: a
+      // verifier owns everything that describes an item (add, edit, archive)
+      // and needs a deliberate place to undo an item they added by mistake.
+      // It is a superset of the availability screen -- same متوفر/منخفض/نفد
+      // filters -- and hides its own quantity and Excel actions for
+      // verifiers. Reps and managers keep the read-only screen.
+      body: LazyIndexedStack(
+        index: navIndex,
+        children: [
+          for (final tab in tabs)
+            switch (tab) {
+              _VerifierTab.orders => const _OrdersTab(),
+              _VerifierTab.inventory => const InventoryManagementScreen(),
+              _VerifierTab.chat => const ChatHubSection(),
+              _VerifierTab.reps => const RepListScreen(),
+              _VerifierTab.settings => _SettingsTab(
+                onLogout: () => context.read<AuthCubit>().signOut(),
+              ),
+            },
+        ],
+      ),
       floatingActionButton: current == _VerifierTab.orders
           ? FloatingActionButton.extended(
               onPressed: () => _openCreateOrder(context),
@@ -205,12 +211,24 @@ class _OrdersTab extends StatefulWidget {
 class _OrdersTabState extends State<_OrdersTab>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  // What's in the search box right now vs. what the lists filter by. Only
+  // the latter is debounced: filtering + sorting every order on each
+  // keystroke made typing lag, but the box must never lag behind the user.
+  String _searchText = '';
   String _searchQuery = '';
+  final _searchDebounce = Debouncer(const Duration(milliseconds: 250));
   bool _groupByEntity = false;
   bool _groupByRep = false;
   OrderSortMode _sortMode = OrderSortMode.mostRecent;
   OrderDirectionFilter _directionFilter = OrderDirectionFilter.all;
   OrderViewMode _viewMode = OrderViewMode.list;
+
+  void _onSearchChanged(String q) {
+    _searchText = q;
+    _searchDebounce.run(() {
+      if (mounted) setState(() => _searchQuery = q);
+    });
+  }
 
   @override
   void initState() {
@@ -221,6 +239,7 @@ class _OrdersTabState extends State<_OrdersTab>
 
   @override
   void dispose() {
+    _searchDebounce.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -306,9 +325,10 @@ class _OrdersTabState extends State<_OrdersTab>
                   orders: active,
                   emptyMessage: 'لا توجد طلبات نشطة',
                   searchQuery: _searchQuery,
+                  searchText: _searchText,
                   sortMode: _sortMode,
                   groupByEntity: _groupByEntity,
-                  onSearchChanged: (q) => setState(() => _searchQuery = q),
+                  onSearchChanged: _onSearchChanged,
                   onSortModeChanged: (mode) => setState(() => _sortMode = mode),
                   directionFilter: _directionFilter,
                   onDirectionFilterChanged: (filter) =>
@@ -325,9 +345,10 @@ class _OrdersTabState extends State<_OrdersTab>
                   orders: completed,
                   emptyMessage: 'لا توجد طلبات مكتملة',
                   searchQuery: _searchQuery,
+                  searchText: _searchText,
                   sortMode: _sortMode,
                   groupByEntity: _groupByEntity,
-                  onSearchChanged: (q) => setState(() => _searchQuery = q),
+                  onSearchChanged: _onSearchChanged,
                   onSortModeChanged: (mode) => setState(() => _sortMode = mode),
                   directionFilter: _directionFilter,
                   onDirectionFilterChanged: (filter) =>
@@ -380,6 +401,8 @@ class _VerifierOrdersTabHeader extends StatelessWidget
 // ── Order list ────────────────────────────────────────────────────────────────
 
 class _OrderList extends StatelessWidget {
+  /// Live text for the search box; [searchQuery] is the debounced filter.
+  final String searchText;
   final List<Order> orders;
   final String emptyMessage;
   final String searchQuery;
@@ -409,6 +432,7 @@ class _OrderList extends StatelessWidget {
     required this.groupByRep,
     required this.onGroupByRepChanged,
     this.searchQuery = '',
+    this.searchText = '',
   });
 
   @override
@@ -447,7 +471,7 @@ class _OrderList extends StatelessWidget {
               slivers: [
                 SliverToBoxAdapter(
                   child: OrderSortFilterBar(
-                    searchQuery: searchQuery,
+                    searchQuery: searchText,
                     onSearchChanged: onSearchChanged,
                     sortMode: sortMode,
                     onSortModeChanged: onSortModeChanged,

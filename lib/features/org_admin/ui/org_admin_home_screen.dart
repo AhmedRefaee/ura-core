@@ -30,6 +30,7 @@ import '../../verifier/ui/create_order_screen.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/widgets/order_list_tile.dart';
 import '../../../shared/widgets/order_sort_filter_bar.dart';
+import '../../../shared/widgets/lazy_indexed_stack.dart';
 
 /// Org-level admin shell: the union of manager + verifier + rep +
 /// storage_actor capabilities within one organization, with a normal
@@ -83,7 +84,7 @@ class _OrgAdminHomeViewState extends State<_OrgAdminHomeView> {
     ];
 
     return Scaffold(
-      body: tabs[_navIndex],
+      body: LazyIndexedStack(index: _navIndex, children: tabs),
       floatingActionButton: _navIndex == 0
           ? FloatingActionButton.extended(
               onPressed: () => _openCreateOrder(context),

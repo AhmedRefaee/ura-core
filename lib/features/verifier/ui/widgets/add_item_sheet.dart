@@ -138,15 +138,24 @@ class _AddItemSheetState extends State<AddItemSheet> {
     return cats;
   }
 
-  List<InventoryItem> get _filtered => widget.inventory.where((i) {
-        final matchesSearch = _search.isEmpty ||
-            i.itemName.toLowerCase().contains(_search.toLowerCase());
-        final matchesStatus =
-            _statusFilter == null || i.availabilityStatus == _statusFilter;
-        final matchesCategory =
-            _categoryFilter == null || i.category == _categoryFilter;
-        return matchesSearch && matchesStatus && matchesCategory;
-      }).toList();
+  // Memoized: the list builder reads this per visible row, and every
+  // quantity keystroke rebuilds the sheet -- recomputing it each time meant
+  // re-filtering the whole inventory ~2x per row per frame.
+  List<InventoryItem>? _filteredCache;
+  Object? _filteredKey;
+  List<InventoryItem> get _filtered {
+    final key = (_search, _statusFilter, _categoryFilter, identityHashCode(widget.inventory));
+    final cached = _filteredCache;
+    if (cached != null && key == _filteredKey) return cached;
+    final query = _search.toLowerCase();
+    _filteredKey = key;
+    return _filteredCache = widget.inventory.where((i) {
+      final matchesSearch = query.isEmpty || i.itemName.toLowerCase().contains(query);
+      final matchesStatus = _statusFilter == null || i.availabilityStatus == _statusFilter;
+      final matchesCategory = _categoryFilter == null || i.category == _categoryFilter;
+      return matchesSearch && matchesStatus && matchesCategory;
+    }).toList();
+  }
 
   void _submit() {
     if (_isCustom) {

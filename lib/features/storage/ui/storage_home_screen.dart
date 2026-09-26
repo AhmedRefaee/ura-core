@@ -19,6 +19,7 @@ import '../../profile/ui/profile_screen.dart';
 import '../logic/storage_order_detail_cubit.dart';
 import '../logic/storage_orders_cubit.dart';
 import 'storage_order_detail_screen.dart';
+import '../../../shared/widgets/lazy_indexed_stack.dart';
 
 class StorageHomeScreen extends StatelessWidget {
   const StorageHomeScreen({super.key});
@@ -64,7 +65,7 @@ class _StorageHomeViewState extends State<_StorageHomeView> {
     ];
 
     return Scaffold(
-      body: tabs[_navIndex],
+      body: LazyIndexedStack(index: _navIndex, children: tabs),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navIndex,
         onDestinationSelected: (i) => setState(() => _navIndex = i),

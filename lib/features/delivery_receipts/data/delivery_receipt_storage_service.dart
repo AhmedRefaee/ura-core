@@ -31,9 +31,9 @@ class DeliveryReceiptStorageService {
             bytes,
             fileOptions: const FileOptions(contentType: 'application/pdf', upsert: false),
           );
-      final url = _supabase.storage.from(_bucket).getPublicUrl(path);
-      logger.i('DeliveryReceiptStorageService → uploaded → $url');
-      return AppSuccess(url);
+      logger.i('DeliveryReceiptStorageService → uploaded → $path');
+      // The bucket is private: store the path; readers get a signed URL.
+      return AppSuccess(path);
     } catch (e, st) {
       logger.e('DeliveryReceiptStorageService → upload failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));

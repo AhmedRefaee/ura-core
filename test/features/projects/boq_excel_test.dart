@@ -277,14 +277,26 @@ void main() {
     expect(matches('زبادي لبنة'), isFalse, reason: 'every word must match');
   });
 
-  test('VAT matches the paper quotation to the halala', () {
-    const item = ProjectItem(id: '', projectId: '', itemName: 'x', quantity: 1, unit: 'u', totalPrice: 533870.70);
-    final t = BoqTotals.of([item]);
-    expect(t.subtotal, 533870.70);
-    expect(t.vat, 80080.61);
-    expect(t.total, 613951.31);
+  test('a line mentioning tax is an item, not a totals row; اسم الصنف is a header', () {
+    final excel = Excel.createExcel();
+    final sheet = excel['Sheet1'];
+    void row(int r, List<Object?> cells) {
+      for (var c = 0; c < cells.length; c++) {
+        final v = cells[c];
+        if (v == null) continue;
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value =
+            v is num ? DoubleCellValue(v.toDouble()) : TextCellValue(v.toString());
+      }
+    }
 
-    const coal = ProjectItem(id: '', projectId: '', itemName: 'x', quantity: 1, unit: 'u', totalPrice: 557400);
-    expect(BoqTotals.of([coal]).vat, 83610);
+    row(0, ['م', 'اسم الصنف', 'الوصف', 'الكمية', 'الوحدة', 'سعر الوحدة']);
+    row(1, [1, 'طوابع ضريبية', 'السعر شامل الضريبة', 10, 'حبة', 5]);
+    row(2, [null, 'الإجمالي غير شامل ضريبة القيمة المضافة', null, null, null, 50]);
+
+    final result = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
+    expect(result.noHeaderFound, isFalse);
+    expect(result.errors, isEmpty);
+    expect(result.items.single.itemName, 'طوابع ضريبية');
+    expect(result.items.single.totalPrice, 50);
   });
 }

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:ura_core/core/errors/app_result.dart';
@@ -81,6 +82,42 @@ void main() {
 
     cubit.setQuantity('i1', 0);
     expect(cubit.state.canSubmit, isFalse);
+  });
+
+  test('typed quantities: Arabic digits and thousands parse; text blocks submit', () async {
+    final cubit = build(const DeliveryReceiptLaunch(entity: entity, projectId: 'p2'));
+    await cubit.init();
+
+    cubit.setQuantityText('i1', '1,000');
+    expect(cubit.state.quantities['i1'], 1000, reason: '"," is a thousands separator');
+    cubit.setQuantityText('i1', '١٢٫٥');
+    expect(cubit.state.quantities['i1'], 12.5);
+    expect(cubit.state.canSubmit, isTrue);
+
+    cubit.setQuantityText('i1', '12 كيس');
+    expect(cubit.state.invalid, contains('i1'));
+    expect(cubit.state.canSubmit, isFalse, reason: 'a typo must not silently drop the line');
+
+    cubit.setQuantityText('i1', '');
+    expect(cubit.state.invalid, isEmpty);
+    expect(cubit.state.quantities, isEmpty);
+  });
+
+  test("a slow response for an earlier project pick can't overwrite a later pick", () async {
+    final cubit = build(const DeliveryReceiptLaunch());
+    await cubit.init();
+    const itemA = ProjectItem(id: 'a1', projectId: 'p1', itemName: 'قديم', quantity: 1, unit: 'حبة');
+    final slowA = Completer<AppResult<List<ProjectItem>>>();
+    when(() => projects.fetchProjectItems('p1')).thenAnswer((_) => slowA.future);
+    when(() => projects.fetchProjectItems('p2')).thenAnswer((_) async => const AppSuccess([item]));
+
+    final pickA = cubit.selectProject(projectA);
+    await cubit.selectProject(projectB);
+    slowA.complete(const AppSuccess([itemA]));
+    await pickA;
+
+    expect(cubit.state.project, projectB);
+    expect(cubit.state.items, [item]);
   });
 
   test('switching entity clears the previous project and quantities', () async {

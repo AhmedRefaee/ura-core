@@ -16,6 +16,7 @@ import 'boq_import_preview_screen.dart';
 import 'boq_table.dart';
 import 'letterhead_picker.dart';
 import '../../../core/logic/debouncer.dart';
+import '../../../core/storage/signed_storage_url.dart';
 
 void openProjectDetail(BuildContext context, Project project, Entity entity) {
   Navigator.of(context).push(
@@ -222,6 +223,51 @@ Future<void> showProjectItemForm(BuildContext context, ProjectItem? item) async 
   );
 }
 
+/// The letterhead lives in a private bucket: fetch a signed URL once per
+/// stored value, and decode at display size rather than full resolution.
+class _LetterheadImage extends StatefulWidget {
+  final String stored;
+  const _LetterheadImage({required this.stored});
+
+  @override
+  State<_LetterheadImage> createState() => _LetterheadImageState();
+}
+
+class _LetterheadImageState extends State<_LetterheadImage> {
+  late Future<String?> _url = SignedStorageUrl.resolve('project-letterheads', widget.stored);
+
+  @override
+  void didUpdateWidget(_LetterheadImage old) {
+    super.didUpdateWidget(old);
+    if (old.stored != widget.stored) {
+      _url = SignedStorageUrl.resolve('project-letterheads', widget.stored);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 90,
+      child: FutureBuilder<String?>(
+        future: _url,
+        builder: (context, snap) {
+          final url = snap.data;
+          if (url == null) {
+            return snap.connectionState == ConnectionState.done
+                ? const Center(child: Icon(Icons.broken_image_outlined))
+                : const Center(child: CircularProgressIndicator(strokeWidth: 2));
+          }
+          return Image.network(
+            url,
+            fit: BoxFit.contain,
+            cacheHeight: (90 * MediaQuery.devicePixelRatioOf(context)).round(),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class _LetterheadCard extends StatelessWidget {
   final String? url;
   final VoidCallback? onChange;
@@ -257,7 +303,7 @@ class _LetterheadCard extends StatelessWidget {
                 child: Text('لا يوجد نموذج سند -- السند سيُنشأ بدون رأس'),
               )
             else
-              Image.network(url!, height: 90, fit: BoxFit.contain),
+              _LetterheadImage(stored: url!),
           ],
         ),
       ),
@@ -482,15 +528,21 @@ class _ItemFormState extends State<_ItemForm> {
   }
 
   double? get _total {
-    final q = double.tryParse(_qty.text.trim());
-    final p = double.tryParse(_price.text.trim());
-    return q == null || p == null ? null : q * p;
+    final q = parseLocalizedNumber(_qty.text);
+    final p = parseLocalizedNumber(_price.text);
+    return q == null || p == null ? null : round2(q * p);
   }
 
   Future<void> _save() async {
-    final qty = double.tryParse(_qty.text.trim());
+    final qty = parseLocalizedNumber(_qty.text);
+    final price = parseLocalizedNumber(_price.text);
     if (_name.text.trim().isEmpty || _unit.text.trim().isEmpty || qty == null) {
-      setState(() => _error = 'الاسم والكمية والوحدة مطلوبة');
+      setState(() => _error = 'الاسم والكمية والوحدة مطلوبة، والكمية رقم');
+      return;
+    }
+    if (_price.text.trim().isNotEmpty && price == null) {
+      // Saving would silently drop the price.
+      setState(() => _error = 'سعر الوحدة ليس رقماً');
       return;
     }
     setState(() {
@@ -507,7 +559,7 @@ class _ItemFormState extends State<_ItemForm> {
         description: _desc.text.trim().isEmpty ? null : _desc.text.trim(),
         quantity: qty,
         unit: _unit.text.trim(),
-        unitPrice: double.tryParse(_price.text.trim()),
+        unitPrice: price,
         totalPrice: _total,
       ),
     );

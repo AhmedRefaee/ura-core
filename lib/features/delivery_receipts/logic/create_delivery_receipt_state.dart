@@ -10,6 +10,10 @@ class CreateDeliveryReceiptState extends Equatable {
 
   /// projectItemId -> quantity delivered. Only entries > 0 go on the سند.
   final Map<String, double> quantities;
+
+  /// Rows whose quantity text isn't a number. Blocks submitting: a typo must
+  /// never silently drop a line from the سند.
+  final Set<String> invalid;
   final bool submitting;
   final String? error;
 
@@ -25,6 +29,7 @@ class CreateDeliveryReceiptState extends Equatable {
     this.project,
     this.items = const [],
     this.quantities = const {},
+    this.invalid = const {},
     this.submitting = false,
     this.error,
     this.pdfBytes,
@@ -32,7 +37,11 @@ class CreateDeliveryReceiptState extends Equatable {
   });
 
   bool get canSubmit =>
-      entity != null && project != null && quantities.values.any((q) => q > 0) && !submitting;
+      entity != null &&
+      project != null &&
+      invalid.isEmpty &&
+      quantities.values.any((q) => q > 0) &&
+      !submitting;
 
   CreateDeliveryReceiptState copyWith({
     bool? loading,
@@ -42,6 +51,7 @@ class CreateDeliveryReceiptState extends Equatable {
     Project? project,
     List<ProjectItem>? items,
     Map<String, double>? quantities,
+    Set<String>? invalid,
     bool? submitting,
     String? error,
     bool clearError = false,
@@ -56,6 +66,7 @@ class CreateDeliveryReceiptState extends Equatable {
       project: project ?? this.project,
       items: items ?? this.items,
       quantities: quantities ?? this.quantities,
+      invalid: invalid ?? this.invalid,
       submitting: submitting ?? this.submitting,
       error: clearError ? null : (error ?? this.error),
       pdfBytes: pdfBytes ?? this.pdfBytes,
@@ -72,6 +83,7 @@ class CreateDeliveryReceiptState extends Equatable {
         project,
         items,
         quantities,
+        invalid,
         submitting,
         error,
         receiptId,

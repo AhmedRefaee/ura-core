@@ -5,36 +5,15 @@ import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
 import '../../../core/text/arabic_text.dart';
 import '../../../shared/models/project_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 
 /// VAT on quotations. Prices are always stored pre-VAT; VAT is derived.
 const kVatRate = 0.15;
-
-double _round2(double v) => (v * 100).round() / 100;
-
-/// Subtotal / VAT / total, VAT rounded to the halala like the paper
-/// quotations.
-class BoqTotals {
-  final double subtotal;
-  final double vat;
-  final double total;
-  const BoqTotals(this.subtotal, this.vat, this.total);
-
-  factory BoqTotals.of(Iterable<ProjectItem> items) {
-    // Integer halalas: 533,870.70 * 0.15 must give 80,080.61, and doubles
-    // land on 80,080.6049... and round down.
-    final cents = items.fold<int>(0, (sum, i) => sum + ((i.totalPrice ?? 0) * 100).round());
-    final vatCents = (cents * (kVatRate * 100).round() + 50) ~/ 100;
-    return BoqTotals(cents / 100, vatCents / 100, (cents + vatCents) / 100);
-  }
-}
 
 class BoqCategory {
   final String name;
   final List<ProjectItem> items;
   const BoqCategory(this.name, this.items);
-
-  BoqTotals get totals => BoqTotals.of(items);
-  bool get hasPrices => items.any((i) => i.totalPrice != null);
 }
 
 /// Groups items by category, in the order each category first appears.
@@ -205,7 +184,7 @@ BoqParseResult parseBoqWorkbook(Uint8List bytes, {String projectId = ''}) {
         continue;
       }
 
-      if (folded.any((f) => f == 'البند')) {
+      if (folded.any((f) => f == 'البند' || f.startsWith('اسم الصنف'))) {
         columns = _mapHeader(folded);
         sawHeader = true;
         continue;
@@ -213,10 +192,16 @@ BoqParseResult parseBoqWorkbook(Uint8List bytes, {String projectId = ''}) {
 
       final cols = columns;
       if (cols == null) continue;
-      if (folded.any((f) => f.startsWith('الاجمالي') || f.contains('ضريبه'))) continue;
 
       String cellText(_Col c) => cols[c] == null || cols[c]! >= texts.length ? '' : texts[cols[c]!];
       CellValue? cellValue(_Col c) => cols[c] == null || cols[c]! >= row.length ? null : row[cols[c]!]?.value;
+
+      // Totals rows ("الإجمالي غير شامل…", "قيمة الضريبة…") carry a label but
+      // no quantity or unit. Requiring both to be empty keeps a real line
+      // whose description mentions tax -- dropping it would delete it, since
+      // import replaces the whole quotation.
+      final looksLikeTotals = folded.any((f) => f.startsWith('الاجمالي') || f.contains('ضريبه'));
+      if (looksLikeTotals && cellText(_Col.unit).isEmpty && _text(cellValue(_Col.quantity)).isEmpty) continue;
 
       final name = cellText(_Col.name);
       final description = cellText(_Col.description);
@@ -268,9 +253,9 @@ BoqParseResult parseBoqWorkbook(Uint8List bytes, {String projectId = ''}) {
 
       // Stored prices are pre-VAT; a VAT-inclusive figure is only used when
       // the pre-VAT one wasn't given.
-      unitPrice ??= unitPriceVat == null ? null : _round2(unitPriceVat / (1 + kVatRate));
-      total ??= totalVat == null ? null : _round2(totalVat / (1 + kVatRate));
-      total ??= unitPrice == null ? null : _round2(qty! * unitPrice);
+      unitPrice ??= unitPriceVat == null ? null : round2(unitPriceVat / (1 + kVatRate));
+      total ??= totalVat == null ? null : round2(totalVat / (1 + kVatRate));
+      total ??= unitPrice == null ? null : round2(qty! * unitPrice);
 
       items.add(ProjectItem(
         id: '',

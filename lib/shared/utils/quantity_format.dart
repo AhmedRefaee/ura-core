@@ -29,6 +29,35 @@ String formatMoney(double v) {
   return '$buf${fixed.substring(dot)}';
 }
 
+/// Parses a number as people type it on an Arabic keyboard: Arabic-Indic
+/// (٠-٩) and Persian (۰-۹) digits, "٫" or "." as the decimal point, and ","
+/// / "٬" / spaces as thousands separators ("1,000" is a thousand, not 1.0).
+/// Returns null for anything else -- callers show an error rather than
+/// silently treating a typo as zero.
+double? parseLocalizedNumber(String raw) {
+  final buf = StringBuffer();
+  for (final rune in raw.trim().runes) {
+    if (rune >= 0x0660 && rune <= 0x0669) {
+      buf.write(rune - 0x0660);
+    } else if (rune >= 0x06F0 && rune <= 0x06F9) {
+      buf.write(rune - 0x06F0);
+    } else {
+      final ch = String.fromCharCode(rune);
+      if (ch == '٫') {
+        buf.write('.');
+      } else if (ch != ',' && ch != '٬' && ch.trim().isNotEmpty) {
+        buf.write(ch);
+      }
+    }
+  }
+  final s = buf.toString();
+  return s.isEmpty ? null : double.tryParse(s);
+}
+
+/// Rounds a money/quantity product to 2 decimals (3 × 1.1 is 3.3, not
+/// 3.3000000000000003).
+double round2(double v) => (v * 100).round() / 100;
+
 /// Parses user-entered text into a quantity, or `null` if invalid.
 double? parseQty(String? text) {
   if (text == null) return null;

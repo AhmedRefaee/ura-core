@@ -176,7 +176,8 @@ class _FormState extends State<_Form> {
                                     _ItemRow(
                                       key: ValueKey(item.id),
                                       item: item,
-                                      onChanged: (q) => cubit.setQuantity(item.id, q),
+                                      invalid: state.invalid.contains(item.id),
+                                      onChanged: (v) => cubit.setQuantityText(item.id, v),
                                     ),
                                 ],
                               ],
@@ -256,8 +257,9 @@ class _Step extends StatelessWidget {
 
 class _ItemRow extends StatelessWidget {
   final ProjectItem item;
-  final ValueChanged<double> onChanged;
-  const _ItemRow({super.key, required this.item, required this.onChanged});
+  final bool invalid;
+  final ValueChanged<String> onChanged;
+  const _ItemRow({super.key, required this.item, required this.invalid, required this.onChanged});
 
   @override
   Widget build(BuildContext context) {
@@ -290,26 +292,15 @@ class _ItemRow extends StatelessWidget {
               decoration: InputDecoration(
                 hintText: '0',
                 suffixText: item.unit,
+                errorText: invalid ? 'رقم غير صحيح' : null,
                 isDense: true,
                 border: const OutlineInputBorder(),
               ),
-              onChanged: (v) => onChanged(_parseQty(v)),
+              onChanged: onChanged,
             ),
           ),
         ],
       ),
     );
-  }
-
-  /// Accepts Arabic-Indic digits and the Arabic decimal separator too, since
-  /// that is what an Arabic keyboard types.
-  static double _parseQty(String raw) {
-    const arabic = '٠١٢٣٤٥٦٧٨٩';
-    final buf = StringBuffer();
-    for (final ch in raw.trim().split('')) {
-      final i = arabic.indexOf(ch);
-      buf.write(i >= 0 ? '$i' : (ch == '٫' || ch == ',' ? '.' : ch));
-    }
-    return double.tryParse(buf.toString()) ?? 0;
   }
 }

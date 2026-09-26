@@ -5,6 +5,7 @@ import '../../../core/errors/app_result.dart';
 import '../../../shared/models/delivery_receipt.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../data/delivery_receipt_repository.dart';
+import '../../../core/storage/signed_storage_url.dart';
 
 /// Read-only list of سندات attached to an order or a project. Shown inside
 /// the record a role already opens, never as its own top-level section.
@@ -105,7 +106,8 @@ class DeliveryReceiptTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final d = receipt.deliveredAt ?? receipt.createdAt;
+    // Timestamps arrive in UTC; the PDF was dated in local time.
+    final d = (receipt.deliveredAt ?? receipt.createdAt)?.toLocal();
     final date = d == null ? '' : '${d.year}/${d.month}/${d.day}';
     final itemsSummary = receipt.items
         .map((i) => '${i.itemNameSnapshot} (${formatQty(i.quantityDelivered)} ${i.unitSnapshot})')
@@ -122,7 +124,10 @@ class DeliveryReceiptTile extends StatelessWidget {
       trailing: receipt.pdfUrl == null ? null : const Icon(Icons.open_in_new, size: 18),
       onTap: receipt.pdfUrl == null
           ? null
-          : () => launchUrl(Uri.parse(receipt.pdfUrl!), mode: LaunchMode.externalApplication),
+          : () async {
+              final url = await SignedStorageUrl.resolve('delivery-receipts', receipt.pdfUrl);
+              if (url != null) await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+            },
     );
   }
 }

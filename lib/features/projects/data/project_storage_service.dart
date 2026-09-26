@@ -4,7 +4,8 @@ import '../../../core/errors/app_result.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/logging/app_logger.dart';
 
-/// Uploads a project's letterhead image to the `project-letterheads` bucket.
+/// Uploads a project's letterhead image to the private `project-letterheads`
+/// bucket and returns its storage path (see SignedStorageUrl for reading).
 ///
 /// The path must start with the uploader's organization_id: the bucket's RLS
 /// checks that first segment against auth_org_id() (see
@@ -36,9 +37,9 @@ class ProjectStorageService {
             bytes,
             fileOptions: FileOptions(contentType: mimeType, upsert: false),
           );
-      final url = _supabase.storage.from(_bucket).getPublicUrl(path);
-      logger.i('ProjectStorageService → uploaded → $url');
-      return AppSuccess(url);
+      logger.i('ProjectStorageService → uploaded → $path');
+      // The bucket is private: store the path; readers get a signed URL.
+      return AppSuccess(path);
     } catch (e, st) {
       logger.e('ProjectStorageService → upload failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));

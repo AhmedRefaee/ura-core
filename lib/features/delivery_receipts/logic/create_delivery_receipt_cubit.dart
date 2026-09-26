@@ -7,11 +7,13 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/entity.dart';
 import '../../../shared/models/project.dart';
 import '../../../shared/models/project_item.dart';
+import '../../../shared/utils/quantity_format.dart';
 import '../../projects/data/project_repository.dart';
 import '../../verifier/data/entity_repository.dart';
 import '../data/delivery_receipt_repository.dart';
 import '../data/delivery_receipt_storage_service.dart';
 import 'delivery_receipt_pdf.dart';
+import '../../../core/storage/signed_storage_url.dart';
 
 part 'create_delivery_receipt_state.dart';
 
@@ -54,13 +56,21 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     if (entity != null) await selectEntity(entity, preselectProjectId: launch.projectId);
   }
 
+  // Picking A then quickly B must not let A's slower response land on top of
+  // B. Each pick takes a new token; responses for an older token are dropped.
+  int _entityToken = 0;
+  int _projectToken = 0;
+
   Future<void> selectEntity(Entity entity, {String? preselectProjectId}) async {
+    final token = ++_entityToken;
+    _projectToken++;
     emit(CreateDeliveryReceiptState(
       entities: state.entities,
       entity: entity,
       loading: true,
     ));
     final result = await _projects.fetchProjectsForEntity(entity.id);
+    if (token != _entityToken) return;
     switch (result) {
       case AppSuccess(:final data):
         emit(state.copyWith(loading: false, projects: data));
@@ -76,14 +86,38 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
   }
 
   Future<void> selectProject(Project project) async {
-    emit(state.copyWith(project: project, items: const [], quantities: const {}, loading: true, clearError: true));
+    final token = ++_projectToken;
+    emit(state.copyWith(
+      project: project,
+      items: const [],
+      quantities: const {},
+      invalid: const {},
+      loading: true,
+      clearError: true,
+    ));
     final result = await _projects.fetchProjectItems(project.id);
+    if (token != _projectToken) return;
     switch (result) {
       case AppSuccess(:final data):
         emit(state.copyWith(loading: false, items: data));
       case AppFailure(:final error):
         emit(state.copyWith(loading: false, error: error.message));
     }
+  }
+
+  /// Quantity exactly as typed. Empty clears the line; anything that isn't a
+  /// number marks the row invalid (and blocks submit) instead of becoming 0.
+  void setQuantityText(String projectItemId, String raw) {
+    final invalid = Set<String>.from(state.invalid);
+    final parsed = parseLocalizedNumber(raw);
+    if (raw.trim().isNotEmpty && (parsed == null || parsed < 0)) {
+      invalid.add(projectItemId);
+      emit(state.copyWith(invalid: invalid));
+      return;
+    }
+    invalid.remove(projectItemId);
+    emit(state.copyWith(invalid: invalid));
+    setQuantity(projectItemId, parsed ?? 0);
   }
 
   void setQuantity(String projectItemId, double quantity) {
@@ -158,7 +192,8 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
 
   /// A missing or unreachable letterhead shouldn't block filing the سند --
   /// the PDF just goes out without a header image.
-  Future<Uint8List?> _fetchLetterhead(String? url) async {
+  Future<Uint8List?> _fetchLetterhead(String? stored) async {
+    final url = await SignedStorageUrl.resolve('project-letterheads', stored);
     if (url == null) return null;
     try {
       final res = await http.get(Uri.parse(url));

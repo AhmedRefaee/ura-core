@@ -6,8 +6,7 @@ import '../../../shared/utils/quantity_format.dart';
 import '../logic/boq_excel.dart';
 
 /// The quotation as a spreadsheet-style table: columns and order exactly as
-/// the Excel export ([boqHeaders]), header row pinned on top, totals row
-/// pinned at the bottom.
+/// the Excel export ([boqHeaders]), header row pinned on top.
 ///
 /// Built lazily in both directions (TableView), so only on-screen cells
 /// exist -- a 300-line quotation costs the same as a 10-line one. It scrolls
@@ -80,9 +79,7 @@ class _BoqTableState extends State<BoqTable> {
       fontWeight: FontWeight.bold,
     );
     final body = theme.textTheme.bodySmall;
-    final totals = showPrices ? BoqTotals.of(items) : null;
-    final hasTotalsRow = totals != null;
-    final rowCount = 1 + items.length + (hasTotalsRow ? 1 : 0);
+    final rowCount = 1 + items.length;
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -116,7 +113,6 @@ class _BoqTableState extends State<BoqTable> {
                 reverse: rtl,
               ),
               pinnedRowCount: 1,
-              trailingPinnedRowCount: hasTotalsRow ? 1 : 0,
               pinnedColumnCount: fits ? 0 : 2,
               columnCount: columns,
               rowCount: rowCount,
@@ -131,13 +127,12 @@ class _BoqTableState extends State<BoqTable> {
               ),
               rowBuilder: (r) {
                 final isHeader = r == 0;
-                final isTotals = hasTotalsRow && r == rowCount - 1;
-                final item = isHeader || isTotals ? null : items[r - 1];
+                final item = isHeader ? null : items[r - 1];
                 return TableSpan(
                   extent: FixedTableSpanExtent(
                     isHeader ? _headerHeight : _rowHeight,
                   ),
-                  backgroundDecoration: isHeader || isTotals
+                  backgroundDecoration: isHeader
                       ? TableSpanDecoration(color: headerBg)
                       : null,
                   foregroundDecoration: TableSpanDecoration(
@@ -173,15 +168,6 @@ class _BoqTableState extends State<BoqTable> {
                 final r = v.row, c = v.column;
                 if (r == 0) {
                   return _cell(boqHeaders[c], bold, center: true, lines: 2);
-                }
-                if (hasTotalsRow && r == rowCount - 1) {
-                  final text = switch (c) {
-                    0 => 'الإجمالي (${items.length})',
-                    7 => formatMoney(totals.subtotal),
-                    8 => formatMoney(totals.total),
-                    _ => '',
-                  };
-                  return _cell(text, bold, center: c != 0);
                 }
                 final item = items[r - 1];
                 return switch (c) {

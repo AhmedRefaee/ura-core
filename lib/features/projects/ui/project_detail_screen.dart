@@ -15,6 +15,7 @@ import '../logic/project_detail_cubit.dart';
 import 'boq_import_preview_screen.dart';
 import 'boq_table.dart';
 import 'letterhead_picker.dart';
+import '../../../core/logic/debouncer.dart';
 
 void openProjectDetail(BuildContext context, Project project, Entity entity) {
   Navigator.of(context).push(
@@ -271,8 +272,6 @@ class _ItemsCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasPrices = state.items.any((i) => i.totalPrice != null);
-    final totals = BoqTotals.of(state.items);
     final categories = groupByCategory(state.items).length;
     return Card(
       margin: EdgeInsets.zero,
@@ -293,11 +292,6 @@ class _ItemsCard extends StatelessWidget {
                   : 'لا توجد بنود بعد')
             else ...[
               Text('${state.items.length} بند في $categories ${categories == 1 ? 'فئة' : 'فئات'}'),
-              if (hasPrices) ...[
-                const SizedBox(height: 4),
-                Text('الإجمالي: ${formatMoney(totals.subtotal)}  ·  شامل الضريبة: ${formatMoney(totals.total)}',
-                    style: theme.textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
-              ],
             ],
             const SizedBox(height: 12),
             FilledButton.tonalIcon(
@@ -323,14 +317,49 @@ void openProjectItemsTable(BuildContext context) {
   ));
 }
 
-class _ProjectItemsTableScreen extends StatelessWidget {
+class _ProjectItemsTableScreen extends StatefulWidget {
   const _ProjectItemsTableScreen();
+
+  @override
+  State<_ProjectItemsTableScreen> createState() => _ProjectItemsTableScreenState();
+}
+
+class _ProjectItemsTableScreenState extends State<_ProjectItemsTableScreen> {
+  final _searchCtrl = TextEditingController();
+  final _searchDebounce = Debouncer(const Duration(milliseconds: 200));
+  String _query = '';
+
+  // Search keys are folded once per items list, not per keystroke.
+  List<ProjectItem>? _keyedItems;
+  List<String> _keys = const [];
+
+  @override
+  void dispose() {
+    _searchDebounce.cancel();
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  List<ProjectItem> _filter(List<ProjectItem> items) {
+    if (!identical(items, _keyedItems)) {
+      _keyedItems = items;
+      _keys = [for (final i in items) boqSearchKey(i)];
+    }
+    final words = foldForSearch(_query).split(' ').where((w) => w.isNotEmpty).toList();
+    if (words.isEmpty) return items;
+    return [
+      for (var i = 0; i < items.length; i++)
+        if (words.every(_keys[i].contains)) items[i],
+    ];
+  }
 
   @override
   Widget build(BuildContext context) {
     return BlocBuilder<ProjectDetailCubit, ProjectDetailState>(
       builder: (context, state) {
         final canEdit = state.canEditItems;
+        final shown = _filter(state.items);
+        final theme = Theme.of(context);
         return Scaffold(
           appBar: AppBar(title: Text('بنود العرض — ${state.project.name}')),
           floatingActionButton: canEdit
@@ -345,22 +374,58 @@ class _ProjectItemsTableScreen extends StatelessWidget {
               : Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    if (canEdit)
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
-                        child: Text('اضغط على الصف للتعديل، اضغط مطولاً للحذف',
-                            style: Theme.of(context).textTheme.bodySmall),
-                      ),
-                    Expanded(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(8, 4, 8, 88),
-                        child: BoqTable(
-                          items: state.items,
-                          showPrices: canEdit || state.items.any((i) => i.totalPrice != null),
-                          onTap: canEdit ? (item) => showProjectItemForm(context, item) : null,
-                          onLongPress: canEdit ? (item) => confirmDeleteProjectItem(context, item) : null,
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+                      child: TextField(
+                        controller: _searchCtrl,
+                        decoration: InputDecoration(
+                          hintText: 'ابحث باسم البند أو الوصف أو الفئة',
+                          prefixIcon: const Icon(Icons.search),
+                          suffixIcon: _searchCtrl.text.isEmpty
+                              ? null
+                              : IconButton(
+                                  icon: const Icon(Icons.clear),
+                                  onPressed: () {
+                                    _searchDebounce.cancel();
+                                    _searchCtrl.clear();
+                                    setState(() => _query = '');
+                                  },
+                                ),
+                          isDense: true,
+                          border: const OutlineInputBorder(),
                         ),
+                        onChanged: (v) {
+                          if (v.length <= 1) setState(() {}); // clear button
+                          _searchDebounce.run(() {
+                            if (mounted) setState(() => _query = v);
+                          });
+                        },
                       ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 2, 16, 4),
+                      child: Text(
+                        [
+                          _query.trim().isEmpty
+                              ? '${state.items.length} بند'
+                              : '${shown.length} من ${state.items.length} بند',
+                          if (canEdit) 'اضغط على الصف للتعديل، مطولاً للحذف',
+                        ].join('  ·  '),
+                        style: theme.textTheme.bodySmall,
+                      ),
+                    ),
+                    Expanded(
+                      child: shown.isEmpty
+                          ? const Center(child: Text('لا توجد بنود مطابقة'))
+                          : Padding(
+                              padding: const EdgeInsets.fromLTRB(8, 4, 8, 88),
+                              child: BoqTable(
+                                items: shown,
+                                showPrices: canEdit || state.items.any((i) => i.totalPrice != null),
+                                onTap: canEdit ? (item) => showProjectItemForm(context, item) : null,
+                                onLongPress: canEdit ? (item) => confirmDeleteProjectItem(context, item) : null,
+                              ),
+                            ),
                     ),
                   ],
                 ),

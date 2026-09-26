@@ -46,6 +46,14 @@ List<BoqCategory> groupByCategory(List<ProjectItem> items) {
   return [for (final e in groups.entries) BoqCategory(e.key, e.value)];
 }
 
+/// Folds text for searching quotation lines: Arabic spelling variants
+/// (أ/إ/ا, ة/ه, ى/ي, tashkeel) and Persian-keyboard letters compare equal.
+String foldForSearch(String s) => ArabicText.normalize(_clean(s));
+
+/// Everything a person might search a line by, folded once.
+String boqSearchKey(ProjectItem i) =>
+    foldForSearch('${i.itemName} ${i.description ?? ''} ${i.category} ${i.unit}');
+
 // ── Export: one flat table, one row per item ─────────────────────────────────
 
 const boqHeaders = [

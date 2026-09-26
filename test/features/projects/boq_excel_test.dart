@@ -261,6 +261,22 @@ void main() {
     expect(result.canImport, isFalse);
   });
 
+  test('search folds Arabic spelling variants and Persian letters, all words must match', () {
+    const item = ProjectItem(
+      id: '', projectId: '', category: 'الحلیب ومشتقاتھ', itemName: 'زبادي كامل الدسم',
+      description: 'طازج مبرد / 170 جرام', quantity: 6, unit: 'عبوة',
+    );
+    final key = boqSearchKey(item);
+    bool matches(String q) => foldForSearch(q).split(' ').where((w) => w.isNotEmpty).every(key.contains);
+
+    expect(matches('زبادي'), isTrue);
+    expect(matches('مشتقاته'), isTrue, reason: 'ھ in the file, ه typed');
+    expect(matches('الحليب'), isTrue, reason: 'ی in the file, ي typed');
+    expect(matches('عبوه'), isTrue, reason: 'ة vs ه');
+    expect(matches('زبادي 170'), isTrue);
+    expect(matches('زبادي لبنة'), isFalse, reason: 'every word must match');
+  });
+
   test('VAT matches the paper quotation to the halala', () {
     const item = ProjectItem(id: '', projectId: '', itemName: 'x', quantity: 1, unit: 'u', totalPrice: 533870.70);
     final t = BoqTotals.of([item]);

@@ -3,6 +3,10 @@ part of 'create_delivery_receipt_cubit.dart';
 class CreateDeliveryReceiptState extends Equatable {
   final bool loading;
   final List<Entity> entities;
+
+  /// Entities that have at least one project; null until known (then the
+  /// entity step shows everything rather than nothing).
+  final Set<String>? entityIdsWithProjects;
   final Entity? entity;
   final List<Project> projects;
   final Project? project;
@@ -11,9 +15,10 @@ class CreateDeliveryReceiptState extends Equatable {
   /// projectItemId -> quantity delivered. Only entries > 0 go on the سند.
   final Map<String, double> quantities;
 
-  /// Rows whose quantity text isn't a number. Blocks submitting: a typo must
-  /// never silently drop a line from the سند.
-  final Set<String> invalid;
+  /// Rows whose quantity text isn't a number, with that text (so a card that
+  /// scrolls away and back still shows what was typed). Blocks submitting:
+  /// a typo must never silently drop a line from the سند.
+  final Map<String, String> invalid;
   final bool submitting;
   final String? error;
 
@@ -24,6 +29,7 @@ class CreateDeliveryReceiptState extends Equatable {
   const CreateDeliveryReceiptState({
     this.loading = false,
     this.entities = const [],
+    this.entityIdsWithProjects,
     this.entity,
     this.projects = const [],
     this.project,
@@ -36,6 +42,14 @@ class CreateDeliveryReceiptState extends Equatable {
     this.receiptId,
   });
 
+  /// What the entity step lists: only entities a سند can be filed for.
+  List<Entity> get pickableEntities {
+    final ids = entityIdsWithProjects;
+    return ids == null ? entities : entities.where((e) => ids.contains(e.id)).toList();
+  }
+
+  int get selectedCount => quantities.values.where((q) => q > 0).length;
+
   bool get canSubmit =>
       entity != null &&
       project != null &&
@@ -46,12 +60,13 @@ class CreateDeliveryReceiptState extends Equatable {
   CreateDeliveryReceiptState copyWith({
     bool? loading,
     List<Entity>? entities,
+    Set<String>? entityIdsWithProjects,
     Entity? entity,
     List<Project>? projects,
     Project? project,
     List<ProjectItem>? items,
     Map<String, double>? quantities,
-    Set<String>? invalid,
+    Map<String, String>? invalid,
     bool? submitting,
     String? error,
     bool clearError = false,
@@ -61,6 +76,7 @@ class CreateDeliveryReceiptState extends Equatable {
     return CreateDeliveryReceiptState(
       loading: loading ?? this.loading,
       entities: entities ?? this.entities,
+      entityIdsWithProjects: entityIdsWithProjects ?? this.entityIdsWithProjects,
       entity: entity ?? this.entity,
       projects: projects ?? this.projects,
       project: project ?? this.project,
@@ -78,6 +94,7 @@ class CreateDeliveryReceiptState extends Equatable {
   List<Object?> get props => [
         loading,
         entities,
+        entityIdsWithProjects,
         entity,
         projects,
         project,

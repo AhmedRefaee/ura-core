@@ -43,6 +43,7 @@ void main() {
     when(() => projects.fetchProjectsForEntity('e1'))
         .thenAnswer((_) async => const AppSuccess([projectA, projectB]));
     when(() => projects.fetchProjectItems(any())).thenAnswer((_) async => const AppSuccess([item]));
+    when(() => projects.fetchEntityIdsWithProjects()).thenAnswer((_) async => const AppSuccess({'e1'}));
   });
 
   test('launched from an order, entity and the order\'s project are pre-filled', () async {

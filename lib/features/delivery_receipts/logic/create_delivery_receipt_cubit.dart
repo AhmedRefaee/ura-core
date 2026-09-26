@@ -44,16 +44,44 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
 
   Future<void> init() async {
     emit(state.copyWith(loading: true, clearError: true));
-    final result = await _entities.fetchEntities();
-    switch (result) {
+    final (entities, withProjects) = await (
+      _entities.fetchEntities(),
+      _projects.fetchEntityIdsWithProjects(),
+    ).wait;
+    switch (entities) {
       case AppSuccess(:final data):
-        emit(state.copyWith(loading: false, entities: data));
+        emit(state.copyWith(
+          loading: false,
+          entities: data,
+          entityIdsWithProjects: withProjects is AppSuccess<Set<String>> ? withProjects.data : null,
+        ));
       case AppFailure(:final error):
         emit(state.copyWith(loading: false, error: error.message));
         return;
     }
     final entity = launch.entity;
     if (entity != null) await selectEntity(entity, preselectProjectId: launch.projectId);
+  }
+
+  /// Back to the entity step.
+  void clearEntity() {
+    _entityToken++;
+    _projectToken++;
+    emit(CreateDeliveryReceiptState(
+      entities: state.entities,
+      entityIdsWithProjects: state.entityIdsWithProjects,
+    ));
+  }
+
+  /// Back to the project step, keeping the entity and its projects.
+  void clearProject() {
+    _projectToken++;
+    emit(CreateDeliveryReceiptState(
+      entities: state.entities,
+      entityIdsWithProjects: state.entityIdsWithProjects,
+      entity: state.entity,
+      projects: state.projects,
+    ));
   }
 
   // Picking A then quickly B must not let A's slower response land on top of
@@ -66,6 +94,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     _projectToken++;
     emit(CreateDeliveryReceiptState(
       entities: state.entities,
+      entityIdsWithProjects: state.entityIdsWithProjects,
       entity: entity,
       loading: true,
     ));
@@ -108,10 +137,10 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
   /// Quantity exactly as typed. Empty clears the line; anything that isn't a
   /// number marks the row invalid (and blocks submit) instead of becoming 0.
   void setQuantityText(String projectItemId, String raw) {
-    final invalid = Set<String>.from(state.invalid);
+    final invalid = Map<String, String>.from(state.invalid);
     final parsed = parseLocalizedNumber(raw);
     if (raw.trim().isNotEmpty && (parsed == null || parsed < 0)) {
-      invalid.add(projectItemId);
+      invalid[projectItemId] = raw;
       emit(state.copyWith(invalid: invalid));
       return;
     }

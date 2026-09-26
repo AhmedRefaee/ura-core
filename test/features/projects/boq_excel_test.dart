@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ura_core/features/projects/logic/boq_excel.dart';
@@ -104,7 +106,7 @@ void main() {
     }
   });
 
-  test('an empty project exports a fill-in template that imports once filled', () {
+  test('an empty project exports the fill-in model: headers, formulas, nothing else', () {
     final template = buildBoqWorkbook(projectName: 'مشروع', entityName: 'جهة', items: const []);
     final out = Platform.environment['BOQ_TEMPLATE_OUT'];
     if (out != null) File(out).writeAsBytesSync(template);
@@ -112,21 +114,25 @@ void main() {
     final empty = parseBoqWorkbook(template);
     expect(empty.noHeaderFound, isFalse, reason: 'the template must carry the header row');
     expect(empty.items, isEmpty);
-    expect(empty.errors, isEmpty, reason: 'numbered blank rows are not errors');
+    expect(empty.errors, isEmpty, reason: 'spare formula rows are not errors');
 
-    // Fill it the way a person would in Excel.
+    final sheet = Excel.decodeBytes(template).tables.values.first;
+    final headerRow = sheet.rows.indexWhere((r) => r.any((c) => c?.value.toString() == 'البند'));
+    expect(
+      [for (final c in sheet.rows[headerRow]) c?.value.toString()].whereType<String>().toList(),
+      boqHeaders,
+    );
+
+    // Fill one line the way a person would in Excel.
     final excel = Excel.decodeBytes(template);
-    final sheet = excel.tables.values.first;
-    final rows = sheet.rows;
-    final titleRow = rows.indexWhere((r) => r.any((c) => c?.value.toString().startsWith('جدول الكميات') ?? false));
-    final firstItemRow = titleRow + 2;
-    void set(int r, int c, CellValue v) =>
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value = v;
-    set(titleRow, 0, TextCellValue('جدول الكميات : المخبوزات'));
-    set(firstItemRow, 1, TextCellValue('خبز عربي'));
-    set(firstItemRow, 3, IntCellValue(100));
-    set(firstItemRow, 4, TextCellValue('كيس'));
-    set(firstItemRow, 5, DoubleCellValue(1.25));
+    final s = excel.tables.values.first;
+    final r = headerRow + 1;
+    void set(int c, CellValue v) => s.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value = v;
+    set(0, TextCellValue('المخبوزات'));
+    set(1, TextCellValue('خبز عربي'));
+    set(3, IntCellValue(100));
+    set(4, TextCellValue('كيس'));
+    set(5, DoubleCellValue(1.25));
 
     final filled = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
     expect(filled.errors, isEmpty);
@@ -134,7 +140,91 @@ void main() {
     expect(item.category, 'المخبوزات');
     expect(item.itemName, 'خبز عربي');
     expect(item.quantity, 100);
-    expect(item.totalPrice, 125);
+    expect(item.unitPrice, 1.25);
+    expect(item.totalPrice, 125, reason: 'formula total is ignored and recomputed');
+  });
+
+  test('reads the PDF-style order sheet: الحزمة per row, Persian letters, no total column', () {
+    final excel = Excel.createExcel();
+    final sheet = excel['Sheet1'];
+    void row(int r, List<Object> cells) {
+      for (var c = 0; c < cells.length; c++) {
+        final v = cells[c];
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value =
+            v is num ? DoubleCellValue(v.toDouble()) : TextCellValue(v.toString());
+      }
+    }
+
+    // Exactly the header text of طلبية_مواد_مختلطة (note the Persian ی/ھ).
+    row(0, ['م', 'الحزمة', 'البند', 'وصف البند', 'الكمیة', 'الوحدة', 'السعر الافرادي']);
+    row(1, [1, 'الحلیب ومشتقاتھ', 'لبنة', 'جودة عالیة / كرتون 4*2.75كیلو جرام', 5, 'كرتون', 180]);
+    row(2, [8, 'مجمدات', 'ھاش براون', 'مجمدة إنتاج جديد', 5, 'كرتون', 140]);
+    row(3, [36, 'الحلويات والمكسرات', 'مرقوق', 'درجة أولى', 600, 'بكت', 14]);
+
+    final result = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
+    expect(result.errors, isEmpty);
+    expect(result.items.map((i) => i.category).toList(), ['الحليب ومشتقاته', 'مجمدات', 'الحلويات والمكسرات']);
+    final labneh = result.items.first;
+    expect(labneh.itemName, 'لبنة');
+    expect(labneh.quantity, 5);
+    expect(labneh.unitPrice, 180);
+    expect(labneh.totalPrice, 900);
+    expect(result.items[2].totalPrice, 8400);
+    expect(result.categories.length, 3);
+  });
+
+  test('opens files saved by Microsoft Excel (numFmtId 41-44 in styles.xml)', () {
+    // Our export, then styles.xml edited the way Excel rewrites it: a custom
+    // accounting format declared with id 43, and cells pointing at 43/44.
+    final original = buildBoqWorkbook(projectName: 'م', entityName: 'ج', items: const [
+      ProjectItem(id: '', projectId: '', category: 'مجمدات', itemName: 'دجاج', quantity: 60, unit: 'كرتون', unitPrice: 123),
+    ]);
+    final archive = ZipDecoder().decodeBytes(original);
+    final styles = utf8.decode(archive.findFile('xl/styles.xml')!.content as List<int>);
+    const accounting = r'<numFmt numFmtId="43" formatCode="_(* #,##0.00_);_(* \(#,##0.00\);_(* &quot;-&quot;??_);_(@_)"/>';
+    var excelSaved = styles.contains('<numFmts')
+        ? styles.replaceFirst(RegExp(r'<numFmts[^>]*>'), '<numFmts count="1">$accounting')
+        : styles.replaceFirst('<fonts', '<numFmts count="1">$accounting</numFmts><fonts');
+    excelSaved = excelSaved.replaceAll('numFmtId="4"', 'numFmtId="43"');
+    excelSaved = excelSaved.replaceFirst('numFmtId="0"', 'numFmtId="44"');
+    final rebuilt = Archive();
+    for (final f in archive.files) {
+      if (f.name == 'xl/styles.xml') {
+        final data = utf8.encode(excelSaved);
+        rebuilt.addFile(ArchiveFile(f.name, data.length, data));
+      } else {
+        rebuilt.addFile(f);
+      }
+    }
+    final bytes = Uint8List.fromList(ZipEncoder().encode(rebuilt)!);
+
+    expect(() => Excel.decodeBytes(bytes), throwsA(anything), reason: 'reproduces the crash seen in the app');
+
+    final result = parseBoqWorkbook(bytes);
+    expect(result.errors, isEmpty);
+    expect(result.items.single.itemName, 'دجاج');
+    expect(result.items.single.totalPrice, 7380);
+  });
+
+  test('opens files whose sheet paths are absolute (LibreOffice / openpyxl)', () {
+    final original = buildBoqWorkbook(projectName: 'م', entityName: 'ج', items: const [
+      ProjectItem(id: '', projectId: '', itemName: 'تونة', quantity: 5, unit: 'كرتون', unitPrice: 170),
+    ]);
+    final archive = ZipDecoder().decodeBytes(original);
+    final rebuilt = Archive();
+    for (final f in archive.files) {
+      if (f.name == 'xl/_rels/workbook.xml.rels') {
+        final xml = utf8.decode(f.content as List<int>).replaceAll('Target="', 'Target="/xl/');
+        final data = utf8.encode(xml);
+        rebuilt.addFile(ArchiveFile(f.name, data.length, data));
+      } else {
+        rebuilt.addFile(f);
+      }
+    }
+    final bytes = Uint8List.fromList(ZipEncoder().encode(rebuilt)!);
+
+    expect(() => Excel.decodeBytes(bytes), throwsA(anything));
+    expect(parseBoqWorkbook(bytes).items.single.totalPrice, 850);
   });
 
   test('bad rows are reported with their Excel row number and block the import', () {

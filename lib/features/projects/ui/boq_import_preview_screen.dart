@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import '../../../shared/utils/quantity_format.dart';
 import '../logic/boq_excel_cubit.dart';
-import 'boq_totals_block.dart';
+import 'boq_table.dart';
 
 /// Shows what an imported quotation file will become before anything is
 /// written. Import replaces every current line, so the confirm button stays
@@ -69,35 +68,12 @@ class BoqImportPreviewScreen extends StatelessWidget {
                     ]),
                   ),
                 ],
-                for (final category in categories)
+                if (result.items.isNotEmpty)
                   Card(
                     margin: const EdgeInsets.only(top: 12),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                            child: Text(
-                              '${category.name.isEmpty ? 'بدون فئة' : category.name} (${category.items.length})',
-                              style: theme.textTheme.titleSmall,
-                            ),
-                          ),
-                          for (final item in category.items)
-                            ListTile(
-                              dense: true,
-                              title: Text(item.itemName),
-                              subtitle: Text([
-                                if (item.description != null) item.description!,
-                                '${formatQty(item.quantity)} ${item.unit}',
-                                if (item.unitPrice != null) '× ${formatMoney(item.unitPrice!)}',
-                              ].join(' · ')),
-                              trailing: item.totalPrice == null ? null : Text(formatMoney(item.totalPrice!)),
-                            ),
-                          if (category.hasPrices) BoqTotalsBlock(totals: category.totals),
-                        ],
-                      ),
+                      padding: const EdgeInsets.all(8),
+                      child: BoqTable(items: result.items, showPrices: true),
                     ),
                   ),
               ],

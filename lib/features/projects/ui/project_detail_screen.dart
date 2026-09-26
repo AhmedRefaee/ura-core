@@ -13,7 +13,7 @@ import '../logic/boq_excel.dart';
 import '../logic/boq_excel_cubit.dart';
 import '../logic/project_detail_cubit.dart';
 import 'boq_import_preview_screen.dart';
-import 'boq_totals_block.dart';
+import 'boq_table.dart';
 import 'letterhead_picker.dart';
 
 void openProjectDetail(BuildContext context, Project project, Entity entity) {
@@ -313,45 +313,15 @@ class _ItemsCard extends StatelessWidget {
                 child: Text('لا توجد بنود بعد'),
               )
             else ...[
-              for (final category in groupByCategory(state.items)) ...[
-                if (category.name.isNotEmpty)
-                  Container(
-                    color: theme.colorScheme.surfaceContainerHighest,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
-                    margin: const EdgeInsets.only(top: 8),
-                    child: Text(
-                      category.name,
-                      style: theme.textTheme.labelLarge,
-                    ),
-                  ),
-                for (final item in category.items)
-                  ListTile(
-                    title: Text(item.itemName),
-                    subtitle: Text(
-                      [
-                        if (item.description != null &&
-                            item.description!.isNotEmpty)
-                          item.description!,
-                        '${formatQty(item.quantity)} ${item.unit}',
-                        if (item.unitPrice != null)
-                          'سعر الوحدة: ${formatQty(item.unitPrice!)}',
-                      ].join(' · '),
-                    ),
-                    trailing: item.totalPrice == null
-                        ? null
-                        : Text(formatQty(item.totalPrice!)),
-                    onTap: state.canEditItems ? () => onEdit(item) : null,
-                    onLongPress: state.canEditItems
-                        ? () => onDelete(item)
-                        : null,
-                  ),
-                if (category.hasPrices) BoqTotalsBlock(totals: category.totals),
-              ],
-              if (showPrices && groupByCategory(state.items).length > 1)
-                BoqTotalsBlock(totals: BoqTotals.of(state.items), grand: true),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: BoqTable(
+                  items: state.items,
+                  showPrices: showPrices || state.canEditItems,
+                  onTap: state.canEditItems ? onEdit : null,
+                  onLongPress: state.canEditItems ? onDelete : null,
+                ),
+              ),
               if (state.canEditItems)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),

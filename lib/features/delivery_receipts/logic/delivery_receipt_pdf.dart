@@ -47,7 +47,6 @@ class DeliveryReceiptPdf {
   static Future<Uint8List> build({
     required String entityName,
     required String projectName,
-    required String repName,
     required DateTime date,
     required List<ReceiptPdfLine> lines,
     Uint8List? clientLogoBytes,
@@ -110,7 +109,7 @@ class DeliveryReceiptPdf {
               ),
             ),
           pw.SizedBox(height: 10),
-          _signatures(repName),
+          _signatures(),
         ],
       ),
     );
@@ -222,8 +221,11 @@ class DeliveryReceiptPdf {
     );
   }
 
-  static pw.Widget _signatures(String repName) {
-    pw.Widget block(String title, String name) => pw.Expanded(
+  /// Both blocks are left blank for a handwritten name and signature at the
+  /// moment of delivery -- the person signing isn't necessarily the rep who
+  /// filed the سند in the app, so pre-filling a name here would be wrong.
+  static pw.Widget _signatures() {
+    pw.Widget block(String title) => pw.Expanded(
           child: pw.Padding(
             padding: const pw.EdgeInsets.all(8),
             child: pw.Column(
@@ -231,7 +233,7 @@ class DeliveryReceiptPdf {
               children: [
                 _t(title, style: pw.TextStyle(fontSize: 10.5, fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 10),
-                _t('الاسم / $name', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
+                _t('الاسم /', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 14),
                 _t('التوقيع /', style: pw.TextStyle(fontSize: 10, fontWeight: pw.FontWeight.bold)),
                 pw.SizedBox(height: 6),
@@ -246,8 +248,8 @@ class DeliveryReceiptPdf {
         child: pw.Row(
           crossAxisAlignment: pw.CrossAxisAlignment.start,
           children: [
-            block('مندوب الشركة', repName),
-            block('مسئول الموقع', ''),
+            block('مندوب الشركة'),
+            block('مسئول الموقع'),
           ],
         ),
       ),

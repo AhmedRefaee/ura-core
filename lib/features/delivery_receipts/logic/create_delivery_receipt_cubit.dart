@@ -190,7 +190,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     emit(state.copyWith(quantities: next, clearError: true));
   }
 
-  Future<void> submit({required String repName, String? notes}) async {
+  Future<void> submit({String? notes}) async {
     final entity = state.entity;
     final project = state.project;
     if (entity == null || project == null || !state.canSubmit) return;
@@ -202,7 +202,6 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       final pdf = await DeliveryReceiptPdf.build(
         entityName: entity.name,
         projectName: project.name,
-        repName: repName,
         date: DateTime.now(),
         clientLogoBytes: await _fetchLetterhead(project.letterheadImageUrl),
         notes: notes,

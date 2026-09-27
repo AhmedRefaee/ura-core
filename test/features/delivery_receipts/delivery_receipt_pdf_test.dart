@@ -15,7 +15,6 @@ void main() {
     final bytes = await DeliveryReceiptPdf.build(
       entityName: 'صندوق التنمية العقارية',
       projectName: 'توريد أثاث المقر الرئيسي',
-      repName: 'أحمد رفاعي',
       date: DateTime(2026, 9, 26),
       notes: 'تم التسليم في الموقع',
       clientLogoBytes: Platform.environment['RECEIPT_CLIENT_LOGO'] == null

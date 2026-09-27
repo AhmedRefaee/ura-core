@@ -5,8 +5,6 @@ import '../../../core/di/injection.dart';
 import '../../../shared/models/entity.dart';
 import '../../../shared/models/project_item.dart';
 import '../../../shared/utils/quantity_format.dart';
-import '../../auth/logic/auth_cubit.dart';
-import '../../auth/logic/auth_state.dart';
 import '../../projects/logic/boq_excel.dart';
 import '../logic/create_delivery_receipt_cubit.dart';
 
@@ -569,12 +567,32 @@ class _ItemsStepState extends State<_ItemsStep> {
 
   void _submit() {
     FocusManager.instance.primaryFocus?.unfocus();
-    final auth = context.read<AuthCubit>().state;
-    final repName = auth is AuthAuthenticated ? auth.profile.fullName : '';
-    context.read<CreateDeliveryReceiptCubit>().submit(
-      repName: repName,
-      notes: _notes,
-    );
+    context.read<CreateDeliveryReceiptCubit>().submit(notes: _notes);
+  }
+
+  Future<void> _cancel(BuildContext context) async {
+    final state = widget.state;
+    if (state.selectedCount > 0) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('إلغاء السند؟'),
+          content: const Text('لم يتم حفظ السند بعد، وسيتم تجاهل البنود التي حددتها.'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')),
+            FilledButton.tonal(
+              style: FilledButton.styleFrom(
+                foregroundColor: Theme.of(ctx).colorScheme.error,
+              ),
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('إلغاء السند'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+    if (context.mounted) Navigator.of(context).pop(false);
   }
 
   @override
@@ -675,6 +693,7 @@ class _ItemsStepState extends State<_ItemsStep> {
             notes: _notes,
             onEditNotes: _editNotes,
             onSubmit: _submit,
+            onCancel: () => _cancel(context),
             // The bad row may be scrolled away; this filter shows it.
             onReviewInvalid: () => setState(() {
               _selectedOnly = true;
@@ -846,12 +865,14 @@ class _SubmitBar extends StatelessWidget {
   final String notes;
   final VoidCallback onEditNotes;
   final VoidCallback onSubmit;
+  final VoidCallback onCancel;
   final VoidCallback onReviewInvalid;
   const _SubmitBar({
     required this.state,
     required this.notes,
     required this.onEditNotes,
     required this.onSubmit,
+    required this.onCancel,
     required this.onReviewInvalid,
   });
 
@@ -909,30 +930,49 @@ class _SubmitBar extends StatelessWidget {
                 ],
               ),
               const SizedBox(height: 8),
-              SizedBox(
-                height: 52,
-                child: FilledButton.icon(
-                  onPressed: state.canSubmit ? onSubmit : null,
-                  icon: state.submitting
-                      ? SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2.4,
-                            color: scheme.onPrimary,
-                          ),
-                        )
-                      : const Icon(Icons.picture_as_pdf_outlined),
-                  label: Text(
-                    state.submitting
-                        ? 'جارٍ الحفظ...'
-                        : (context.read<CreateDeliveryReceiptCubit>().launch.isEdit ? 'حفظ التعديل' : 'إنشاء السند'),
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: state.submitting ? null : onCancel,
+                        style: OutlinedButton.styleFrom(foregroundColor: scheme.error),
+                        icon: const Icon(Icons.close),
+                        label: const Text('إلغاء'),
+                      ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    flex: 2,
+                    child: SizedBox(
+                      height: 52,
+                      child: FilledButton.icon(
+                        onPressed: state.canSubmit ? onSubmit : null,
+                        icon: state.submitting
+                            ? SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2.4,
+                                  color: scheme.onPrimary,
+                                ),
+                              )
+                            : const Icon(Icons.check_circle_outline),
+                        label: Text(
+                          state.submitting
+                              ? 'جارٍ الحفظ...'
+                              : (context.read<CreateDeliveryReceiptCubit>().launch.isEdit ? 'تأكيد التعديل' : 'تأكيد وإنشاء السند'),
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),

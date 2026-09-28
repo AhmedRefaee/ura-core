@@ -1,3 +1,4 @@
+import { useEffect, useRef } from 'react';
 import type { AuditLogEntry, OrderStatus } from '../types/domain';
 import { orderStatusLabel, userRoleLabel } from '../types/domain';
 import { orderStatusColor } from '../lib/statusColors';
@@ -19,9 +20,23 @@ interface AuditTimelineProps {
   auditLog: AuditLogEntry[];
   orderStatus: OrderStatus;
   error: boolean;
+  hoveredStatus: OrderStatus | null;
+  onHoverEntry: (status: OrderStatus | null) => void;
 }
 
-export function AuditTimeline({ auditLog, orderStatus, error }: AuditTimelineProps) {
+export function AuditTimeline({ auditLog, orderStatus, error, hoveredStatus, onHoverEntry }: AuditTimelineProps) {
+  const rowRefs = useRef(new Map<string, HTMLLIElement>());
+
+  // Scrolling here is a no-op (block: 'nearest') when the row is already
+  // fully visible, so this is safe to run regardless of whether the hover
+  // originated from this list or from the stepper above it.
+  useEffect(() => {
+    if (!hoveredStatus) return;
+    const match = auditLog.find((e) => e.newStatus === hoveredStatus);
+    if (!match) return;
+    rowRefs.current.get(match.id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }, [hoveredStatus, auditLog]);
+
   if (error) return <p className="text-sm text-error">تعذر تحميل السجل الزمني</p>;
   if (auditLog.length === 0) return <p className="text-sm text-text-low">لا يوجد سجل بعد</p>;
 
@@ -40,13 +55,26 @@ export function AuditTimeline({ auditLog, orderStatus, error }: AuditTimelinePro
           <span className="font-semibold">{total}</span>
         </div>
       )}
-      <ul className="space-y-3">
+      <ul className="space-y-1">
         {auditLog.map((entry, i) => {
           const next = auditLog[i + 1];
           const stepDuration = next ? durationBetween(entry.serverTimestamp, next.serverTimestamp) : null;
           const color = entry.newStatus ? orderStatusColor[entry.newStatus].text : '#64748B';
+          const bg = entry.newStatus ? orderStatusColor[entry.newStatus].bg : undefined;
+          const isHighlighted = entry.newStatus != null && entry.newStatus === hoveredStatus;
           return (
-            <li key={entry.id} className="flex items-start gap-2">
+            <li
+              key={entry.id}
+              data-testid={`audit-row-${entry.id}`}
+              ref={(el) => {
+                if (el) rowRefs.current.set(entry.id, el);
+                else rowRefs.current.delete(entry.id);
+              }}
+              className="flex items-start gap-2 rounded-input p-2 -mx-2 transition-colors duration-150 ease-out"
+              style={{ backgroundColor: isHighlighted ? bg : undefined }}
+              onMouseEnter={() => entry.newStatus && onHoverEntry(entry.newStatus)}
+              onMouseLeave={() => onHoverEntry(null)}
+            >
               <div className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: color }} />
               <div className="flex-1 min-w-0">
                 <div className="flex items-center justify-between gap-2">

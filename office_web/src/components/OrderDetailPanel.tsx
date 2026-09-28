@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { useOrderDetail } from '../hooks/useOrderDetail';
 import { resolveSignedUrl } from '../api/storage';
 import { getStatusSteps, getCurrentStepIndex } from '../lib/statusSteps';
+import { buildStepTimeline } from '../lib/stepTimeline';
 import { formatDate } from '../lib/formatDate';
 import { StatusChip } from './StatusChip';
 import { StatusProgress } from './StatusProgress';
@@ -9,7 +10,7 @@ import { AuditTimeline } from './AuditTimeline';
 import { ItemsTable } from './ItemsTable';
 import { StatesPanel } from './StatesPanel';
 import { orderDirectionLabel } from '../types/domain';
-import type { DeliveryReceipt } from '../types/domain';
+import type { DeliveryReceipt, OrderStatus } from '../types/domain';
 
 function ReceiptRow({ receipt }: { receipt: DeliveryReceipt }) {
   const [url, setUrl] = useState<string | null>(null);
@@ -38,16 +39,18 @@ function ReceiptRow({ receipt }: { receipt: DeliveryReceipt }) {
 
 export function OrderDetailPanel({ orderId, onClose }: { orderId: string; onClose: () => void }) {
   const { order, auditLog, receipts, isLoading, isError, error, auditLogError, receiptsError, refetch } = useOrderDetail(orderId);
+  const [hoveredStatus, setHoveredStatus] = useState<OrderStatus | null>(null);
 
   if (isLoading) return <StatesPanel kind="loading" />;
   if (isError || !order) return <StatesPanel kind="error" message={(error as Error)?.message} onRetry={refetch} />;
 
   const steps = getStatusSteps(order);
   const currentIndex = getCurrentStepIndex(steps, order);
+  const stepTimeline = buildStepTimeline(steps, auditLog);
 
   return (
     <div className="w-[560px] shrink-0 border-r border-border-subtle bg-surface-card overflow-y-auto">
-      <div className="flex items-center justify-between p-4 border-b border-border-subtle">
+      <div className="sticky top-0 z-20 flex items-center justify-between p-4 border-b border-border-subtle bg-surface-card">
         <span className="font-mono text-sm text-text-medium">{order.referenceCode ?? order.id}</span>
         <button type="button" onClick={onClose} className="text-text-low hover:text-text-high">✕</button>
       </div>
@@ -63,12 +66,24 @@ export function OrderDetailPanel({ orderId, onClose }: { orderId: string; onClos
 
       <div className="p-4 border-b border-border-subtle">
         <h3 className="text-sm font-semibold mb-3">تقدم الطلب</h3>
-        <StatusProgress steps={steps} currentIndex={currentIndex} />
+        <StatusProgress
+          steps={steps}
+          currentIndex={currentIndex}
+          stepTimeline={stepTimeline}
+          hoveredStatus={hoveredStatus}
+          onHoverStatus={setHoveredStatus}
+        />
       </div>
 
       <div className="p-4 border-b border-border-subtle">
         <h3 className="text-sm font-semibold mb-2">السجل الزمني</h3>
-        <AuditTimeline auditLog={auditLog} orderStatus={order.status} error={auditLogError} />
+        <AuditTimeline
+          auditLog={auditLog}
+          orderStatus={order.status}
+          error={auditLogError}
+          hoveredStatus={hoveredStatus}
+          onHoverEntry={setHoveredStatus}
+        />
       </div>
 
       <div className="p-4 border-b border-border-subtle">

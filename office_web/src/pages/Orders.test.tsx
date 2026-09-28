@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Orders from './Orders';
 import type { Order } from '../types/domain';
@@ -20,6 +20,14 @@ const ordersMock = vi.fn();
 vi.mock('../hooks/useOrders', () => ({ useOrders: () => ordersMock() }));
 vi.mock('../hooks/useProfile', () => ({ useProfile: () => ({ data: { id: 'u1', fullName: 'مشرف', phone: null, role: 'verifier', isApproved: true } }) }));
 vi.mock('../hooks/useAuth', () => ({ signOut: vi.fn() }));
+vi.mock('../components/OrderDetailPanel', () => ({
+  OrderDetailPanel: ({ orderId, onClose }: { orderId: string; onClose: () => void }) => (
+    <div>
+      <span>لوحة تفاصيل الطلب {orderId}</span>
+      <button onClick={onClose}>إغلاق</button>
+    </div>
+  ),
+}));
 
 function renderOrders() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -58,5 +66,23 @@ describe('Orders page', () => {
     });
     renderOrders();
     await waitFor(() => expect(screen.getByText('وزارة الصحة')).toBeInTheDocument());
+  });
+
+  it('shows the detail panel beside the table when the URL has an order id', async () => {
+    ordersMock.mockReturnValue({
+      data: [order({ id: 'a' })], isLoading: false, isError: false, refetch: vi.fn(),
+    });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/orders/a']}>
+          <Routes>
+            <Route path="/orders/:orderId?" element={<Orders />} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    await waitFor(() => expect(screen.getByText('لوحة تفاصيل الطلب a')).toBeInTheDocument());
+    expect(screen.getByText('وزارة الصحة')).toBeInTheDocument();
   });
 });

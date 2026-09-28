@@ -3,6 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Shell } from '../components/Shell';
 import { OrdersToolbar } from '../components/OrdersToolbar';
 import { OrdersTable } from '../components/OrdersTable';
+import { OrderDetailPanel } from '../components/OrderDetailPanel';
 import { StatesPanel } from '../components/StatesPanel';
 import { useOrders } from '../hooks/useOrders';
 import { filterOrdersByQuery, filterOrdersByDirection, sortOrders, groupOrders } from '../lib/orderFilters';
@@ -60,6 +61,7 @@ export default function Orders() {
             <OrdersTable orders={visible} selectedId={orderId ?? null} onSelect={(id) => navigate(`/orders/${id}`)} />
           </div>
         </div>
+        {orderId && <OrderDetailPanel orderId={orderId} onClose={() => navigate('/orders')} />}
       </div>
     </Shell>
   );

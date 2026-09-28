@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { ProtectedRoute } from './ProtectedRoute';
 
 const authMock = vi.fn();
@@ -29,5 +29,27 @@ describe('ProtectedRoute', () => {
     render(<MemoryRouter><ProtectedRoute><p>محتوى</p></ProtectedRoute></MemoryRouter>);
     expect(screen.queryByText('محتوى')).not.toBeInTheDocument();
     expect(screen.getByText(/هذا النظام غير متاح حالياً لدورك/)).toBeInTheDocument();
+  });
+
+  it('does not render children while profile is loading with an authenticated session', () => {
+    authMock.mockReturnValue({ session: { user: { id: 'u1' } }, loading: false });
+    profileMock.mockReturnValue({ data: undefined, isLoading: true });
+    render(<MemoryRouter><ProtectedRoute><p>محتوى</p></ProtectedRoute></MemoryRouter>);
+    expect(screen.queryByText('محتوى')).not.toBeInTheDocument();
+  });
+
+  it('redirects unauthenticated users to /login', () => {
+    authMock.mockReturnValue({ session: null, loading: false });
+    profileMock.mockReturnValue({ data: undefined, isLoading: false });
+    render(
+      <MemoryRouter initialEntries={['/protected']}>
+        <Routes>
+          <Route path="/login" element={<p>login page</p>} />
+          <Route path="/protected" element={<ProtectedRoute><p>محتوى</p></ProtectedRoute>} />
+        </Routes>
+      </MemoryRouter>
+    );
+    expect(screen.getByText('login page')).toBeInTheDocument();
+    expect(screen.queryByText('محتوى')).not.toBeInTheDocument();
   });
 });

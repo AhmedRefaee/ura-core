@@ -24,7 +24,7 @@ export default {
         'error-bg': '#FEF2F2',
       },
       fontFamily: {
-        sans: ['"IBM Plex Sans Arabic"', '"IBM Plex Sans"', 'sans-serif'],
+        sans: ['"Cairo"', 'sans-serif'],
       },
       borderRadius: {
         input: '4px',

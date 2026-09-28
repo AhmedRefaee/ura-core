@@ -17,6 +17,14 @@ export const orderStatusLabel: Record<OrderStatus, string> = {
   delivered_to_storage: 'تم الاستلام في المخزن',
 };
 
+export const userRoleLabel: Record<UserRole, string> = {
+  verifier: 'مشرف',
+  rep: 'مندوب',
+  storage_actor: 'أمين مخزن',
+  manager: 'مدير',
+  admin: 'مسؤول',
+};
+
 export interface Profile {
   id: string;
   fullName: string;

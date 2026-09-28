@@ -75,7 +75,9 @@ describe('OrderDetailPanel', () => {
       order: order({}), auditLog: [entry], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
     });
     render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
-    expect(screen.getByText('تم الاستلام')).toBeInTheDocument();
+    // Appears twice by design: once as the progress-stepper step label, once
+    // as the timeline entry label — same as the reference screenshots.
+    expect(screen.getAllByText('تم الاستلام').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText('mark_picked_up')).not.toBeInTheDocument();
   });
 

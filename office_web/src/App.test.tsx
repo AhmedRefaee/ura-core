@@ -1,10 +1,17 @@
-import { describe, it, expect } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
 import App from './App';
 
+vi.mock('./hooks/useAuth', () => ({
+  useAuth: () => ({ session: null, loading: false }),
+  signIn: vi.fn(),
+  signOut: vi.fn(),
+}));
+vi.mock('./hooks/useProfile', () => ({ useProfile: () => ({ data: undefined, isLoading: false }) }));
+
 describe('App', () => {
-  it('renders without crashing', () => {
+  it('redirects an unauthenticated visitor to the login page', () => {
     render(<App />);
-    expect(document.body).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'دخول إلى النظام' })).toBeInTheDocument();
   });
 });

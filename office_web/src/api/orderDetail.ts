@@ -9,8 +9,8 @@ export const ORDER_DETAIL_SELECT =
   'entity:entities(id, name, category, contact_name, contact_phone, address), ' +
   'rep:profiles!orders_rep_id_fkey(id, full_name, phone, role, is_approved, created_at), ' +
   'creator:profiles!orders_created_by_fkey(id, full_name, phone, role, is_approved, created_at), ' +
-  'order_items(id, order_id, inventory_id, quantity, final_quantity, is_custom, custom_description, ' +
-  'check_status, checked_by, was_unavailable_at_creation, ' +
+  'order_items(id, order_id, inventory_id, quantity, final_quantity, is_custom, custom_description, source_inventory_id, ' +
+  'check_status, checked_by, checked_at, ' +
   'inventory:inventory!order_items_inventory_id_fkey(id, item_name), ' +
   'checker:profiles!order_items_checked_by_fkey(id, full_name, phone, role, is_approved, created_at))';
 

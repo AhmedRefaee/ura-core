@@ -70,6 +70,7 @@ describe('fetchDeliveryReceipts', () => {
     const receipts = await mod.fetchDeliveryReceipts('o1');
     expect(from).toHaveBeenCalledWith('delivery_receipts');
     expect(eq).toHaveBeenCalledWith('order_id', 'o1');
+    expect(order).toHaveBeenCalledWith('created_at', { ascending: false });
     expect(receipts).toEqual([]);
   });
 });

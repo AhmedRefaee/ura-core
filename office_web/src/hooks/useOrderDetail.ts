@@ -23,8 +23,8 @@ export function useOrderDetail(orderId: string | null) {
     auditLog: auditLogQuery.data ?? [],
     receipts: receiptsQuery.data ?? [],
     isLoading: orderQuery.isLoading || auditLogQuery.isLoading || receiptsQuery.isLoading,
-    isError: orderQuery.isError,
-    error: orderQuery.error,
+    isError: orderQuery.isError || auditLogQuery.isError || receiptsQuery.isError,
+    error: orderQuery.error ?? auditLogQuery.error ?? receiptsQuery.error,
     refetch: () => {
       orderQuery.refetch();
       auditLogQuery.refetch();

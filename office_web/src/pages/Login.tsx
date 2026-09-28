@@ -1,11 +1,16 @@
 import { useState, type FormEvent } from 'react';
-import { signIn } from '../hooks/useAuth';
+import { Navigate, useNavigate } from 'react-router-dom';
+import { signIn, useAuth } from '../hooks/useAuth';
 
 export default function Login() {
+  const { session } = useAuth();
+  const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  if (session) return <Navigate to="/orders" replace />;
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -13,7 +18,11 @@ export default function Login() {
     setError(null);
     const { error } = await signIn(email, password);
     setSubmitting(false);
-    if (error) setError(error);
+    if (error) {
+      setError(error);
+      return;
+    }
+    navigate('/orders', { replace: true });
   }
 
   return (

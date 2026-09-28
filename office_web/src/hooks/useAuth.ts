@@ -21,8 +21,13 @@ export function useAuth() {
 }
 
 export async function signIn(email: string, password: string): Promise<{ error: string | null }> {
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
-  return { error: error ? error.message : null };
+  try {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    return { error: error ? error.message : null };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'An unexpected error occurred';
+    return { error: message };
+  }
 }
 
 export async function signOut(): Promise<void> {

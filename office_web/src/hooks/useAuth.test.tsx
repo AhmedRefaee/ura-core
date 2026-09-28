@@ -39,4 +39,18 @@ describe('signIn', () => {
     const result = await signIn('a@b.com', 'wrong');
     expect(result.error).toBe('Invalid login credentials');
   });
+
+  it('returns error message when signInWithPassword rejects (network error)', async () => {
+    const { supabase } = await import('../lib/supabase');
+    vi.mocked(supabase.auth.signInWithPassword).mockRejectedValue(new Error('Network timeout'));
+    const result = await signIn('a@b.com', 'pw');
+    expect(result.error).toBe('Network timeout');
+  });
+
+  it('returns generic fallback when rejection is not an Error object', async () => {
+    const { supabase } = await import('../lib/supabase');
+    vi.mocked(supabase.auth.signInWithPassword).mockRejectedValue('Unknown rejection');
+    const result = await signIn('a@b.com', 'pw');
+    expect(result.error).toBe('An unexpected error occurred');
+  });
 });

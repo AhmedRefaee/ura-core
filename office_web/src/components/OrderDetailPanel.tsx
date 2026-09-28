@@ -4,16 +4,22 @@ import { resolveSignedUrl } from '../api/storage';
 import { getStatusSteps, getCurrentStepIndex } from '../lib/statusSteps';
 import { StatusChip } from './StatusChip';
 import { StatesPanel } from './StatesPanel';
-import { orderDirectionLabel } from '../types/domain';
-import type { AuditLogEntry, DeliveryReceipt } from '../types/domain';
+import { orderDirectionLabel, orderStatusLabel } from '../types/domain';
+import type { AuditLogEntry, DeliveryReceipt, ItemCheckStatus } from '../types/domain';
 
-const ACTION_LABEL: Record<string, string> = {
-  order_created: 'تم إنشاء الطلب',
-  status_changed: 'تغيير حالة الطلب',
+const CHECK_STATUS_STYLE: Record<ItemCheckStatus, { label: string; color: string }> = {
+  checked: { label: 'تم الفحص', color: '#2E7D32' },
+  rejected: { label: 'مرفوض', color: '#B91C1C' },
+  pending: { label: 'قيد الانتظار', color: '#64748B' },
 };
 
+// Mirrors the real Flutter timeline widget: label off newStatus, not the raw
+// action string, since action values (status_change, mark_picked_up, ...)
+// don't map 1:1 to a readable label the way statuses do.
 function auditEntryLabel(entry: AuditLogEntry): string {
-  return ACTION_LABEL[entry.action] ?? entry.action;
+  if (entry.action === 'order_created') return 'تم إنشاء الطلب';
+  if (entry.newStatus && orderStatusLabel[entry.newStatus]) return orderStatusLabel[entry.newStatus];
+  return entry.action;
 }
 
 function formatDate(iso: string | null): string {
@@ -46,7 +52,7 @@ function ReceiptRow({ receipt }: { receipt: DeliveryReceipt }) {
 }
 
 export function OrderDetailPanel({ orderId, onClose }: { orderId: string; onClose: () => void }) {
-  const { order, auditLog, receipts, isLoading, isError, error, refetch } = useOrderDetail(orderId);
+  const { order, auditLog, receipts, isLoading, isError, error, auditLogError, receiptsError, refetch } = useOrderDetail(orderId);
 
   if (isLoading) return <StatesPanel kind="loading" />;
   if (isError || !order) return <StatesPanel kind="error" message={(error as Error)?.message} onRetry={refetch} />;
@@ -82,7 +88,9 @@ export function OrderDetailPanel({ orderId, onClose }: { orderId: string; onClos
 
       <div className="p-4 border-b border-border-subtle">
         <h3 className="text-sm font-semibold mb-2">السجل الزمني</h3>
-        {auditLog.length === 0 ? (
+        {auditLogError ? (
+          <p className="text-sm text-error">تعذر تحميل السجل الزمني</p>
+        ) : auditLog.length === 0 ? (
           <p className="text-sm text-text-low">لا يوجد سجل بعد</p>
         ) : (
           <ul className="space-y-1">
@@ -98,7 +106,9 @@ export function OrderDetailPanel({ orderId, onClose }: { orderId: string; onClos
 
       <div className="p-4 border-b border-border-subtle">
         <h3 className="text-sm font-semibold mb-2">سندات الاستلام</h3>
-        {receipts.length === 0 ? (
+        {receiptsError ? (
+          <p className="text-sm text-error">تعذر تحميل سندات الاستلام</p>
+        ) : receipts.length === 0 ? (
           <p className="text-sm text-text-low">لا توجد سندات استلام لهذا الطلب</p>
         ) : (
           <ul>
@@ -120,6 +130,11 @@ export function OrderDetailPanel({ orderId, onClose }: { orderId: string; onClos
               {item.wasUnavailableAtCreation && (
                 <span className="inline-block text-xs text-warning bg-warning-bg px-2 py-0.5 rounded-input mt-1">غير متوفر</span>
               )}
+              <p className="text-xs mt-1" style={{ color: CHECK_STATUS_STYLE[item.checkStatus].color }}>
+                {CHECK_STATUS_STYLE[item.checkStatus].label}
+                {item.checker && ` — ${item.checker.fullName}`}
+                {item.checkedAt && ` — ${formatDate(item.checkedAt)}`}
+              </p>
             </li>
           ))}
         </ul>

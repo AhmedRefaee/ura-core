@@ -60,6 +60,7 @@ export function mapOrderItem(row: any): OrderItem {
     customDescription: row.custom_description ?? null,
     checkStatus: asCheckStatus(row.check_status ?? null),
     checkedBy: row.checked_by ?? null,
+    checkedAt: row.checked_at ?? null,
     checker: row.checker ? mapProfile(row.checker) : null,
     wasUnavailableAtCreation: !!row.was_unavailable_at_creation,
   };

@@ -23,8 +23,13 @@ export function useOrderDetail(orderId: string | null) {
     auditLog: auditLogQuery.data ?? [],
     receipts: receiptsQuery.data ?? [],
     isLoading: orderQuery.isLoading || auditLogQuery.isLoading || receiptsQuery.isLoading,
-    isError: orderQuery.isError || auditLogQuery.isError || receiptsQuery.isError,
-    error: orderQuery.error ?? auditLogQuery.error ?? receiptsQuery.error,
+    // Only the core order fetch should blank the whole detail panel. The
+    // audit-log and سند queries are ancillary — a failure there is handled
+    // inline, per section, via auditLogError/receiptsError below.
+    isError: orderQuery.isError,
+    error: orderQuery.error,
+    auditLogError: auditLogQuery.isError,
+    receiptsError: receiptsQuery.isError,
     refetch: () => {
       orderQuery.refetch();
       auditLogQuery.refetch();

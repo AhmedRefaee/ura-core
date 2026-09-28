@@ -13,7 +13,7 @@ export function ProtectedRoute({ children }: { children: ReactNode }) {
 
   if (!session) return <Navigate to="/login" replace />;
 
-  if (profile?.role !== 'verifier') {
+  if (profile?.role !== 'verifier' || !profile.isApproved) {
     return (
       <div className="min-h-screen flex items-center justify-center text-center px-6">
         <p className="text-text-medium">هذا النظام غير متاح حالياً لدورك في المنظومة.</p>

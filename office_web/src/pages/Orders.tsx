@@ -41,11 +41,12 @@ export default function Orders() {
 
   const byTab = (orders ?? []).filter((o) => (activeTab === 'active' ? !DONE_STATUSES.has(o.status) : DONE_STATUSES.has(o.status)));
   const prepared = filterOrdersByDirection(filterOrdersByQuery(byTab, search), directionFilter);
-  const visible = groupMode ? groupOrders(prepared, groupMode, sortMode).flatMap((g) => g.orders) : sortOrders(prepared, sortMode);
+  const groups = groupMode ? groupOrders(prepared, groupMode, sortMode) : null;
+  const visible = groups ? null : sortOrders(prepared, sortMode);
 
   return (
     <Shell searchValue={search} onSearchChange={setSearch}>
-      <div className="h-full flex flex-row-reverse">
+      <div className="h-full flex">
         <div className="flex-1 min-w-0 flex flex-col">
           <OrdersToolbar
             sortMode={sortMode}
@@ -58,7 +59,18 @@ export default function Orders() {
             onTabChange={setActiveTab}
           />
           <div className="flex-1 overflow-auto">
-            <OrdersTable orders={visible} selectedId={orderId ?? null} onSelect={(id) => navigate(`/orders/${id}`)} />
+            {groups ? (
+              groups.map((group) => (
+                <section key={group.key} className="mb-2">
+                  <h2 className="sticky top-0 z-10 bg-surface-inset px-3 h-9 flex items-center text-sm font-semibold text-text-high border-b border-border-subtle">
+                    {group.label} — {group.orders.length} طلبات
+                  </h2>
+                  <OrdersTable orders={group.orders} selectedId={orderId ?? null} onSelect={(id) => navigate(`/orders/${id}`)} />
+                </section>
+              ))
+            ) : (
+              <OrdersTable orders={visible ?? []} selectedId={orderId ?? null} onSelect={(id) => navigate(`/orders/${id}`)} />
+            )}
           </div>
         </div>
         {orderId && <OrderDetailPanel orderId={orderId} onClose={() => navigate('/orders')} />}

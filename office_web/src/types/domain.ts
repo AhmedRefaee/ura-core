@@ -45,6 +45,7 @@ export interface OrderItem {
   customDescription: string | null;
   checkStatus: ItemCheckStatus;
   checkedBy: string | null;
+  checkedAt: string | null;
   checker: Profile | null;
   wasUnavailableAtCreation: boolean;
 }

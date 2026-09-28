@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import Orders from './Orders';
@@ -66,6 +66,22 @@ describe('Orders page', () => {
     });
     renderOrders();
     await waitFor(() => expect(screen.getByText('وزارة الصحة')).toBeInTheDocument());
+  });
+
+  it('shows a labeled section with a count per group when a group mode is selected', async () => {
+    ordersMock.mockReturnValue({
+      data: [
+        order({ id: 'a', entityId: 'e1', entity: { id: 'e1', name: 'وزارة الصحة', category: 'outgoing', contactName: null, contactPhone: null, address: null } }),
+        order({ id: 'b', entityId: 'e1', entity: { id: 'e1', name: 'وزارة الصحة', category: 'outgoing', contactName: null, contactPhone: null, address: null } }),
+        order({ id: 'c', entityId: 'e2', entity: { id: 'e2', name: 'وزارة التعليم', category: 'outgoing', contactName: null, contactPhone: null, address: null } }),
+      ],
+      isLoading: false, isError: false, refetch: vi.fn(),
+    });
+    renderOrders();
+    fireEvent.change(screen.getByLabelText('التجميع'), { target: { value: 'entity' } });
+
+    expect(await screen.findByText('وزارة الصحة — 2 طلبات')).toBeInTheDocument();
+    expect(screen.getByText('وزارة التعليم — 1 طلبات')).toBeInTheDocument();
   });
 
   it('shows the detail panel beside the table when the URL has an order id', async () => {

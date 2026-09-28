@@ -19,7 +19,7 @@ function order(overrides: Partial<Order>): Order {
     items: [{
       id: 'i1', orderId: 'o1', inventoryId: null, inventoryName: 'أكياس أرز', quantity: 5,
       finalQuantity: null, isCustom: false, customDescription: null, checkStatus: 'pending',
-      checkedBy: null, checker: null, wasUnavailableAtCreation: false,
+      checkedBy: null, checkedAt: null, checker: null, wasUnavailableAtCreation: false,
     }],
     ...overrides,
   };
@@ -64,6 +64,58 @@ describe('OrderDetailPanel', () => {
     });
     render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
     expect(screen.getByText('لا توجد سندات استلام لهذا الطلب')).toBeInTheDocument();
+  });
+
+  it('shows the status label (not the raw action string) for an entry with a recognized newStatus', () => {
+    const entry: AuditLogEntry = {
+      id: 'a2', orderId: 'o1', action: 'mark_picked_up', oldStatus: 'assigned', newStatus: 'picked_up',
+      performer: null, notes: null, serverTimestamp: '2026-09-28T10:10:00Z',
+    };
+    detailMock.mockReturnValue({
+      order: order({}), auditLog: [entry], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
+    });
+    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    expect(screen.getByText('تم الاستلام')).toBeInTheDocument();
+    expect(screen.queryByText('mark_picked_up')).not.toBeInTheDocument();
+  });
+
+  it('shows a checked-item indicator with the checker name', () => {
+    detailMock.mockReturnValue({
+      order: order({
+        items: [{
+          id: 'i1', orderId: 'o1', inventoryId: 'inv1', inventoryName: 'أكياس أرز', quantity: 5,
+          finalQuantity: null, isCustom: false, customDescription: null, checkStatus: 'checked',
+          checkedBy: 'u2', checkedAt: '2026-09-28T11:30:00Z',
+          checker: { id: 'u2', fullName: 'فاحص سالم', phone: null, role: 'verifier', isApproved: true },
+          wasUnavailableAtCreation: false,
+        }],
+      }),
+      auditLog: [], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
+    });
+    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    expect(screen.getByText(/تم الفحص/)).toBeInTheDocument();
+    expect(screen.getByText(/فاحص سالم/)).toBeInTheDocument();
+  });
+
+  it('shows a pending-item indicator without a checker name', () => {
+    detailMock.mockReturnValue({
+      order: order({}), // default item has checkStatus 'pending', checker null
+      auditLog: [], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
+    });
+    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    expect(screen.getByText('قيد الانتظار')).toBeInTheDocument();
+  });
+
+  it('shows an inline audit-log error instead of blanking the panel when the audit log fails to load', () => {
+    detailMock.mockReturnValue({
+      order: order({}), auditLog: [], receipts: [], isLoading: false, isError: false,
+      auditLogError: true, receiptsError: false, refetch: vi.fn(),
+    });
+    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    expect(screen.getByText('تعذر تحميل السجل الزمني')).toBeInTheDocument();
+    // The rest of the panel still renders normally.
+    expect(screen.getByText('وزارة الصحة')).toBeInTheDocument();
+    expect(screen.getByText('أكياس أرز')).toBeInTheDocument();
   });
 
   it('renders a سند row with a link once a PDF URL resolves', async () => {

@@ -31,6 +31,14 @@ describe('ProtectedRoute', () => {
     expect(screen.getByText(/هذا النظام غير متاح حالياً لدورك/)).toBeInTheDocument();
   });
 
+  it('shows the not-available screen instead of the content for a deactivated (unapproved) verifier', () => {
+    authMock.mockReturnValue({ session: { user: { id: 'u1' } }, loading: false });
+    profileMock.mockReturnValue({ data: { id: 'u1', fullName: 'م', phone: null, role: 'verifier', isApproved: false }, isLoading: false });
+    render(<MemoryRouter><ProtectedRoute><p>محتوى</p></ProtectedRoute></MemoryRouter>);
+    expect(screen.queryByText('محتوى')).not.toBeInTheDocument();
+    expect(screen.getByText(/هذا النظام غير متاح حالياً لدورك/)).toBeInTheDocument();
+  });
+
   it('does not render children while profile is loading with an authenticated session', () => {
     authMock.mockReturnValue({ session: { user: { id: 'u1' } }, loading: false });
     profileMock.mockReturnValue({ data: undefined, isLoading: true });

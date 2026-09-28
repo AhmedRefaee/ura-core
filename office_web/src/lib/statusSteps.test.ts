@@ -34,7 +34,7 @@ describe('getStatusSteps', () => {
       items: [{
         id: 'i1', orderId: 'o1', inventoryId: 'inv1', inventoryName: 'أكياس أرز', quantity: 5,
         finalQuantity: null, isCustom: false, customDescription: null, checkStatus: 'pending',
-        checkedBy: null, checker: null, wasUnavailableAtCreation: false,
+        checkedBy: null, checkedAt: null, checker: null, wasUnavailableAtCreation: false,
       }],
     });
     const steps = getStatusSteps(o);
@@ -47,7 +47,7 @@ describe('getStatusSteps', () => {
       items: [{
         id: 'i1', orderId: 'o1', inventoryId: null, inventoryName: null, quantity: 5,
         finalQuantity: null, isCustom: true, customDescription: 'صنف مخصص', checkStatus: 'pending',
-        checkedBy: null, checker: null, wasUnavailableAtCreation: false,
+        checkedBy: null, checkedAt: null, checker: null, wasUnavailableAtCreation: false,
       }],
     });
     const steps = getStatusSteps(o);

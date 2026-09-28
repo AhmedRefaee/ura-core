@@ -48,6 +48,25 @@ describe('mapOrderItem', () => {
     });
     expect(item.checkStatus).toBe('pending');
   });
+
+  it('maps checked_at into checkedAt', () => {
+    const item = mapOrderItem({
+      id: 'i1', order_id: 'o1', inventory_id: 'inv1', quantity: 5, final_quantity: null,
+      is_custom: false, custom_description: null, check_status: 'checked',
+      checked_by: 'u2', checked_at: '2026-09-28T11:30:00Z', was_unavailable_at_creation: false,
+      inventory: { id: 'inv1', item_name: 'أكياس أرز' }, checker: null,
+    });
+    expect(item.checkedAt).toBe('2026-09-28T11:30:00Z');
+  });
+
+  it('defaults checkedAt to null when checked_at is absent', () => {
+    const item = mapOrderItem({
+      id: 'i1', order_id: 'o1', inventory_id: null, quantity: 1, final_quantity: null,
+      is_custom: true, custom_description: 'صنف خاص', check_status: null,
+      checked_by: null, was_unavailable_at_creation: false, inventory: null, checker: null,
+    });
+    expect(item.checkedAt).toBeNull();
+  });
 });
 
 describe('mapOrder', () => {

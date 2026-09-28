@@ -1,32 +1,21 @@
-# React + TypeScript + Vite
+# office_web
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Verifier-facing web app for URA Core's order and سند workflows (React + Vite + TypeScript + Supabase).
 
-Currently, two official plugins are available:
+## Setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+1. `npm install`
+2. Copy `.env.example` to `.env.local` and fill in `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (same project as the Flutter app's `lib/config/supabase_config.dart`).
 
-## React Compiler
+## Commands
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- `npm run dev` — start the dev server
+- `npm test` — run the test suite (Vitest + Testing Library)
+- `npm run build` — type-check and build for production
+- `npm run lint` — lint the project
+- `npm run preview` — preview a production build locally
 
-## Expanding the Oxlint configuration
+## Notes
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
-
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+- Linting uses **ESLint**, not the Vite template's default Oxlint — the tool version available during setup didn't support Oxlint, so ESLint (`eslint.config.js`) was swapped in instead.
+- `src/components/OrdersTable.tsx` is a plain-React table, not TanStack Table — a v8→v9 breaking API change was discovered during implementation, so the table was hand-rolled instead of adding the dependency back.

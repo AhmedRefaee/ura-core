@@ -1,14 +1,4 @@
 import { describe, it, expect, vi } from 'vitest';
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { fetchOrderDetail, fetchAuditLog, fetchDeliveryReceipts, ORDER_DETAIL_SELECT } from './orderDetail';
-
-// eslint-disable-next-line @typescript-eslint/no-unused-vars
-function chain(resolvedValue: unknown) {
-  const order = vi.fn().mockResolvedValue(resolvedValue);
-  const eq = vi.fn().mockReturnValue({ order, single: vi.fn().mockResolvedValue(resolvedValue) });
-  const select = vi.fn().mockReturnValue({ eq });
-  return { select, eq, order };
-}
 
 describe('fetchOrderDetail', () => {
   it('queries orders by id with the detail select and maps the row', async () => {

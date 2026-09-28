@@ -5,6 +5,10 @@ export interface StatusStep {
   label: string;
 }
 
+function involvesStorage(order: Order): boolean {
+  return order.items.some((i) => i.inventoryId != null);
+}
+
 export function getStatusSteps(order: Order): StatusStep[] {
   switch (order.direction) {
     case 'inbound_external':
@@ -23,7 +27,7 @@ export function getStatusSteps(order: Order): StatusStep[] {
     default:
       return [
         { status: 'assigned', label: 'معين' },
-        { status: 'picked_up', label: 'تم الاستلام' },
+        { status: 'picked_up', label: involvesStorage(order) ? 'أُرسل من المخزن' : 'تم الاستلام' },
         { status: 'on_the_move', label: 'في الطريق' },
         { status: 'delivered', label: 'تم التسليم' },
       ];

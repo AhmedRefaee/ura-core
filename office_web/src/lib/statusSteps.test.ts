@@ -27,6 +27,32 @@ describe('getStatusSteps', () => {
     const steps = getStatusSteps(order({ direction: 'outbound' }));
     expect(steps.map((s) => s.status)).toEqual(['assigned', 'picked_up', 'on_the_move', 'delivered']);
   });
+
+  it('uses "أُرسل من المخزن" for picked_up when outbound order involves storage items', () => {
+    const o = order({
+      direction: 'outbound',
+      items: [{
+        id: 'i1', orderId: 'o1', inventoryId: 'inv1', inventoryName: 'أكياس أرز', quantity: 5,
+        finalQuantity: null, isCustom: false, customDescription: null, checkStatus: 'pending',
+        checkedBy: null, checker: null, wasUnavailableAtCreation: false,
+      }],
+    });
+    const steps = getStatusSteps(o);
+    expect(steps[1].label).toBe('أُرسل من المخزن');
+  });
+
+  it('uses "تم الاستلام" for picked_up when outbound order has no storage items', () => {
+    const o = order({
+      direction: 'outbound',
+      items: [{
+        id: 'i1', orderId: 'o1', inventoryId: null, inventoryName: null, quantity: 5,
+        finalQuantity: null, isCustom: true, customDescription: 'صنف مخصص', checkStatus: 'pending',
+        checkedBy: null, checker: null, wasUnavailableAtCreation: false,
+      }],
+    });
+    const steps = getStatusSteps(o);
+    expect(steps[1].label).toBe('تم الاستلام');
+  });
 });
 
 describe('getCurrentStepIndex', () => {

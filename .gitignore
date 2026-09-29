@@ -57,3 +57,4 @@ android/app/google-services.json
 
 # Generated platform registrants (recreated by `flutter pub get`)
 macos/Flutter/GeneratedPluginRegistrant.swift
+.worktrees/

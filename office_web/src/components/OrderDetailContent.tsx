@@ -44,9 +44,13 @@ interface OrderDetailContentProps {
   // back link) render differently in the header -- everything else about
   // showing an order's detail is identical between the two.
   headerActions?: ReactNode;
+  // The panel is 560px wide, too narrow for a horizontal stepper with time/
+  // duration/performer around each step, so it stacks vertically there; the
+  // full page has room to stay horizontal.
+  stepperOrientation?: 'horizontal' | 'vertical';
 }
 
-export function OrderDetailContent({ orderId, headerActions }: OrderDetailContentProps) {
+export function OrderDetailContent({ orderId, headerActions, stepperOrientation = 'horizontal' }: OrderDetailContentProps) {
   const { order, auditLog, receipts, isLoading, isError, error, auditLogError, receiptsError, refetch } = useOrderDetail(orderId);
   const [hoveredStatus, setHoveredStatus] = useState<OrderStatus | null>(null);
 
@@ -86,6 +90,7 @@ export function OrderDetailContent({ orderId, headerActions }: OrderDetailConten
           stepTimeline={stepTimeline}
           hoveredStatus={hoveredStatus}
           onHoverStatus={setHoveredStatus}
+          orientation={stepperOrientation}
         />
       </div>
 

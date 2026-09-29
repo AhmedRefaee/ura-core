@@ -4,6 +4,7 @@ import { StatusProgress } from './StatusProgress';
 import type { StatusStep } from '../lib/statusSteps';
 import type { StepTimelineEntry } from '../lib/stepTimeline';
 import type { AuditLogEntry } from '../types/domain';
+import { formatDateTime } from '../lib/formatDate';
 
 const steps: StatusStep[] = [
   { status: 'assigned', label: 'معين' },
@@ -51,14 +52,38 @@ describe('StatusProgress', () => {
     expect(onHoverStatus).toHaveBeenCalledWith(null);
   });
 
-  it('makes the hovered step\'s tooltip visible while the others stay hidden', () => {
-    // Tooltips stay mounted for all steps (so they can transition on exit,
-    // not just vanish) — visibility is CSS opacity, not conditional render.
-    render(<StatusProgress steps={steps} currentIndex={1} stepTimeline={stepTimeline} hoveredStatus="picked_up" onHoverStatus={() => {}} />);
-    const tooltips = screen.getAllByRole('tooltip');
-    const opacities = tooltips.map((t) => (t as HTMLElement).style.opacity);
-    expect(opacities.filter((o) => o === '1')).toHaveLength(1);
-    expect(opacities.filter((o) => o === '0')).toHaveLength(3);
+  it('always shows each step\'s exact time and duration, without needing hover', () => {
+    render(<StatusProgress steps={steps} currentIndex={1} stepTimeline={stepTimeline} hoveredStatus={null} onHoverStatus={() => {}} />);
+    expect(screen.getAllByText(formatDateTime('2026-09-28T10:00:12Z')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText('12 ثانية').length).toBeGreaterThan(0);
+  });
+
+  it('shows the performer who completed a step, above the step', () => {
+    const withPerformer: StepTimelineEntry[] = steps.map((s) => ({
+      status: s.status,
+      entry: { ...entryFor(s.status), performer: { id: 'u1', fullName: 'فاحص سالم', phone: null, role: 'verifier', isApproved: true } },
+      duration: '12 ثانية',
+    }));
+    render(<StatusProgress steps={steps} currentIndex={3} stepTimeline={withPerformer} hoveredStatus={null} onHoverStatus={() => {}} />);
+    expect(screen.getAllByText(/فاحص سالم/).length).toBeGreaterThan(0);
+  });
+
+  it('stacks vertically with the same data when orientation is "vertical"', () => {
+    render(
+      <StatusProgress
+        steps={steps}
+        currentIndex={1}
+        stepTimeline={stepTimeline}
+        hoveredStatus={null}
+        onHoverStatus={() => {}}
+        orientation="vertical"
+      />,
+    );
+    for (const step of steps) {
+      expect(screen.getByText(step.label)).toBeInTheDocument();
+    }
+    expect(screen.getAllByText('✓')).toHaveLength(2);
+    expect(screen.getAllByText('12 ثانية').length).toBeGreaterThan(0);
   });
 
   it('shows no duration line when the step has none (e.g. the current, still-ongoing step)', () => {

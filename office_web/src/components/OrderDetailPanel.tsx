@@ -6,6 +6,7 @@ export function OrderDetailPanel({ orderId, onClose }: { orderId: string; onClos
     <div className="w-[560px] shrink-0 border-r border-border-subtle bg-surface-card overflow-y-auto">
       <OrderDetailContent
         orderId={orderId}
+        stepperOrientation="vertical"
         headerActions={
           <div className="flex items-center gap-3">
             <Link

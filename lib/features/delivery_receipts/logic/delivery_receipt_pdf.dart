@@ -40,7 +40,6 @@ String? packagingOf(String? description) {
 /// URA's logo always on the left, the receiving side's logo on the right.
 /// No pricing on purpose -- this is a logistics document, not the quotation.
 class DeliveryReceiptPdf {
-  static const _minRows = 20;
   static const _uraGreen = PdfColor.fromInt(0xFF5B9A3C);
   static const _border = pw.BorderSide(width: 0.8);
 
@@ -178,7 +177,6 @@ class DeliveryReceiptPdf {
       );
 
   static pw.Widget _itemsTable(List<ReceiptPdfLine> lines) {
-    final rowCount = lines.length < _minRows ? _minRows : lines.length;
     // Visual left-to-right: ملاحظات | الكمية | الوحدة | اسم الصنف ووصفه | م
     return _ltr(
       pw.Table(
@@ -201,21 +199,18 @@ class DeliveryReceiptPdf {
             _cell('اسم الصنف ووصفه', header: true),
             _cell('م', header: true),
           ]),
-          for (var i = 0; i < rowCount; i++)
-            if (i < lines.length)
-              pw.TableRow(children: [
-                _cell(''),
-                _cell(formatQty(lines[i].quantity)),
-                _cell(lines[i].unit),
-                _cell(
-                  [lines[i].itemName, if (lines[i].description?.trim().isNotEmpty ?? false) lines[i].description!.trim()]
-                      .join(' - '),
-                  align: pw.TextAlign.right,
-                ),
-                _cell('${i + 1}'),
-              ])
-            else
-              pw.TableRow(children: [_cell(''), _cell(''), _cell(''), _cell(''), _cell('${i + 1}')]),
+          for (var i = 0; i < lines.length; i++)
+            pw.TableRow(children: [
+              _cell(''),
+              _cell(formatQty(lines[i].quantity)),
+              _cell(lines[i].unit),
+              _cell(
+                [lines[i].itemName, if (lines[i].description?.trim().isNotEmpty ?? false) lines[i].description!.trim()]
+                    .join(' - '),
+                align: pw.TextAlign.right,
+              ),
+              _cell('${i + 1}'),
+            ]),
         ],
       ),
     );

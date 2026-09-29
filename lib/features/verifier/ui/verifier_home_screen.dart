@@ -14,9 +14,9 @@ import '../../chat/ui/chat_hub_screen.dart';
 import '../../profile/ui/profile_screen.dart';
 import '../../notifications/logic/chat_badge_cubit.dart';
 import '../../notifications/logic/notifications_badge_cubit.dart';
+import '../../delivery_receipts/ui/delivery_receipts_tab.dart';
 import '../../inventory/ui/inventory_management_screen.dart';
 import '../../manager/logic/stats_cubit.dart';
-import '../../manager/ui/rep_list_screen.dart';
 import '../../manager/ui/stats_screen.dart';
 import '../../manager/ui/task_detail_screen.dart';
 import '../logic/create_order_cubit.dart';
@@ -86,7 +86,7 @@ class _VerifierHomeViewState extends State<_VerifierHomeView> {
 /// The verifier's bottom-bar destinations, in display order. Named rather than
 /// numbered so that omitting one (chat) shifts nothing that has to be kept in
 /// sync by hand.
-enum _VerifierTab { orders, inventory, chat, reps, settings }
+enum _VerifierTab { orders, inventory, chat, receipts, settings }
 
 class _ScaffoldBody extends StatelessWidget {
   final int navIndex;
@@ -104,7 +104,7 @@ class _ScaffoldBody extends StatelessWidget {
       _VerifierTab.orders,
       _VerifierTab.inventory,
       if (kChatEnabled) _VerifierTab.chat,
-      _VerifierTab.reps,
+      _VerifierTab.receipts,
       _VerifierTab.settings,
     ];
     final current = tabs[navIndex];
@@ -124,7 +124,7 @@ class _ScaffoldBody extends StatelessWidget {
               _VerifierTab.orders => const _OrdersTab(),
               _VerifierTab.inventory => const InventoryManagementScreen(),
               _VerifierTab.chat => const ChatHubSection(),
-              _VerifierTab.reps => const RepListScreen(),
+              _VerifierTab.receipts => const DeliveryReceiptsTab(),
               _VerifierTab.settings => _SettingsTab(
                 onLogout: () => context.read<AuthCubit>().signOut(),
               ),
@@ -169,9 +169,9 @@ class _ScaffoldBody extends StatelessWidget {
               label: 'المحادثات',
             ),
           const NavigationDestination(
-            icon: Icon(Icons.delivery_dining_outlined),
-            selectedIcon: Icon(Icons.delivery_dining),
-            label: 'المناديب',
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long),
+            label: 'السندات',
           ),
           const NavigationDestination(
             icon: Icon(Icons.settings_outlined),

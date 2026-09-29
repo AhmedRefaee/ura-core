@@ -7,16 +7,18 @@ import '../data/delivery_receipt_repository.dart';
 import 'create_delivery_receipt_screen.dart';
 import 'receipt_actions.dart';
 
-/// The rep's سندات: file one later in the day, detached from any order, and
-/// find the ones already filed -- grouped by day, newest first.
-class RepDeliveryReceiptsTab extends StatefulWidget {
-  const RepDeliveryReceiptsTab({super.key});
+/// The current user's own سندات: file one later in the day, detached from
+/// any order, and find the ones already filed -- grouped by day, newest
+/// first. Shared by reps and verifiers, who can both file and manage their
+/// own سندات; "mine" is whoever is signed in, not a hardcoded role.
+class DeliveryReceiptsTab extends StatefulWidget {
+  const DeliveryReceiptsTab({super.key});
 
   @override
-  State<RepDeliveryReceiptsTab> createState() => _RepDeliveryReceiptsTabState();
+  State<DeliveryReceiptsTab> createState() => _DeliveryReceiptsTabState();
 }
 
-class _RepDeliveryReceiptsTabState extends State<RepDeliveryReceiptsTab> {
+class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
   late Future<AppResult<List<DeliveryReceipt>>> _future = _load();
 
   // The empty state has its own big "سند جديد"; don't show two.

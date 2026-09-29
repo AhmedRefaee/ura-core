@@ -1,5 +1,5 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { render, screen, waitFor, fireEvent } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import type { Order, AuditLogEntry, DeliveryReceipt } from '../types/domain';
 
@@ -139,5 +139,46 @@ describe('OrderDetailPanel', () => {
     });
     renderPanel({ orderId: 'o1', onClose: () => {} });
     await waitFor(() => expect(screen.getByRole('link', { name: /فتح السند/ })).toHaveAttribute('href', 'https://signed.example/x.pdf'));
+  });
+
+  describe('resizing', () => {
+    const STORAGE_KEY = 'ura.orderDetailPanel.width';
+
+    beforeEach(() => {
+      localStorage.clear();
+      detailMock.mockReturnValue({
+        order: order({}), auditLog: [], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
+      });
+    });
+
+    it('defaults to 560px when nothing is stored', () => {
+      renderPanel({ orderId: 'o1', onClose: () => {} });
+      expect(screen.getByTestId('order-detail-panel')).toHaveStyle({ width: '560px' });
+    });
+
+    it('reads a previously stored width on mount', () => {
+      localStorage.setItem(STORAGE_KEY, '700');
+      renderPanel({ orderId: 'o1', onClose: () => {} });
+      expect(screen.getByTestId('order-detail-panel')).toHaveStyle({ width: '700px' });
+    });
+
+    it('grows the panel when the handle is dragged toward the orders list, and persists the result', () => {
+      renderPanel({ orderId: 'o1', onClose: () => {} });
+      const handle = screen.getByTestId('panel-resize-handle');
+      fireEvent.pointerDown(handle, { clientX: 500, pointerId: 1 });
+      fireEvent.pointerMove(handle, { clientX: 400, pointerId: 1 });
+      fireEvent.pointerUp(handle, { clientX: 400, pointerId: 1 });
+      expect(screen.getByTestId('order-detail-panel')).toHaveStyle({ width: '660px' });
+      expect(localStorage.getItem(STORAGE_KEY)).toBe('660');
+    });
+
+    it('clamps the width so the panel can\'t be dragged narrower or wider than sensible bounds', () => {
+      renderPanel({ orderId: 'o1', onClose: () => {} });
+      const handle = screen.getByTestId('panel-resize-handle');
+      fireEvent.pointerDown(handle, { clientX: 0, pointerId: 1 });
+      fireEvent.pointerMove(handle, { clientX: 5000, pointerId: 1 });
+      fireEvent.pointerUp(handle, { clientX: 5000, pointerId: 1 });
+      expect(screen.getByTestId('order-detail-panel')).toHaveStyle({ width: '420px' });
+    });
   });
 });

@@ -690,6 +690,8 @@ class _ItemsStepState extends State<_ItemsStep> {
             state: state,
             onSubmit: _submit,
             onCancel: () => _cancel(context),
+            onHandwrittenDateChanged: (v) =>
+                context.read<CreateDeliveryReceiptCubit>().setHandwrittenDate(v),
             // The bad row may be scrolled away; this filter shows it.
             onReviewInvalid: () => setState(() {
               _selectedOnly = true;
@@ -860,11 +862,13 @@ class _SubmitBar extends StatelessWidget {
   final VoidCallback onSubmit;
   final VoidCallback onCancel;
   final VoidCallback onReviewInvalid;
+  final ValueChanged<bool> onHandwrittenDateChanged;
   const _SubmitBar({
     required this.state,
     required this.onSubmit,
     required this.onCancel,
     required this.onReviewInvalid,
+    required this.onHandwrittenDateChanged,
   });
 
   @override
@@ -905,7 +909,32 @@ class _SubmitBar extends StatelessWidget {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+              // Default: the سند is stamped with today's date. Toggled on,
+              // the date line prints blank so it can be filled in by hand at
+              // the moment of delivery instead.
+              InkWell(
+                onTap: state.submitting
+                    ? null
+                    : () => onHandwrittenDateChanged(!state.handwrittenDate),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          'كتابة التاريخ يدوياً عند التسليم',
+                          style: theme.textTheme.bodyMedium,
+                        ),
+                      ),
+                      Switch(
+                        value: state.handwrittenDate,
+                        onChanged: state.submitting ? null : onHandwrittenDateChanged,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 4),
               Row(
                 children: [
                   Expanded(

@@ -25,6 +25,10 @@ class CreateDeliveryReceiptState extends Equatable {
   final bool submitting;
   final String? error;
 
+  /// True: the سند PDF's date is left blank for the receiving side to fill
+  /// in by hand at delivery. False (default): stamped with today's date.
+  final bool handwrittenDate;
+
   /// Set once the سند is filed, so the screen can preview/share it.
   final Uint8List? pdfBytes;
   final String? receiptId;
@@ -42,6 +46,7 @@ class CreateDeliveryReceiptState extends Equatable {
     this.droppedFromOriginal = 0,
     this.submitting = false,
     this.error,
+    this.handwrittenDate = false,
     this.pdfBytes,
     this.receiptId,
   });
@@ -77,6 +82,7 @@ class CreateDeliveryReceiptState extends Equatable {
     bool clearError = false,
     Uint8List? pdfBytes,
     String? receiptId,
+    bool? handwrittenDate,
   }) {
     return CreateDeliveryReceiptState(
       loading: loading ?? this.loading,
@@ -93,6 +99,7 @@ class CreateDeliveryReceiptState extends Equatable {
       error: clearError ? null : (error ?? this.error),
       pdfBytes: pdfBytes ?? this.pdfBytes,
       receiptId: receiptId ?? this.receiptId,
+      handwrittenDate: handwrittenDate ?? this.handwrittenDate,
     );
   }
 
@@ -111,5 +118,6 @@ class CreateDeliveryReceiptState extends Equatable {
         submitting,
         error,
         receiptId,
+        handwrittenDate,
       ];
 }

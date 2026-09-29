@@ -46,7 +46,10 @@ class DeliveryReceiptPdf {
   static Future<Uint8List> build({
     required String entityName,
     required String projectName,
-    required DateTime date,
+    // Null when the rep/verifier chose to leave the date for the receiving
+    // side to fill in by hand at the moment of delivery, rather than
+    // stamping it with whatever day the سند happened to be filed/printed.
+    DateTime? date,
     required List<ReceiptPdfLine> lines,
     Uint8List? clientLogoBytes,
     String? notes,
@@ -95,8 +98,9 @@ class DeliveryReceiptPdf {
           pw.SizedBox(height: 10),
           _infoLine('الجهة المستفيدة', entityName),
           _infoLine('المشروع', projectName),
-          _infoLine('التاريخ',
-              '${date.day.toString().padLeft(2, '0')} / ${date.month.toString().padLeft(2, '0')} / ${date.year}'),
+          _infoLine('التاريخ', date == null
+              ? '..... / ..... / ..........'
+              : '${date.day.toString().padLeft(2, '0')} / ${date.month.toString().padLeft(2, '0')} / ${date.year}'),
           pw.SizedBox(height: 6),
           _itemsTable(lines),
           if (notes != null && notes.trim().isNotEmpty)

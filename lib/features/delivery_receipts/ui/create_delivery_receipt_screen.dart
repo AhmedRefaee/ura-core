@@ -605,89 +605,119 @@ class _ItemsStepState extends State<_ItemsStep> {
     final visible = _visible(state);
     final selected = state.selectedCount;
 
+    // Everything above the submit bar lives in one CustomScrollView -- even
+    // the "fixed" header (breadcrumb, search, filter chips) -- so that when
+    // the keyboard opens and shrinks the available height, the header and
+    // list scroll together instead of being non-flexible Column siblings
+    // that can't shrink and overflow once their combined height exceeds
+    // what's left. Only the submit bar, a genuinely fixed-height footer,
+    // stays outside the scroll area.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _Breadcrumb(state: state),
-        if (state.droppedFromOriginal > 0)
-          _ErrorBanner(
-            state.droppedFromOriginal == 1
-                ? 'بند واحد من السند السابق لم يعد في عرض المشروع ولن يُنقل'
-                : '${state.droppedFromOriginal} بنود من السند السابق لم تعد في عرض المشروع ولن تُنقل',
-          ),
-        if (state.loading)
-          const Expanded(child: Center(child: CircularProgressIndicator()))
-        else if (state.items.isEmpty)
-          const Expanded(
-            child: _EmptyHint(
-              icon: Icons.inventory_2_outlined,
-              title: 'لا توجد بنود في هذا المشروع بعد',
-              subtitle: 'يضيف المشرف أو المدير بنود العرض من صفحة المشروع',
-            ),
-          )
-        else ...[
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-            child: _SearchField(
-              controller: _search,
-              hint: 'ابحث عن بند',
-              onChanged: (v) => setState(() => _query = v),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 4,
-              children: [
-                FilterChip(
-                  label: Text(
-                    selected == 0 ? 'المحدد فقط' : 'المحدد فقط ($selected)',
+        Expanded(
+          child: CustomScrollView(
+            keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
+            slivers: [
+              SliverToBoxAdapter(child: _Breadcrumb(state: state)),
+              if (state.droppedFromOriginal > 0)
+                SliverToBoxAdapter(
+                  child: _ErrorBanner(
+                    state.droppedFromOriginal == 1
+                        ? 'بند واحد من السند السابق لم يعد في عرض المشروع ولن يُنقل'
+                        : '${state.droppedFromOriginal} بنود من السند السابق لم تعد في عرض المشروع ولن تُنقل',
                   ),
-                  selected: _selectedOnly,
-                  onSelected: (v) => setState(() => _selectedOnly = v),
                 ),
-                if (categories.length > 1) ...[
-                  ChoiceChip(
-                    label: const Text('كل الفئات'),
-                    selected: _category == null,
-                    onSelected: (_) => setState(() => _category = null),
+              if (state.loading)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (state.items.isEmpty)
+                const SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: _EmptyHint(
+                    icon: Icons.inventory_2_outlined,
+                    title: 'لا توجد بنود في هذا المشروع بعد',
+                    subtitle: 'يضيف المشرف أو المدير بنود العرض من صفحة المشروع',
                   ),
-                  for (final c in categories)
-                    ChoiceChip(
-                      label: Text(c),
-                      selected: _category == c,
-                      onSelected: (_) => setState(() => _category = c),
+                )
+              else ...[
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+                    child: _SearchField(
+                      controller: _search,
+                      hint: 'ابحث عن بند',
+                      onChanged: (v) => setState(() => _query = v),
                     ),
-                ],
-              ],
-            ),
-          ),
-          Expanded(
-            child: visible.isEmpty
-                ? _EmptyHint(
-                    icon: Icons.search_off,
-                    title: _selectedOnly
-                        ? 'لم تحدد أي بند بعد'
-                        : 'لا توجد بنود مطابقة',
-                  )
-                : ListView.builder(
-                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
-                    keyboardDismissBehavior:
-                        ScrollViewKeyboardDismissBehavior.onDrag,
-                    itemCount: visible.length,
-                    itemBuilder: (context, i) {
-                      final item = visible[i];
-                      return _ItemCard(
-                        key: ValueKey(item.id),
-                        item: item,
-                        quantity: state.quantities[item.id] ?? 0,
-                        invalidText: state.invalid[item.id],
-                        enabled: !state.submitting,
-                      );
-                    },
                   ),
+                ),
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 4,
+                      children: [
+                        FilterChip(
+                          label: Text(
+                            selected == 0 ? 'المحدد فقط' : 'المحدد فقط ($selected)',
+                          ),
+                          selected: _selectedOnly,
+                          onSelected: (v) => setState(() => _selectedOnly = v),
+                        ),
+                        if (categories.length > 1) ...[
+                          ChoiceChip(
+                            label: const Text('كل الفئات'),
+                            selected: _category == null,
+                            onSelected: (_) => setState(() => _category = null),
+                          ),
+                          for (final c in categories)
+                            ChoiceChip(
+                              label: Text(c),
+                              selected: _category == c,
+                              onSelected: (_) => setState(() => _category = c),
+                            ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                if (visible.isEmpty)
+                  SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: _EmptyHint(
+                      icon: Icons.search_off,
+                      title: _selectedOnly
+                          ? 'لم تحدد أي بند بعد'
+                          : 'لا توجد بنود مطابقة',
+                    ),
+                  )
+                else
+                  SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, i) {
+                          final item = visible[i];
+                          return _ItemCard(
+                            key: ValueKey(item.id),
+                            item: item,
+                            quantity: state.quantities[item.id] ?? 0,
+                            invalidText: state.invalid[item.id],
+                            enabled: !state.submitting,
+                          );
+                        },
+                        childCount: visible.length,
+                      ),
+                    ),
+                  ),
+              ],
+            ],
           ),
+        ),
+        if (!state.loading && state.items.isNotEmpty)
           _SubmitBar(
             state: state,
             notes: _notes,
@@ -700,7 +730,6 @@ class _ItemsStepState extends State<_ItemsStep> {
               _category = null;
             }),
           ),
-        ],
       ],
     );
   }

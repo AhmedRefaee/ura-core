@@ -53,4 +53,10 @@ describe('buildStepTimeline', () => {
     expect(deliveredResult?.entry).toBeNull();
     expect(deliveredResult?.duration).toBeNull();
   });
+
+  it('matches the assigned step to an order_created row even though its newStatus is null (real data)', () => {
+    const auditLog = [entry({ id: 'a1', action: 'order_created', newStatus: null })];
+    const result = buildStepTimeline(steps, auditLog);
+    expect(result[0].entry?.id).toBe('a1');
+  });
 });

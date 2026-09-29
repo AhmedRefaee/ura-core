@@ -2,8 +2,9 @@ import { useEffect, useRef } from 'react';
 import type { AuditLogEntry, OrderStatus } from '../types/domain';
 import { orderStatusLabel, userRoleLabel } from '../types/domain';
 import { orderStatusColor } from '../lib/statusColors';
-import { formatDate } from '../lib/formatDate';
+import { formatDateTime } from '../lib/formatDate';
 import { durationBetween } from '../lib/duration';
+import { effectiveStatus } from '../lib/auditLogView';
 
 const DONE_STATUSES = new Set<OrderStatus>(['delivered', 'delivered_to_storage']);
 
@@ -32,7 +33,7 @@ export function AuditTimeline({ auditLog, orderStatus, error, hoveredStatus, onH
   // originated from this list or from the stepper above it.
   useEffect(() => {
     if (!hoveredStatus) return;
-    const match = auditLog.find((e) => e.newStatus === hoveredStatus);
+    const match = auditLog.find((e) => effectiveStatus(e) === hoveredStatus);
     if (!match) return;
     rowRefs.current.get(match.id)?.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   }, [hoveredStatus, auditLog]);
@@ -57,11 +58,12 @@ export function AuditTimeline({ auditLog, orderStatus, error, hoveredStatus, onH
       )}
       <ul className="space-y-1">
         {auditLog.map((entry, i) => {
+          const status = effectiveStatus(entry);
           const next = auditLog[i + 1];
           const stepDuration = next ? durationBetween(entry.serverTimestamp, next.serverTimestamp) : null;
-          const color = entry.newStatus ? orderStatusColor[entry.newStatus].text : '#64748B';
-          const bg = entry.newStatus ? orderStatusColor[entry.newStatus].bg : undefined;
-          const isHighlighted = entry.newStatus != null && entry.newStatus === hoveredStatus;
+          const color = status ? orderStatusColor[status].text : '#64748B';
+          const bg = status ? orderStatusColor[status].bg : undefined;
+          const isHighlighted = status != null && status === hoveredStatus;
           return (
             <li
               key={entry.id}
@@ -72,7 +74,7 @@ export function AuditTimeline({ auditLog, orderStatus, error, hoveredStatus, onH
               }}
               className="flex items-start gap-2 rounded-input p-2 -mx-2 transition-colors duration-150 ease-out"
               style={{ backgroundColor: isHighlighted ? bg : undefined }}
-              onMouseEnter={() => entry.newStatus && onHoverEntry(entry.newStatus)}
+              onMouseEnter={() => status && onHoverEntry(status)}
               onMouseLeave={() => onHoverEntry(null)}
             >
               <div className="w-2.5 h-2.5 rounded-full mt-1.5 shrink-0" style={{ backgroundColor: color }} />
@@ -88,7 +90,7 @@ export function AuditTimeline({ auditLog, orderStatus, error, hoveredStatus, onH
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-text-low">{formatDate(entry.serverTimestamp)}</p>
+                <p className="text-xs text-text-low">{formatDateTime(entry.serverTimestamp)}</p>
                 {entry.performer && (
                   <p className="text-xs text-text-low">
                     {entry.performer.role ? `${userRoleLabel[entry.performer.role]} · ` : ''}

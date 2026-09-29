@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import type { Order, AuditLogEntry, DeliveryReceipt } from '../types/domain';
 
 const detailMock = vi.fn();
@@ -7,6 +8,14 @@ vi.mock('../hooks/useOrderDetail', () => ({ useOrderDetail: () => detailMock() }
 vi.mock('../api/storage', () => ({ resolveSignedUrl: vi.fn().mockResolvedValue('https://signed.example/x.pdf') }));
 
 import { OrderDetailPanel } from './OrderDetailPanel';
+
+function renderPanel(props: { orderId: string; onClose: () => void }) {
+  return render(
+    <MemoryRouter>
+      <OrderDetailPanel {...props} />
+    </MemoryRouter>,
+  );
+}
 
 function order(overrides: Partial<Order>): Order {
   return {
@@ -31,7 +40,7 @@ describe('OrderDetailPanel', () => {
       order: order({}), auditLog: [] as AuditLogEntry[], receipts: [] as DeliveryReceipt[],
       isLoading: false, isError: false, refetch: vi.fn(),
     });
-    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    renderPanel({ orderId: 'o1', onClose: () => {} });
     expect(screen.getByText('وزارة الصحة')).toBeInTheDocument();
     expect(screen.getByText('مندوب أحمد')).toBeInTheDocument();
     expect(screen.getByText('أكياس أرز')).toBeInTheDocument();
@@ -42,7 +51,7 @@ describe('OrderDetailPanel', () => {
       order: order({}), auditLog: [] as AuditLogEntry[], receipts: [] as DeliveryReceipt[],
       isLoading: false, isError: false, refetch: vi.fn(),
     });
-    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    renderPanel({ orderId: 'o1', onClose: () => {} });
     expect(screen.getByText('لا يوجد سجل بعد')).toBeInTheDocument();
   });
 
@@ -54,7 +63,7 @@ describe('OrderDetailPanel', () => {
     detailMock.mockReturnValue({
       order: order({}), auditLog: [entry], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
     });
-    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    renderPanel({ orderId: 'o1', onClose: () => {} });
     expect(screen.getByText('تم إنشاء الطلب')).toBeInTheDocument();
   });
 
@@ -62,7 +71,7 @@ describe('OrderDetailPanel', () => {
     detailMock.mockReturnValue({
       order: order({}), auditLog: [], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
     });
-    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    renderPanel({ orderId: 'o1', onClose: () => {} });
     expect(screen.getByText('لا توجد سندات استلام لهذا الطلب')).toBeInTheDocument();
   });
 
@@ -74,7 +83,7 @@ describe('OrderDetailPanel', () => {
     detailMock.mockReturnValue({
       order: order({}), auditLog: [entry], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
     });
-    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    renderPanel({ orderId: 'o1', onClose: () => {} });
     // Appears twice by design: once as the progress-stepper step label, once
     // as the timeline entry label — same as the reference screenshots.
     expect(screen.getAllByText('تم الاستلام').length).toBeGreaterThanOrEqual(1);
@@ -94,7 +103,7 @@ describe('OrderDetailPanel', () => {
       }),
       auditLog: [], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
     });
-    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    renderPanel({ orderId: 'o1', onClose: () => {} });
     expect(screen.getByText(/تم الفحص/)).toBeInTheDocument();
     expect(screen.getByText(/فاحص سالم/)).toBeInTheDocument();
   });
@@ -104,7 +113,7 @@ describe('OrderDetailPanel', () => {
       order: order({}), // default item has checkStatus 'pending', checker null
       auditLog: [], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
     });
-    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    renderPanel({ orderId: 'o1', onClose: () => {} });
     expect(screen.getByText('قيد الانتظار')).toBeInTheDocument();
   });
 
@@ -113,7 +122,7 @@ describe('OrderDetailPanel', () => {
       order: order({}), auditLog: [], receipts: [], isLoading: false, isError: false,
       auditLogError: true, receiptsError: false, refetch: vi.fn(),
     });
-    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    renderPanel({ orderId: 'o1', onClose: () => {} });
     expect(screen.getByText('تعذر تحميل السجل الزمني')).toBeInTheDocument();
     // The rest of the panel still renders normally.
     expect(screen.getByText('وزارة الصحة')).toBeInTheDocument();
@@ -128,7 +137,7 @@ describe('OrderDetailPanel', () => {
     detailMock.mockReturnValue({
       order: order({}), auditLog: [], receipts: [receipt], isLoading: false, isError: false, refetch: vi.fn(),
     });
-    render(<OrderDetailPanel orderId="o1" onClose={() => {}} />);
+    renderPanel({ orderId: 'o1', onClose: () => {} });
     await waitFor(() => expect(screen.getByRole('link', { name: /فتح السند/ })).toHaveAttribute('href', 'https://signed.example/x.pdf'));
   });
 });

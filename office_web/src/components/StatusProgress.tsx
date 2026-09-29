@@ -2,7 +2,7 @@ import type { StatusStep } from '../lib/statusSteps';
 import type { StepTimelineEntry } from '../lib/stepTimeline';
 import type { OrderStatus } from '../types/domain';
 import { orderStatusColor } from '../lib/statusColors';
-import { formatDate } from '../lib/formatDate';
+import { formatDateTime } from '../lib/formatDate';
 
 interface StatusProgressProps {
   steps: StatusStep[];
@@ -69,7 +69,7 @@ export function StatusProgress({ steps, currentIndex, stepTimeline, hoveredStatu
                       transformOrigin: 'top center',
                     }}
                   >
-                    <div>{formatDate(timelineEntry.entry.serverTimestamp)}</div>
+                    <div>{formatDateTime(timelineEntry.entry.serverTimestamp)}</div>
                     {timelineEntry.duration && (
                       <div className="text-white/70">
                         المدة: <span>{timelineEntry.duration}</span>

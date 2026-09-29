@@ -1,6 +1,7 @@
 import type { AuditLogEntry, OrderStatus } from '../types/domain';
 import type { StatusStep } from './statusSteps';
 import { durationBetween } from './duration';
+import { effectiveStatus } from './auditLogView';
 
 export interface StepTimelineEntry {
   status: OrderStatus;
@@ -11,9 +12,12 @@ export interface StepTimelineEntry {
   duration: string | null;
 }
 
+// Pass the already-deduped/filtered list from auditLogView.prepareAuditLogForDisplay
+// -- matching against the raw list would pair a step with the first half of
+// a same-instant duplicate row and report ~0 duration to its own twin.
 export function buildStepTimeline(steps: StatusStep[], auditLog: AuditLogEntry[]): StepTimelineEntry[] {
   return steps.map((step) => {
-    const index = auditLog.findIndex((e) => e.newStatus === step.status);
+    const index = auditLog.findIndex((e) => effectiveStatus(e) === step.status);
     if (index === -1) return { status: step.status, entry: null, duration: null };
     const entry = auditLog[index];
     const next = auditLog[index + 1];

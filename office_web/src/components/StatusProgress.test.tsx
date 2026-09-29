@@ -65,6 +65,29 @@ describe('StatusProgress', () => {
     }
   });
 
+  it('never truncates a long performer name, in either orientation', () => {
+    const longName = { id: 'u1', fullName: 'أمين مخزن مستودع الفرع الرئيسي بالرياض', phone: null, role: 'storage_actor' as const, isApproved: true };
+    const withLongName: StepTimelineEntry[] = steps.map((s) => ({
+      status: s.status, entry: { ...entryFor(s.status), performer: longName }, duration: '12 ثانية',
+    }));
+    for (const orientation of ['horizontal', 'vertical'] as const) {
+      const { unmount } = render(
+        <StatusProgress
+          steps={steps}
+          currentIndex={3}
+          stepTimeline={withLongName}
+          hoveredStatus={null}
+          onHoverStatus={() => {}}
+          orientation={orientation}
+        />,
+      );
+      for (const el of screen.getAllByText(/أمين مخزن مستودع الفرع الرئيسي بالرياض/)) {
+        expect(el.className).not.toMatch(/truncate|text-ellipsis/);
+      }
+      unmount();
+    }
+  });
+
   it('shows the performer who completed a step, above the step', () => {
     const withPerformer: StepTimelineEntry[] = steps.map((s) => ({
       status: s.status,

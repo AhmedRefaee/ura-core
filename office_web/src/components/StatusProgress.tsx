@@ -89,7 +89,7 @@ export function StatusProgress({ steps, currentIndex, stepTimeline, hoveredStatu
               )}
             </div>
             <div className={`min-w-0 ${isLast ? 'pb-1' : 'pb-3'}`}>
-              {performer && <p className="text-[11px] text-text-low truncate">{performer}</p>}
+              {performer && <p className="text-[11px] text-text-low">{performer}</p>}
               <p
                 className="text-sm transition-colors duration-150 ease-out"
                 style={{ color: reached ? labelColor : '#94A3B8', fontWeight: reached ? 600 : 400 }}
@@ -110,8 +110,7 @@ export function StatusProgress({ steps, currentIndex, stepTimeline, hoveredStatu
         <div key={step.status} className={`flex items-start ${isLast ? 'flex-none' : 'flex-1'}`}>
           <div className="flex flex-col items-center shrink-0">
             <span
-              className="h-4 leading-4 max-w-[100px] text-[11px] text-text-low text-center truncate"
-              title={performer ?? undefined}
+              className="h-4 leading-4 text-[11px] text-text-low text-center whitespace-nowrap"
             >
               {performer ?? ' '}
             </span>

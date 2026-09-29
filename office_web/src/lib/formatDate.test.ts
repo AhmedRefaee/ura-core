@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { formatDate, formatDateTime } from './formatDate';
+import { formatDate, formatDateTime, formatTime, formatDateOnly } from './formatDate';
 
 describe('formatDate', () => {
   it('returns an em dash for a missing timestamp', () => {
@@ -22,5 +22,30 @@ describe('formatDateTime', () => {
     const a = formatDateTime('2026-09-28T10:00:00Z');
     const b = formatDateTime('2026-09-28T10:00:15Z');
     expect(a).not.toBe(b);
+  });
+});
+
+describe('formatTime', () => {
+  it('returns an em dash for a missing timestamp', () => {
+    expect(formatTime(null)).toBe('—');
+  });
+
+  it('includes seconds but not the date', () => {
+    const a = formatTime('2026-09-28T10:00:00Z');
+    const b = formatTime('2026-09-28T10:00:15Z');
+    expect(a).not.toBe(b);
+    expect(a).not.toContain('2026');
+  });
+});
+
+describe('formatDateOnly', () => {
+  it('returns an em dash for a missing timestamp', () => {
+    expect(formatDateOnly(null)).toBe('—');
+  });
+
+  it('formats the date without a time component', () => {
+    const result = formatDateOnly('2026-09-28T10:00:00Z');
+    expect(result).not.toBe('—');
+    expect(result).not.toMatch(/\d{2}:\d{2}/);
   });
 });

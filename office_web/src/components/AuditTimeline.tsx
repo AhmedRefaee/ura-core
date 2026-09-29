@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import type { AuditLogEntry, OrderStatus } from '../types/domain';
 import { orderStatusLabel, userRoleLabel } from '../types/domain';
 import { orderStatusColor } from '../lib/statusColors';
-import { formatDateTime } from '../lib/formatDate';
+import { formatTime } from '../lib/formatDate';
 import { durationBetween } from '../lib/duration';
 import { effectiveStatus } from '../lib/auditLogView';
 
@@ -90,7 +90,7 @@ export function AuditTimeline({ auditLog, orderStatus, error, hoveredStatus, onH
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-text-low">{formatDateTime(entry.serverTimestamp)}</p>
+                <p className="text-xs text-text-low whitespace-nowrap">{formatTime(entry.serverTimestamp)}</p>
                 {entry.performer && (
                   <p className="text-xs text-text-low">
                     {entry.performer.role ? `${userRoleLabel[entry.performer.role]} · ` : ''}

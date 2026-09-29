@@ -4,7 +4,7 @@ import { StatusProgress } from './StatusProgress';
 import type { StatusStep } from '../lib/statusSteps';
 import type { StepTimelineEntry } from '../lib/stepTimeline';
 import type { AuditLogEntry } from '../types/domain';
-import { formatDateTime } from '../lib/formatDate';
+import { formatTime } from '../lib/formatDate';
 
 const steps: StatusStep[] = [
   { status: 'assigned', label: 'معين' },
@@ -54,8 +54,15 @@ describe('StatusProgress', () => {
 
   it('always shows each step\'s exact time and duration, without needing hover', () => {
     render(<StatusProgress steps={steps} currentIndex={1} stepTimeline={stepTimeline} hoveredStatus={null} onHoverStatus={() => {}} />);
-    expect(screen.getAllByText(formatDateTime('2026-09-28T10:00:12Z')).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(formatTime('2026-09-28T10:00:12Z')).length).toBeGreaterThan(0);
     expect(screen.getAllByText('12 ثانية').length).toBeGreaterThan(0);
+  });
+
+  it('never truncates the time text -- the exact second must stay fully readable', () => {
+    render(<StatusProgress steps={steps} currentIndex={1} stepTimeline={stepTimeline} hoveredStatus={null} onHoverStatus={() => {}} />);
+    for (const timeEl of screen.getAllByText(formatTime('2026-09-28T10:00:12Z'))) {
+      expect(timeEl.className).not.toMatch(/truncate|text-ellipsis/);
+    }
   });
 
   it('shows the performer who completed a step, above the step', () => {

@@ -4,7 +4,7 @@ import { resolveSignedUrl } from '../api/storage';
 import { getStatusSteps, getCurrentStepIndex } from '../lib/statusSteps';
 import { buildStepTimeline } from '../lib/stepTimeline';
 import { prepareAuditLogForDisplay } from '../lib/auditLogView';
-import { formatDate } from '../lib/formatDate';
+import { formatDate, formatDateOnly } from '../lib/formatDate';
 import { StatusChip } from './StatusChip';
 import { StatusProgress } from './StatusProgress';
 import { AuditTimeline } from './AuditTimeline';
@@ -65,6 +65,9 @@ export function OrderDetailContent({ orderId, headerActions, stepperOrientation 
   // stepper tooltip and the timeline list can never disagree.
   const displayAuditLog = prepareAuditLogForDisplay(auditLog);
   const stepTimeline = buildStepTimeline(steps, displayAuditLog);
+  // Shown once here so every step/row below can give just its time, not the
+  // full date -- avoids repeating the same date on every line.
+  const orderDate = order.createdAt ?? displayAuditLog[0]?.serverTimestamp ?? null;
 
   return (
     <>
@@ -74,6 +77,7 @@ export function OrderDetailContent({ orderId, headerActions, stepperOrientation 
       </div>
 
       <div className="p-4 space-y-1 text-sm border-b border-border-subtle">
+        <p><span className="text-text-low">التاريخ: </span>{formatDateOnly(orderDate)}</p>
         <p><span className="text-text-low">الجهة: </span>{order.entity?.name ?? '—'}</p>
         <p><span className="text-text-low">الاتجاه: </span>{orderDirectionLabel[order.direction]}</p>
         <p><span className="text-text-low">المندوب: </span>{order.rep?.fullName ?? 'لا يوجد'}</p>

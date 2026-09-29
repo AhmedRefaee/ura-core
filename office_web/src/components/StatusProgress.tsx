@@ -3,7 +3,7 @@ import type { StepTimelineEntry } from '../lib/stepTimeline';
 import type { AuditLogEntry, OrderStatus } from '../types/domain';
 import { userRoleLabel } from '../types/domain';
 import { orderStatusColor } from '../lib/statusColors';
-import { formatDateTime } from '../lib/formatDate';
+import { formatTime } from '../lib/formatDate';
 
 interface StatusProgressProps {
   steps: StatusStep[];
@@ -36,7 +36,7 @@ export function StatusProgress({ steps, currentIndex, stepTimeline, hoveredStatu
       solidColor: orderStatusColor[step.status].solid,
       labelColor: orderStatusColor[step.status].text,
       timelineEntry,
-      time: timelineEntry?.entry?.serverTimestamp ? formatDateTime(timelineEntry.entry.serverTimestamp) : null,
+      time: timelineEntry?.entry?.serverTimestamp ? formatTime(timelineEntry.entry.serverTimestamp) : null,
       performer: performerLabel(timelineEntry?.entry),
     };
   });
@@ -96,7 +96,7 @@ export function StatusProgress({ steps, currentIndex, stepTimeline, hoveredStatu
               >
                 {step.label}
               </p>
-              {time && <p className="text-[11px] text-text-low">{time}</p>}
+              {time && <p className="text-[11px] text-text-low whitespace-nowrap">{time}</p>}
             </div>
           </div>
         ))}
@@ -138,7 +138,7 @@ export function StatusProgress({ steps, currentIndex, stepTimeline, hoveredStatu
                 {reached && '✓'}
               </div>
             </div>
-            <span className="mt-1.5 max-w-[100px] text-[11px] text-text-low text-center truncate">{time ?? ' '}</span>
+            <span className="mt-1.5 text-[11px] text-text-low text-center whitespace-nowrap">{time ?? ' '}</span>
             <span
               className="text-xs mt-1 text-center whitespace-nowrap transition-colors duration-150 ease-out"
               style={{ color: reached ? labelColor : '#94A3B8', fontWeight: reached ? 600 : 400 }}

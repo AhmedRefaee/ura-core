@@ -13,3 +13,25 @@ export function formatDateTime(iso: string | null): string {
     hour: '2-digit', minute: '2-digit', second: '2-digit',
   });
 }
+
+// Time only, with seconds -- for the stepper and the timeline, which show
+// one entry per row/step and repeat often enough that spelling out the full
+// date every time is just noise once the date is shown once, up top. Never
+// truncate this in the UI: the exact second is the entire point of these
+// two views.
+export function formatTime(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('ar', {
+    hour: '2-digit', minute: '2-digit', second: '2-digit',
+  });
+}
+
+// Date only, no time -- for the one place it needs to appear per order
+// (the detail header), since every step/row below it already gives its own
+// time via formatTime.
+export function formatDateOnly(iso: string | null): string {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleDateString('ar', {
+    year: 'numeric', month: 'numeric', day: 'numeric',
+  });
+}

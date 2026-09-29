@@ -162,22 +162,31 @@ describe('OrderDetailPanel', () => {
       expect(screen.getByTestId('order-detail-panel')).toHaveStyle({ width: '700px' });
     });
 
-    it('grows the panel when the handle is dragged toward the orders list, and persists the result', () => {
+    it('grows the panel when the handle is dragged toward the orders list (rightward), and persists the result', () => {
+      renderPanel({ orderId: 'o1', onClose: () => {} });
+      const handle = screen.getByTestId('panel-resize-handle');
+      fireEvent.pointerDown(handle, { clientX: 400, pointerId: 1 });
+      fireEvent.pointerMove(handle, { clientX: 500, pointerId: 1 });
+      fireEvent.pointerUp(handle, { clientX: 500, pointerId: 1 });
+      expect(screen.getByTestId('order-detail-panel')).toHaveStyle({ width: '660px' });
+      expect(localStorage.getItem(STORAGE_KEY)).toBe('660');
+    });
+
+    it('shrinks the panel when the handle is dragged leftward, toward the window edge', () => {
       renderPanel({ orderId: 'o1', onClose: () => {} });
       const handle = screen.getByTestId('panel-resize-handle');
       fireEvent.pointerDown(handle, { clientX: 500, pointerId: 1 });
       fireEvent.pointerMove(handle, { clientX: 400, pointerId: 1 });
       fireEvent.pointerUp(handle, { clientX: 400, pointerId: 1 });
-      expect(screen.getByTestId('order-detail-panel')).toHaveStyle({ width: '660px' });
-      expect(localStorage.getItem(STORAGE_KEY)).toBe('660');
+      expect(screen.getByTestId('order-detail-panel')).toHaveStyle({ width: '460px' });
     });
 
     it('clamps the width so the panel can\'t be dragged narrower or wider than sensible bounds', () => {
       renderPanel({ orderId: 'o1', onClose: () => {} });
       const handle = screen.getByTestId('panel-resize-handle');
-      fireEvent.pointerDown(handle, { clientX: 0, pointerId: 1 });
-      fireEvent.pointerMove(handle, { clientX: 5000, pointerId: 1 });
-      fireEvent.pointerUp(handle, { clientX: 5000, pointerId: 1 });
+      fireEvent.pointerDown(handle, { clientX: 5000, pointerId: 1 });
+      fireEvent.pointerMove(handle, { clientX: 0, pointerId: 1 });
+      fireEvent.pointerUp(handle, { clientX: 0, pointerId: 1 });
       expect(screen.getByTestId('order-detail-panel')).toHaveStyle({ width: '420px' });
     });
   });

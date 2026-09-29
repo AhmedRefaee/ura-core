@@ -36,17 +36,17 @@ export function OrderDetailPanel({ orderId, onClose }: { orderId: string; onClos
 
   const handlePointerMove = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!draggingRef.current) return;
-    // The panel sits at the left edge of the window in this RTL layout, with
-    // this handle on its right (the boundary with the orders list) -- moving
-    // the pointer left grows the panel, so the delta is start minus current.
-    setWidth(clampWidth(startWidthRef.current + (startXRef.current - e.clientX)));
+    // The panel's left edge is pinned to the window edge, so its right edge
+    // -- where this handle sits -- has to move right to grow the panel and
+    // left to shrink it. That's a plain, non-inverted delta.
+    setWidth(clampWidth(startWidthRef.current + (e.clientX - startXRef.current)));
   };
 
   const handlePointerUp = (e: ReactPointerEvent<HTMLDivElement>) => {
     if (!draggingRef.current) return;
     draggingRef.current = false;
     e.currentTarget.releasePointerCapture(e.pointerId);
-    const finalWidth = clampWidth(startWidthRef.current + (startXRef.current - e.clientX));
+    const finalWidth = clampWidth(startWidthRef.current + (e.clientX - startXRef.current));
     setWidth(finalWidth);
     try {
       localStorage.setItem(STORAGE_KEY, String(finalWidth));

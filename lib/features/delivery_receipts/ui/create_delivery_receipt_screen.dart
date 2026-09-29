@@ -503,7 +503,6 @@ class _ItemsStepState extends State<_ItemsStep> {
   String _query = '';
   String? _category;
   bool _selectedOnly = false;
-  late String _notes = context.read<CreateDeliveryReceiptCubit>().launch.replacing?.notes ?? '';
 
   // Search keys folded once per items list, not per keystroke.
   List<ProjectItem>? _keyedFor;
@@ -534,40 +533,9 @@ class _ItemsStepState extends State<_ItemsStep> {
     ];
   }
 
-  Future<void> _editNotes() async {
-    final ctrl = TextEditingController(text: _notes);
-    final result = await showDialog<String>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('ملاحظات السند'),
-        content: TextField(
-          controller: ctrl,
-          autofocus: true,
-          maxLines: 4,
-          decoration: const InputDecoration(
-            hintText: 'تظهر أسفل جدول البنود في السند',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('إلغاء'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
-            child: const Text('حفظ'),
-          ),
-        ],
-      ),
-    );
-    ctrl.dispose();
-    if (result != null) setState(() => _notes = result);
-  }
-
   void _submit() {
     FocusManager.instance.primaryFocus?.unfocus();
-    context.read<CreateDeliveryReceiptCubit>().submit(notes: _notes);
+    context.read<CreateDeliveryReceiptCubit>().submit();
   }
 
   Future<void> _cancel(BuildContext context) async {
@@ -720,8 +688,6 @@ class _ItemsStepState extends State<_ItemsStep> {
         if (!state.loading && state.items.isNotEmpty)
           _SubmitBar(
             state: state,
-            notes: _notes,
-            onEditNotes: _editNotes,
             onSubmit: _submit,
             onCancel: () => _cancel(context),
             // The bad row may be scrolled away; this filter shows it.
@@ -891,15 +857,11 @@ class _ItemCardState extends State<_ItemCard> {
 
 class _SubmitBar extends StatelessWidget {
   final CreateDeliveryReceiptState state;
-  final String notes;
-  final VoidCallback onEditNotes;
   final VoidCallback onSubmit;
   final VoidCallback onCancel;
   final VoidCallback onReviewInvalid;
   const _SubmitBar({
     required this.state,
-    required this.notes,
-    required this.onEditNotes,
     required this.onSubmit,
     required this.onCancel,
     required this.onReviewInvalid,
@@ -925,38 +887,23 @@ class _SubmitBar extends StatelessWidget {
                 Text(state.error!, style: TextStyle(color: scheme.error)),
                 const SizedBox(height: 6),
               ],
-              Row(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      onTap: state.invalid.isNotEmpty ? onReviewInvalid : null,
-                      child: Text(
-                        state.invalid.isNotEmpty
-                            ? 'صحّح الكميات غير الصحيحة — اضغط للعرض'
-                            : count == 0
-                            ? 'حدد كمية بند واحد على الأقل'
-                            : count == 1
-                            ? 'بند واحد محدد'
-                            : '$count بنود محددة',
-                        style: theme.textTheme.titleSmall?.copyWith(
-                          color: state.invalid.isNotEmpty ? scheme.error : null,
-                          decoration: state.invalid.isNotEmpty
-                              ? TextDecoration.underline
-                              : null,
-                        ),
-                      ),
-                    ),
+              GestureDetector(
+                onTap: state.invalid.isNotEmpty ? onReviewInvalid : null,
+                child: Text(
+                  state.invalid.isNotEmpty
+                      ? 'صحّح الكميات غير الصحيحة — اضغط للعرض'
+                      : count == 0
+                      ? 'حدد كمية بند واحد على الأقل'
+                      : count == 1
+                      ? 'بند واحد محدد'
+                      : '$count بنود محددة',
+                  style: theme.textTheme.titleSmall?.copyWith(
+                    color: state.invalid.isNotEmpty ? scheme.error : null,
+                    decoration: state.invalid.isNotEmpty
+                        ? TextDecoration.underline
+                        : null,
                   ),
-                  TextButton.icon(
-                    onPressed: state.submitting ? null : onEditNotes,
-                    icon: Icon(
-                      notes.isEmpty
-                          ? Icons.note_add_outlined
-                          : Icons.sticky_note_2,
-                    ),
-                    label: Text(notes.isEmpty ? 'ملاحظة' : 'تعديل الملاحظة'),
-                  ),
-                ],
+                ),
               ),
               const SizedBox(height: 8),
               Row(

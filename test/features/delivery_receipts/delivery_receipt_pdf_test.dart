@@ -25,7 +25,7 @@ void main() {
         bold: pw.Font.ttf((bold.existsSync() ? bold : font).readAsBytesSync().buffer.asByteData()),
       ),
       lines: const [
-        ReceiptPdfLine(itemName: 'كرسي مكتب', description: 'جلد أسود بعجلات', unit: 'حبة', quantity: 12),
+        ReceiptPdfLine(itemName: 'كرسي مكتب', description: 'جلد أسود بعجلات', unit: 'حبة', quantity: 12, note: 'يوجد خدش بسيط'),
         ReceiptPdfLine(itemName: 'طاولة اجتماعات', unit: 'حبة', quantity: 2),
         ReceiptPdfLine(itemName: 'ورق تصوير A4', unit: 'كرتون', quantity: 7.5),
       ],

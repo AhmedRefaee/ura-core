@@ -10,11 +10,13 @@ class ReceiptPdfLine {
   final String? description;
   final String unit;
   final double quantity;
+  final String? note;
   const ReceiptPdfLine({
     required this.itemName,
     this.description,
     required this.unit,
     required this.quantity,
+    this.note,
   });
 }
 
@@ -124,8 +126,13 @@ class DeliveryReceiptPdf {
   /// Every Text in here sets rtl itself: the rows/table below are laid out in
   /// an explicit LTR frame so column order is fixed visually, and Arabic only
   /// shapes correctly when the Text itself is rtl.
-  static pw.Widget _t(String text, {pw.TextStyle? style, pw.TextAlign align = pw.TextAlign.right}) =>
-      pw.Text(text, style: style, textAlign: align, textDirection: pw.TextDirection.rtl);
+  static pw.Widget _t(String text, {pw.TextStyle? style, pw.TextAlign align = pw.TextAlign.right, int? maxLines}) =>
+      pw.Text(text,
+          style: style,
+          textAlign: align,
+          textDirection: pw.TextDirection.rtl,
+          maxLines: maxLines,
+          overflow: maxLines != null ? pw.TextOverflow.clip : pw.TextOverflow.visible);
 
   static pw.Widget _ltr(pw.Widget child) =>
       pw.Directionality(textDirection: pw.TextDirection.ltr, child: child);
@@ -169,7 +176,11 @@ class DeliveryReceiptPdf {
         ),
       );
 
-  static pw.Widget _cell(String text, {bool header = false, pw.TextAlign align = pw.TextAlign.center}) =>
+  // maxLines: 1 for free-text cells (the ملاحظات column) -- the row's
+  // height is fixed, so unlike the item name (a curated catalog string,
+  // reliably short) a user-typed note has to be bounded or it would spill
+  // past the row instead of wrapping into it.
+  static pw.Widget _cell(String text, {bool header = false, pw.TextAlign align = pw.TextAlign.center, bool singleLine = false}) =>
       pw.Container(
         height: header ? 20 : 22,
         padding: const pw.EdgeInsets.symmetric(horizontal: 4),
@@ -177,6 +188,7 @@ class DeliveryReceiptPdf {
         color: header ? PdfColors.grey400 : null,
         child: _t(text,
             align: align,
+            maxLines: singleLine ? 1 : null,
             style: header
                 ? pw.TextStyle(fontSize: 9.5, fontWeight: pw.FontWeight.bold)
                 : const pw.TextStyle(fontSize: 9.5)),
@@ -207,7 +219,7 @@ class DeliveryReceiptPdf {
           ]),
           for (var i = 0; i < lines.length; i++)
             pw.TableRow(children: [
-              _cell(''),
+              _cell(lines[i].note ?? '', singleLine: true),
               _cell(formatQty(lines[i].quantity)),
               _cell(lines[i].unit),
               _cell(

@@ -20,6 +20,10 @@ class CreateDeliveryReceiptState extends Equatable {
   /// a typo must never silently drop a line from the سند.
   final Map<String, String> invalid;
 
+  /// projectItemId -> free-text note for that line, shown in the PDF's
+  /// ملاحظات column. Entries only exist for items with a non-empty note.
+  final Map<String, String> itemNotes;
+
   /// Editing: lines of the old سند no longer in the quotation (not carried).
   final int droppedFromOriginal;
   final bool submitting;
@@ -43,6 +47,7 @@ class CreateDeliveryReceiptState extends Equatable {
     this.items = const [],
     this.quantities = const {},
     this.invalid = const {},
+    this.itemNotes = const {},
     this.droppedFromOriginal = 0,
     this.submitting = false,
     this.error,
@@ -76,6 +81,7 @@ class CreateDeliveryReceiptState extends Equatable {
     List<ProjectItem>? items,
     Map<String, double>? quantities,
     Map<String, String>? invalid,
+    Map<String, String>? itemNotes,
     int? droppedFromOriginal,
     bool? submitting,
     String? error,
@@ -94,6 +100,7 @@ class CreateDeliveryReceiptState extends Equatable {
       items: items ?? this.items,
       quantities: quantities ?? this.quantities,
       invalid: invalid ?? this.invalid,
+      itemNotes: itemNotes ?? this.itemNotes,
       droppedFromOriginal: droppedFromOriginal ?? this.droppedFromOriginal,
       submitting: submitting ?? this.submitting,
       error: clearError ? null : (error ?? this.error),
@@ -114,6 +121,7 @@ class CreateDeliveryReceiptState extends Equatable {
         items,
         quantities,
         invalid,
+        itemNotes,
         droppedFromOriginal,
         submitting,
         error,

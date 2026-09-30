@@ -10,6 +10,7 @@ class DeliveryReceiptItem extends Equatable {
   final String itemNameSnapshot;
   final String unitSnapshot;
   final double quantityDelivered;
+  final String? notes;
 
   const DeliveryReceiptItem({
     required this.id,
@@ -18,6 +19,7 @@ class DeliveryReceiptItem extends Equatable {
     required this.itemNameSnapshot,
     required this.unitSnapshot,
     required this.quantityDelivered,
+    this.notes,
   });
 
   factory DeliveryReceiptItem.fromMap(Map<String, dynamic> map) {
@@ -28,12 +30,13 @@ class DeliveryReceiptItem extends Equatable {
       itemNameSnapshot: map['item_name_snapshot'] as String,
       unitSnapshot: map['unit_snapshot'] as String,
       quantityDelivered: (map['quantity_delivered'] as num).toDouble(),
+      notes: map['notes'] as String?,
     );
   }
 
   @override
   List<Object?> get props =>
-      [id, deliveryReceiptId, projectItemId, itemNameSnapshot, unitSnapshot, quantityDelivered];
+      [id, deliveryReceiptId, projectItemId, itemNameSnapshot, unitSnapshot, quantityDelivered, notes];
 }
 
 /// سند استلام -- an immutable logistics record a rep files (optionally tied

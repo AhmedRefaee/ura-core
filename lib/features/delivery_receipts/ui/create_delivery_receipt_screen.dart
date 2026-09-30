@@ -715,6 +715,7 @@ class _ItemsStepState extends State<_ItemsStep> {
                             item: item,
                             quantity: state.quantities[item.id] ?? 0,
                             invalidText: state.invalid[item.id],
+                            note: state.itemNotes[item.id],
                             enabled: !state.submitting,
                           );
                         },
@@ -748,18 +749,25 @@ class _ItemCard extends StatefulWidget {
   final ProjectItem item;
   final double quantity;
   final String? invalidText;
+  final String? note;
   final bool enabled;
   const _ItemCard({
     super.key,
     required this.item,
     required this.quantity,
     required this.invalidText,
+    required this.note,
     required this.enabled,
   });
 
   @override
   State<_ItemCard> createState() => _ItemCardState();
 }
+
+// The سند PDF's ملاحظات column is a single fixed-height row (see
+// delivery_receipt_pdf.dart's _cell(singleLine: true)) -- capping input
+// here means the PDF never has to silently clip what someone typed.
+const _kItemNoteMaxLength = 60;
 
 class _ItemCardState extends State<_ItemCard> {
   late final _ctrl = TextEditingController(
@@ -784,6 +792,44 @@ class _ItemCardState extends State<_ItemCard> {
     );
   }
 
+  Future<void> _editNote() async {
+    final ctrl = TextEditingController(text: widget.note ?? '');
+    final result = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('ملاحظة — ${widget.item.itemName}'),
+        content: TextField(
+          controller: ctrl,
+          autofocus: true,
+          maxLength: _kItemNoteMaxLength,
+          decoration: const InputDecoration(
+            hintText: 'تظهر في عمود "ملاحظات" أمام هذا البند في السند',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          if ((widget.note ?? '').isNotEmpty)
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, ''),
+              child: Text('إزالة الملاحظة', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+            ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, ctrl.text.trim()),
+            child: const Text('حفظ'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+    if (result != null && mounted) {
+      context.read<CreateDeliveryReceiptCubit>().setItemNote(widget.item.id, result);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -791,6 +837,7 @@ class _ItemCardState extends State<_ItemCard> {
     final item = widget.item;
     final picked = widget.quantity > 0;
     final invalid = widget.invalidText != null;
+    final hasNote = (widget.note ?? '').isNotEmpty;
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 5),
@@ -820,6 +867,20 @@ class _ItemCardState extends State<_ItemCard> {
                     ),
                   ),
                 ),
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: widget.enabled ? _editNote : null,
+                    icon: Icon(
+                      hasNote ? Icons.sticky_note_2 : Icons.note_add_outlined,
+                      color: hasNote ? scheme.primary : scheme.outline,
+                      size: 20,
+                    ),
+                    tooltip: hasNote ? 'تعديل الملاحظة' : 'إضافة ملاحظة لهذا البند',
+                  ),
+                ),
                 if (picked)
                   Icon(Icons.check_circle, color: scheme.primary, size: 22),
               ],
@@ -832,6 +893,25 @@ class _ItemCardState extends State<_ItemCard> {
                   style: theme.textTheme.bodySmall,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
+                ),
+              ),
+            if (hasNote)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.sticky_note_2_outlined, size: 14, color: scheme.primary),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        widget.note!,
+                        style: theme.textTheme.bodySmall?.copyWith(color: scheme.primary),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             const SizedBox(height: 10),

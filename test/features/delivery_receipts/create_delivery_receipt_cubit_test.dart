@@ -145,6 +145,42 @@ void main() {
     expect(cubit.state.canSubmit, isTrue);
   });
 
+  test('setItemNote sets, trims, and clears a per-item note', () async {
+    final cubit = build(const DeliveryReceiptLaunch(entity: entity, projectId: 'p2'));
+    await cubit.init();
+
+    cubit.setItemNote('i1', '  مكسور من الأعلى  ');
+    expect(cubit.state.itemNotes['i1'], 'مكسور من الأعلى', reason: 'stored trimmed');
+
+    cubit.setItemNote('i1', '   ');
+    expect(cubit.state.itemNotes, isEmpty, reason: 'a blank note clears the entry rather than storing it');
+  });
+
+  test('editing pre-fills the old per-item notes onto lines that still exist', () async {
+    const old = DeliveryReceipt(
+      id: 'r1',
+      entityId: 'e1',
+      entity: entity,
+      projectId: 'p2',
+      repId: 'u1',
+      items: [
+        DeliveryReceiptItem(
+          id: 'x', deliveryReceiptId: 'r1', projectItemId: 'i1', itemNameSnapshot: 'كرسي',
+          unitSnapshot: 'حبة', quantityDelivered: 4, notes: 'مكسور من الأعلى',
+        ),
+        DeliveryReceiptItem(
+          id: 'y', deliveryReceiptId: 'r1', projectItemId: 'gone', itemNameSnapshot: 'محذوف',
+          unitSnapshot: 'حبة', quantityDelivered: 2, notes: 'ملاحظة على بند محذوف',
+        ),
+      ],
+    );
+    final cubit = build(DeliveryReceiptLaunch.edit(old));
+    await cubit.init();
+
+    expect(cubit.state.itemNotes, {'i1': 'مكسور من الأعلى'},
+        reason: 'the note on the dropped line must not survive either');
+  });
+
   test('switching entity clears the previous project and quantities', () async {
     final cubit = build(const DeliveryReceiptLaunch(entity: entity, projectId: 'p2'));
     await cubit.init();

@@ -135,6 +135,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       items: const [],
       quantities: const {},
       invalid: const {},
+      itemNotes: const {},
       loading: true,
       clearError: true,
     ));
@@ -151,8 +152,8 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
 
   bool _prefilled = false;
 
-  /// Editing: carry the old سند's quantities over, once, onto the lines that
-  /// still exist in the (possibly re-imported) quotation.
+  /// Editing: carry the old سند's quantities and per-item notes over, once,
+  /// onto the lines that still exist in the (possibly re-imported) quotation.
   void _prefillFromReplaced(Project project, List<ProjectItem> items) {
     final old = launch.replacing;
     if (old == null || _prefilled || project.id != old.projectId) return;
@@ -162,7 +163,18 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       for (final line in old.items)
         if (line.projectItemId != null && present.contains(line.projectItemId)) line.projectItemId!: line.quantityDelivered,
     };
-    emit(state.copyWith(quantities: quantities, droppedFromOriginal: old.items.length - quantities.length));
+    final itemNotes = <String, String>{
+      for (final line in old.items)
+        if (line.projectItemId != null &&
+            present.contains(line.projectItemId) &&
+            (line.notes?.trim().isNotEmpty ?? false))
+          line.projectItemId!: line.notes!.trim(),
+    };
+    emit(state.copyWith(
+      quantities: quantities,
+      itemNotes: itemNotes,
+      droppedFromOriginal: old.items.length - quantities.length,
+    ));
   }
 
   /// Quantity exactly as typed. Empty clears the line; anything that isn't a
@@ -192,6 +204,19 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
 
   void setHandwrittenDate(bool value) => emit(state.copyWith(handwrittenDate: value));
 
+  /// Free-text note for one item's line in the سند. Empty (after trimming)
+  /// clears it rather than storing a blank entry.
+  void setItemNote(String projectItemId, String note) {
+    final next = Map<String, String>.from(state.itemNotes);
+    final trimmed = note.trim();
+    if (trimmed.isEmpty) {
+      next.remove(projectItemId);
+    } else {
+      next[projectItemId] = trimmed;
+    }
+    emit(state.copyWith(itemNotes: next));
+  }
+
   Future<void> submit({String? notes}) async {
     final entity = state.entity;
     final project = state.project;
@@ -214,6 +239,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
               description: packagingOf(i.description),
               unit: i.unit,
               quantity: state.quantities[i.id]!,
+              note: state.itemNotes[i.id],
             ),
         ],
       );
@@ -237,7 +263,11 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
         notes: (notes?.trim().isEmpty ?? true) ? null : notes!.trim(),
         items: [
           for (final i in chosen)
-            {'project_item_id': i.id, 'quantity_delivered': state.quantities[i.id]},
+            {
+              'project_item_id': i.id,
+              'quantity_delivered': state.quantities[i.id],
+              if (state.itemNotes[i.id] != null) 'notes': state.itemNotes[i.id],
+            },
         ],
       );
       switch (created) {

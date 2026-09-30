@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/entity.dart';
+import '../../projects/ui/projects_screen.dart';
 import '../logic/entities_cubit.dart';
 import '../logic/import_entities_cubit.dart';
 import 'import_entities_screen.dart';
@@ -116,29 +117,28 @@ class _FilterBar extends StatelessWidget {
         
         return Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _FilterChip(
-                  label: 'الكل',
-                  isSelected: selectedFilter == null,
-                  onTap: () => context.read<EntitiesCubit>().filterByCategory(null),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: EntityCategory.incoming.label,
-                  isSelected: selectedFilter == EntityCategory.incoming,
-                  onTap: () => context.read<EntitiesCubit>().filterByCategory(EntityCategory.incoming),
-                ),
-                const SizedBox(width: 8),
-                _FilterChip(
-                  label: EntityCategory.outgoing.label,
-                  isSelected: selectedFilter == EntityCategory.outgoing,
-                  onTap: () => context.read<EntitiesCubit>().filterByCategory(EntityCategory.outgoing),
-                ),
-              ],
-            ),
+          // Wrap rather than a horizontal scroll strip -- a mouse cannot drag
+          // one, so on desktop web any chip past the right edge is unreachable.
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _FilterChip(
+                label: 'الكل',
+                isSelected: selectedFilter == null,
+                onTap: () => context.read<EntitiesCubit>().filterByCategory(null),
+              ),
+              _FilterChip(
+                label: EntityCategory.incoming.label,
+                isSelected: selectedFilter == EntityCategory.incoming,
+                onTap: () => context.read<EntitiesCubit>().filterByCategory(EntityCategory.incoming),
+              ),
+              _FilterChip(
+                label: EntityCategory.outgoing.label,
+                isSelected: selectedFilter == EntityCategory.outgoing,
+                onTap: () => context.read<EntitiesCubit>().filterByCategory(EntityCategory.outgoing),
+              ),
+            ],
           ),
         );
       },
@@ -238,6 +238,7 @@ class _EntityTile extends StatelessWidget {
     return Card(
       margin: EdgeInsets.zero,
       child: ListTile(
+        onTap: () => openProjectsScreen(context, entity),
         leading: CircleAvatar(
           backgroundColor: color.withValues(alpha: 0.15),
           child: Icon(icon, color: color, size: 20),

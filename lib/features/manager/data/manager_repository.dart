@@ -15,7 +15,7 @@ class ManagerRepository {
   final _pendingUsersCache = MemoryCache<String, List<Profile>>(ttl: Duration(minutes: 3));
 
   static const _orderSelect =
-      'id, direction, entity_id, rep_id, created_by, storage_actor_id, status, notes, created_at, assigned_at, picked_up_at, move_started_at, delivered_at, entity:entities(id, name, category, contact_name, contact_phone, address), rep:profiles!orders_rep_id_fkey(id, full_name, phone, role, is_approved, created_at), creator:profiles!orders_created_by_fkey(id, full_name, phone, role, is_approved, created_at), order_items(id, order_id, inventory_id, quantity, final_quantity, is_custom, custom_description, source_inventory_id, check_status, checked_by, checked_at, inventory:inventory!order_items_inventory_id_fkey(id, item_name), checker:profiles!order_items_checked_by_fkey(id, full_name, phone, role, is_approved, created_at))';
+      'id, direction, entity_id, rep_id, created_by, storage_actor_id, status, notes, created_at, assigned_at, picked_up_at, move_started_at, delivered_at, entity:entities(id, name, category, contact_name, contact_phone, address), rep:profiles!orders_rep_id_fkey(id, full_name, phone, role, is_approved, created_at), creator:profiles!orders_created_by_fkey(id, full_name, phone, role, is_approved, created_at), order_items(id, order_id, inventory_id, quantity, final_quantity, is_custom, custom_description, source_inventory_id, check_status, checked_by, checked_at, purchased_at, purchased_by, inventory:inventory!order_items_inventory_id_fkey(id, item_name), checker:profiles!order_items_checked_by_fkey(id, full_name, phone, role, is_approved, created_at))';
 
   // ── Users ──────────────────────────────────────────────────────────────────
 
@@ -338,7 +338,7 @@ class ManagerRepository {
       logger.d('ManagerRepository → fetchAuditLog: $orderId');
       final data = await _supabase
           .from('audit_log')
-          .select('id, order_id, action, old_status, new_status, performed_by, details, notes, server_timestamp, performer:profiles!audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)')
+          .select('id, order_id, action, old_status, new_status, performed_by, details, notes, server_timestamp, location_lat, location_lng, performer:profiles!audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)')
           .eq('order_id', orderId)
           .order('server_timestamp');
       return AppSuccess((data as List)

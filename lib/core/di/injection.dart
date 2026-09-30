@@ -1,6 +1,7 @@
 import 'package:get_it/get_it.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../cache/local_profile_source.dart';
+import '../location/location_capture.dart';
 import '../notifications/notification_service.dart';
 import '../../features/notifications/data/notifications_repository.dart';
 import '../../features/notifications/logic/chat_badge_cubit.dart';
@@ -14,12 +15,13 @@ import '../../features/verifier/data/entity_repository.dart';
 import '../../features/verifier/data/inventory_repository.dart';
 import '../../features/verifier/data/order_repository.dart';
 import '../../features/verifier/data/order_template_repository.dart';
-import '../../features/verifier/data/voice_match_repository.dart';
+import '../../features/verifier/data/hybrid_item_match_repository.dart';
+import '../../features/verifier/data/item_match_repository.dart';
 import '../../features/verifier/logic/create_order_cubit.dart';
 import '../../features/verifier/logic/order_templates_cubit.dart';
 import '../../features/verifier/logic/edit_order_cubit.dart';
 import '../../features/verifier/logic/orders_cubit.dart';
-import '../../features/verifier/logic/voice_add_item_cubit.dart';
+import '../../features/verifier/logic/ai_add_item_cubit.dart';
 import '../../features/templates/logic/template_editor_cubit.dart';
 import '../../features/templates/logic/template_management_cubit.dart';
 import '../../features/rep/data/rep_orders_repository.dart';
@@ -46,6 +48,15 @@ import '../../features/inventory/logic/inventory_form_cubit.dart';
 import '../../features/inventory/logic/inventory_list_cubit.dart';
 import '../../features/chat/data/chat_repository.dart';
 import '../../features/chat/logic/chat_directory_cubit.dart';
+import '../../features/projects/data/project_repository.dart';
+import '../../features/projects/data/project_storage_service.dart';
+import '../../features/projects/logic/boq_excel_cubit.dart';
+import '../../features/projects/logic/project_detail_cubit.dart';
+import '../../features/projects/logic/projects_cubit.dart';
+import '../../shared/models/project.dart';
+import '../../features/delivery_receipts/data/delivery_receipt_repository.dart';
+import '../../features/delivery_receipts/data/delivery_receipt_storage_service.dart';
+import '../../features/delivery_receipts/logic/create_delivery_receipt_cubit.dart';
 import '../../features/chat/logic/chat_threads_cubit.dart';
 import '../../features/chat/logic/order_chat_badge_cubit.dart';
 import '../../features/entities/logic/entities_cubit.dart';
@@ -83,7 +94,27 @@ Future<void> setupDependencies() async {
   sl.registerLazySingleton<OrderTemplateRepository>(() => OrderTemplateRepository());
   sl.registerLazySingleton<RepOrdersRepository>(() => RepOrdersRepository());
   sl.registerLazySingleton<ChatRepository>(() => ChatRepository());
-  sl.registerLazySingleton<VoiceMatchRepository>(() => VoiceMatchRepository());
+  sl.registerLazySingleton<ProjectRepository>(() => ProjectRepository());
+  sl.registerLazySingleton<ProjectStorageService>(() => ProjectStorageService());
+  sl.registerLazySingleton<DeliveryReceiptRepository>(() => DeliveryReceiptRepository());
+  sl.registerLazySingleton<DeliveryReceiptStorageService>(() => DeliveryReceiptStorageService());
+  // Matches locally first (instant, free, no quota) and only calls Gemini for
+  // the lines the local matcher couldn't confidently place -- see
+  // HybridItemMatchRepository's own doc for why, and
+  // plans/... for the design history. Four implementations satisfy this one
+  // interface:
+  //
+  //   HybridItemMatchRepository() — local first, AI fallback for leftovers (current)
+  //   LocalItemMatchRepository()  — on-device only, instant, free
+  //   DirectItemMatchRepository() — Gemini via Firebase AI Logic, every line
+  //   EdgeItemMatchRepository()   — Gemini via the Supabase function
+  //
+  // The bottom two need their import added back if switching to them; the
+  // files are still here. Everything any of these return lands in the same
+  // review step in front of the verifier before it becomes an order.
+  sl.registerLazySingleton<ItemMatchRepository>(
+    () => HybridItemMatchRepository(),
+  );
 
   // Chat cubits (singleton badge cubit; factory threads + directory cubits)
   sl.registerLazySingleton<OrderChatBadgeCubit>(
@@ -132,17 +163,39 @@ Future<void> setupDependencies() async {
       orderId,
     ),
   );
-  sl.registerFactory<VoiceAddItemCubit>(
-    () => VoiceAddItemCubit(sl<VoiceMatchRepository>()),
+  sl.registerFactory<AiAddItemCubit>(
+    () => AiAddItemCubit(sl<ItemMatchRepository>()),
   );
 
   // Rep
+  sl.registerLazySingleton<LocationCapture>(() => GeolocatorLocationCapture());
   sl.registerFactory<RepOrdersCubit>(() => RepOrdersCubit(sl<RepOrdersRepository>()));
+  sl.registerFactory<ProjectsCubit>(
+    () => ProjectsCubit(sl<ProjectRepository>(), sl<ProjectStorageService>()),
+  );
+  sl.registerFactory<BoqExcelCubit>(() => BoqExcelCubit(sl<ProjectRepository>()));
+  sl.registerFactoryParam<ProjectDetailCubit, Project, void>(
+    (project, _) => ProjectDetailCubit(
+      sl<ProjectRepository>(),
+      sl<ProjectStorageService>(),
+      project,
+    ),
+  );
+  sl.registerFactoryParam<CreateDeliveryReceiptCubit, DeliveryReceiptLaunch, void>(
+    (launch, _) => CreateDeliveryReceiptCubit(
+      sl<EntityRepository>(),
+      sl<ProjectRepository>(),
+      sl<DeliveryReceiptRepository>(),
+      sl<DeliveryReceiptStorageService>(),
+      launch,
+    ),
+  );
   sl.registerFactoryParam<RepOrderDetailCubit, String, void>(
     (orderId, _) => RepOrderDetailCubit(
       sl<RepOrdersRepository>(),
       orderId,
       sl<ChatRepository>(),
+      sl<LocationCapture>(),
     ),
   );
 

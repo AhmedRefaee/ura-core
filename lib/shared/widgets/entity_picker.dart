@@ -7,11 +7,17 @@ class EntityPicker extends StatelessWidget {
   final Entity? selected;
   final ValueChanged<Entity> onChanged;
 
+  /// Category the sheet's filter starts on, so the caller can show the
+  /// entities that fit its context first (e.g. توريد for an outbound order).
+  /// Null starts on "الكل"; either way the user can switch the chips.
+  final EntityCategory? initialCategory;
+
   const EntityPicker({
     super.key,
     required this.entities,
     required this.selected,
     required this.onChanged,
+    this.initialCategory,
   });
 
   @override
@@ -51,6 +57,7 @@ class EntityPicker extends StatelessWidget {
       builder: (sheetContext) => _EntitySheet(
         entities: entities,
         selected: selected,
+        initialCategory: initialCategory,
         onSelected: (entity) {
           onChanged(entity);
           Navigator.pop(sheetContext);
@@ -63,11 +70,13 @@ class EntityPicker extends StatelessWidget {
 class _EntitySheet extends StatefulWidget {
   final List<Entity> entities;
   final Entity? selected;
+  final EntityCategory? initialCategory;
   final ValueChanged<Entity> onSelected;
 
   const _EntitySheet({
     required this.entities,
     required this.selected,
+    required this.initialCategory,
     required this.onSelected,
   });
 
@@ -83,7 +92,8 @@ class _EntitySheetState extends State<_EntitySheet> {
   @override
   void initState() {
     super.initState();
-    _filtered = widget.entities;
+    _categoryFilter = widget.initialCategory;
+    _filtered = _matches();
     _searchController.addListener(_onSearchChanged);
   }
 
@@ -106,20 +116,24 @@ class _EntitySheetState extends State<_EntitySheet> {
   }
 
   void _applyFilters() {
-    final query = _searchController.text.toLowerCase();
     setState(() {
-      _filtered = widget.entities.where((entity) {
-        // Filter by category
-        if (_categoryFilter != null && entity.category != _categoryFilter) {
-          return false;
-        }
-        // Filter by search query
-        if (query.isNotEmpty && !entity.name.toLowerCase().contains(query)) {
-          return false;
-        }
-        return true;
-      }).toList();
+      _filtered = _matches();
     });
+  }
+
+  List<Entity> _matches() {
+    final query = _searchController.text.toLowerCase();
+    return widget.entities.where((entity) {
+      // Filter by category
+      if (_categoryFilter != null && entity.category != _categoryFilter) {
+        return false;
+      }
+      // Filter by search query
+      if (query.isNotEmpty && !entity.name.toLowerCase().contains(query)) {
+        return false;
+      }
+      return true;
+    }).toList();
   }
 
   @override
@@ -223,29 +237,32 @@ class _FilterChips extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    // Wrap rather than a horizontal scroll strip: a mouse cannot drag one
+    // (Flutter omits PointerDeviceKind.mouse from the default drag devices and
+    // shows no scrollbar), so on desktop web anything past the right edge is
+    // unreachable. These labels are long enough in Arabic to overflow a narrow
+    // window.
+    return Padding(
       padding: AppSpacing.horizontalLargePadding,
-      child: Row(
+      child: Wrap(
+        spacing: AppSpacing.horizontalSmall,
+        runSpacing: AppSpacing.verticalSmall,
         children: [
           _FilterChip(
             label: 'الكل',
             isSelected: selectedFilter == null,
             onTap: () => onChanged(null),
           ),
-          SizedBox(width: AppSpacing.horizontalSmall),
           _FilterChip(
             label: EntityCategory.incoming.label,
             isSelected: selectedFilter == EntityCategory.incoming,
             onTap: () => onChanged(EntityCategory.incoming),
           ),
-          SizedBox(width: AppSpacing.horizontalSmall),
           _FilterChip(
             label: EntityCategory.outgoing.label,
             isSelected: selectedFilter == EntityCategory.outgoing,
             onTap: () => onChanged(EntityCategory.outgoing),
           ),
-          SizedBox(width: AppSpacing.horizontalSmall),
         ],
       ),
     );

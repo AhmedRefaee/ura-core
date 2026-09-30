@@ -7,8 +7,9 @@ import '../../../../shared/models/order.dart';
 import '../../../../shared/utils/quantity_format.dart';
 import '../../../../core/design_system/theme/theme.dart';
 import '../../../../core/di/injection.dart';
-import '../../logic/voice_add_item_cubit.dart';
-import 'voice_add_item_view.dart';
+import '../../logic/ai_add_item_cubit.dart';
+import 'paste_add_item_view.dart';
+import '../../../../shared/widgets/off_stock.dart';
 
 /// Shared widget for adding items to an order.
 /// Used by both CreateOrderScreen and EditOrderScreen.
@@ -18,13 +19,24 @@ class AddItemSheet extends StatefulWidget {
   final void Function(List<({InventoryItem item, double quantity})> items) onAddInventoryItems;
   final void Function(String description, double quantity, {String? sourceInventoryId}) onAddCustomItem;
 
+  /// When non-null the sheet opens straight into the custom-item form,
+  /// pre-filled from this payload, and submitting calls [onUpdateCustomItem]
+  /// instead of [onAddCustomItem]. This is how a draft off-stock item gets its
+  /// brand/variety/packaging filled in after it was first added.
+  final String? initialCustomJson;
+  final void Function(String description, double quantity)? onUpdateCustomItem;
+
   const AddItemSheet({
     super.key,
     required this.inventory,
     required this.orderDirection,
     required this.onAddInventoryItems,
     required this.onAddCustomItem,
+    this.initialCustomJson,
+    this.onUpdateCustomItem,
   });
+
+  bool get isEditingCustom => initialCustomJson != null;
 
   @override
   State<AddItemSheet> createState() => _AddItemSheetState();
@@ -39,10 +51,18 @@ class _AddItemSheetState extends State<AddItemSheet> {
   final _categoryCtrl = TextEditingController();
   final _minQtyCtrl = TextEditingController(text: '0');
   final _extraDescCtrl = TextEditingController();
+  final _brandCtrl = TextEditingController();
+  final _varietyCtrl = TextEditingController();
+  final _packSizeCtrl = TextEditingController();
+  final _packUnitCtrl = TextEditingController();
   final _searchController = TextEditingController();
   final Map<String, TextEditingController> _quantityControllers = {};
   String _search = '';
   AvailabilityStatus? _statusFilter;
+
+  /// Selected category chip, or null for "all". Distinct from [_categoryCtrl],
+  /// which is the category *typed in* when creating an outside-inventory item.
+  String? _categoryFilter;
 
   // For convert-to-custom flow
   String? _convertSourceInventoryId;
@@ -54,6 +74,36 @@ class _AddItemSheetState extends State<AddItemSheet> {
       _quantityControllers.putIfAbsent(itemId, TextEditingController.new);
 
   @override
+  void initState() {
+    super.initState();
+    final raw = widget.initialCustomJson;
+    if (raw == null) return;
+
+    _isCustom = true;
+    Map<String, dynamic>? json;
+    try {
+      json = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      // Items added before the payload was JSON stored a bare description.
+      _descController.text = raw;
+      return;
+    }
+
+    _descController.text = json['name'] as String? ?? '';
+    _customQtyController.text = formatQty((json['qty'] as num?)?.toDouble() ?? 1);
+    _unitCtrl.text = json['unit'] as String? ?? 'قطعة';
+    _skuCtrl.text = json['sku'] as String? ?? '';
+    _categoryCtrl.text = json['category'] as String? ?? '';
+    _minQtyCtrl.text = formatQty((json['minQty'] as num?)?.toDouble() ?? 0);
+    _extraDescCtrl.text = json['description'] as String? ?? '';
+    _brandCtrl.text = json['brand'] as String? ?? '';
+    _varietyCtrl.text = json['variety'] as String? ?? '';
+    final packSize = (json['packagingSize'] as num?)?.toDouble();
+    _packSizeCtrl.text = packSize != null ? formatQty(packSize) : '';
+    _packUnitCtrl.text = json['packagingSizeUnit'] as String? ?? '';
+  }
+
+  @override
   void dispose() {
     _descController.dispose();
     _customQtyController.dispose();
@@ -62,6 +112,10 @@ class _AddItemSheetState extends State<AddItemSheet> {
     _categoryCtrl.dispose();
     _minQtyCtrl.dispose();
     _extraDescCtrl.dispose();
+    _brandCtrl.dispose();
+    _varietyCtrl.dispose();
+    _packSizeCtrl.dispose();
+    _packUnitCtrl.dispose();
     _searchController.dispose();
     for (final controller in _quantityControllers.values) {
       controller.dispose();
@@ -69,19 +123,46 @@ class _AddItemSheetState extends State<AddItemSheet> {
     super.dispose();
   }
 
-  List<InventoryItem> get _filtered => widget.inventory.where((i) {
-        final matchesSearch = _search.isEmpty ||
-            i.itemName.toLowerCase().contains(_search.toLowerCase());
-        final matchesStatus =
-            _statusFilter == null || i.availabilityStatus == _statusFilter;
-        return matchesSearch && matchesStatus;
-      }).toList();
+  /// Categories present in the catalogue, derived from the items already in
+  /// memory rather than fetched -- same approach as InventoryListCubit's
+  /// availableCategories, so the picker offers exactly the categories the
+  /// inventory screen does without any extra loading.
+  List<String> get _categories {
+    final cats = widget.inventory
+        .map((i) => i.category)
+        .whereType<String>()
+        .where((c) => c.trim().isNotEmpty)
+        .toSet()
+        .toList()
+      ..sort();
+    return cats;
+  }
+
+  // Memoized: the list builder reads this per visible row, and every
+  // quantity keystroke rebuilds the sheet -- recomputing it each time meant
+  // re-filtering the whole inventory ~2x per row per frame.
+  List<InventoryItem>? _filteredCache;
+  Object? _filteredKey;
+  List<InventoryItem> get _filtered {
+    final key = (_search, _statusFilter, _categoryFilter, identityHashCode(widget.inventory));
+    final cached = _filteredCache;
+    if (cached != null && key == _filteredKey) return cached;
+    final query = _search.toLowerCase();
+    _filteredKey = key;
+    return _filteredCache = widget.inventory.where((i) {
+      final matchesSearch = query.isEmpty || i.itemName.toLowerCase().contains(query);
+      final matchesStatus = _statusFilter == null || i.availabilityStatus == _statusFilter;
+      final matchesCategory = _categoryFilter == null || i.category == _categoryFilter;
+      return matchesSearch && matchesStatus && matchesCategory;
+    }).toList();
+  }
 
   void _submit() {
     if (_isCustom) {
       final name = _descController.text.trim();
       final qty = double.tryParse(_customQtyController.text) ?? 0;
       if (name.isNotEmpty && qty > 0) {
+        final packSize = double.tryParse(_packSizeCtrl.text.trim());
         final payload = jsonEncode({
           'name': name,
           'qty': qty,
@@ -90,8 +171,20 @@ class _AddItemSheetState extends State<AddItemSheet> {
           if (_categoryCtrl.text.trim().isNotEmpty) 'category': _categoryCtrl.text.trim(),
           'minQty': double.tryParse(_minQtyCtrl.text) ?? 0,
           if (_extraDescCtrl.text.trim().isNotEmpty) 'description': _extraDescCtrl.text.trim(),
+          // Optional throughout -- an item that needs no such detail is saved
+          // without it, and can be filled in later when it is promoted into
+          // the inventory.
+          if (_brandCtrl.text.trim().isNotEmpty) 'brand': _brandCtrl.text.trim(),
+          if (_varietyCtrl.text.trim().isNotEmpty) 'variety': _varietyCtrl.text.trim(),
+          'packagingSize': ?packSize,
+          if (_packUnitCtrl.text.trim().isNotEmpty)
+            'packagingSizeUnit': _packUnitCtrl.text.trim(),
         });
-        widget.onAddCustomItem(payload, qty, sourceInventoryId: _convertSourceInventoryId);
+        if (widget.isEditingCustom) {
+          widget.onUpdateCustomItem?.call(payload, qty);
+        } else {
+          widget.onAddCustomItem(payload, qty, sourceInventoryId: _convertSourceInventoryId);
+        }
       }
     } else {
       final inventoryItems = <({InventoryItem item, double quantity})>[];
@@ -105,13 +198,13 @@ class _AddItemSheetState extends State<AddItemSheet> {
     Navigator.pop(context);
   }
 
-  Future<void> _openVoiceAddItem() async {
+  Future<void> _openPasteAddItem() async {
     final added = await Navigator.push<bool>(
       context,
       MaterialPageRoute(
         builder: (_) => BlocProvider(
-          create: (_) => sl<VoiceAddItemCubit>(),
-          child: VoiceAddItemView(
+          create: (_) => sl<AiAddItemCubit>(),
+          child: PasteAddItemView(
             inventory: widget.inventory,
             onAddInventoryItems: widget.onAddInventoryItems,
             onAddCustomItem: widget.onAddCustomItem,
@@ -149,6 +242,18 @@ class _AddItemSheetState extends State<AddItemSheet> {
       side: selected ? BorderSide(color: color) : null,
       onSelected: (on) =>
           setState(() => _statusFilter = on ? status : null),
+    );
+  }
+
+  Widget _buildCategoryChip(String category) {
+    final selected = _categoryFilter == category;
+    return FilterChip(
+      label: Text(category),
+      selected: selected,
+      // Tapping the selected chip clears it back to "all", matching how the
+      // status chips above already behave.
+      onSelected: (on) =>
+          setState(() => _categoryFilter = on ? category : null),
     );
   }
 
@@ -235,7 +340,13 @@ class _AddItemSheetState extends State<AddItemSheet> {
     if (qty <= 0) return null;
     final result = item.checkStock(qty);
     if (result == StockCheckResult.partial) return 'المتوفر فقط: ${formatQty(item.quantity)}';
-    if (result == StockCheckResult.outOfStock) return 'غير متوفر في المخزون';
+    // Says what will happen, not just what is wrong: adding this row to an
+    // outbound order makes it the rep's errand, and the verifier should know
+    // that at the moment of typing rather than discover it on the rep's
+    // screen later.
+    if (result == StockCheckResult.outOfStock) {
+      return 'غير متوفر — سيُضاف كـ ${OffStock.label}';
+    }
     return null;
   }
 
@@ -251,17 +362,18 @@ class _AddItemSheetState extends State<AddItemSheet> {
     final theme = Theme.of(context);
     return Scaffold(
       appBar: AppBar(
-        title: const Text('إضافة أصناف'),
+        title: Text(widget.isEditingCustom ? 'تعديل الصنف' : 'إضافة أصناف'),
         leading: IconButton(
           icon: const Icon(Icons.close),
           onPressed: () => Navigator.pop(context),
         ),
         actions: [
-          IconButton(
-            icon: const Icon(Icons.mic),
-            tooltip: 'إضافة عن طريق الصوت',
-            onPressed: _openVoiceAddItem,
-          ),
+          if (!widget.isEditingCustom)
+            IconButton(
+              icon: const Icon(Icons.content_paste),
+              tooltip: 'إضافة من رسالة',
+              onPressed: _openPasteAddItem,
+            ),
         ],
       ),
       body: Padding(
@@ -269,6 +381,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // Editing an existing off-stock item -- there is nothing to switch
+            // to, the item is already custom.
+            if (!widget.isEditingCustom)
             Row(
               children: [
                 const Text('وضع الإضافة',
@@ -289,7 +404,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                     }
                   }),
                 ),
-                const Text('مخصص'),
+                Text(OffStock.label),
               ],
             ),
             SizedBox(height: AppSpacing.verticalLarge),
@@ -300,18 +415,18 @@ class _AddItemSheetState extends State<AddItemSheet> {
                   child: Container(
                     padding: AppSpacing.allSmall,
                     decoration: BoxDecoration(
-                      color: Colors.orange.withValues(alpha: 0.1),
+                      color: OffStock.color.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+                      border: Border.all(color: OffStock.color.withValues(alpha: 0.3)),
                     ),
                     child: Row(
                       children: [
-                        const Icon(Icons.swap_horiz, color: Colors.orange, size: 18),
+                        Icon(Icons.swap_horiz, color: OffStock.color, size: 18),
                         SizedBox(width: AppSpacing.horizontalSmall),
-                        const Expanded(
+                        Expanded(
                           child: Text(
                             'تم التحويل من صنف المخزون',
-                            style: TextStyle(fontSize: 12, color: Colors.orange),
+                            style: TextStyle(fontSize: 12, color: OffStock.color),
                           ),
                         ),
                         IconButton(
@@ -354,6 +469,46 @@ class _AddItemSheetState extends State<AddItemSheet> {
                           child: _CustomField(
                             controller: _unitCtrl,
                             label: 'الوحدة *',
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: AppSpacing.verticalMedium),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _CustomField(
+                            controller: _brandCtrl,
+                            label: 'العلامة التجارية (اختياري)',
+                          ),
+                        ),
+                        SizedBox(width: AppSpacing.horizontalMedium),
+                        Expanded(
+                          child: _CustomField(
+                            controller: _varietyCtrl,
+                            label: 'النوع (اختياري)',
+                          ),
+                        ),
+                      ],
+                    ),
+                    SizedBox(height: AppSpacing.verticalMedium),
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: _CustomField(
+                            controller: _packSizeCtrl,
+                            label: 'حجم التعبئة (اختياري)',
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [quantityInputFormatter],
+                          ),
+                        ),
+                        SizedBox(width: AppSpacing.horizontalMedium),
+                        Expanded(
+                          child: _CustomField(
+                            controller: _packUnitCtrl,
+                            label: 'وحدة التعبئة',
                           ),
                         ),
                       ],
@@ -408,30 +563,55 @@ class _AddItemSheetState extends State<AddItemSheet> {
                 onChanged: (v) => setState(() => _search = v),
               ),
               SizedBox(height: AppSpacing.verticalSmall),
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  children: [
-                    _buildStatusChip(
-                      label: 'متوفر',
-                      status: AvailabilityStatus.available,
-                      color: Colors.green,
-                    ),
-                    SizedBox(width: AppSpacing.horizontalSmall),
-                    _buildStatusChip(
-                      label: 'منخفض',
-                      status: AvailabilityStatus.low,
-                      color: Colors.orange,
-                    ),
-                    SizedBox(width: AppSpacing.horizontalSmall),
-                    _buildStatusChip(
-                      label: 'نفد',
-                      status: AvailabilityStatus.outOfStock,
-                      color: Colors.red,
-                    ),
-                  ],
-                ),
+              // Wrap, never a horizontal scroll strip. A horizontal
+              // SingleChildScrollView cannot be dragged with a mouse -- Flutter
+              // leaves PointerDeviceKind.mouse out of the default drag devices
+              // and draws no scrollbar -- so on desktop web every chip past the
+              // right edge is simply unreachable. Wrapping is also what the
+              // inventory screen's own filter card does.
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _buildStatusChip(
+                    label: 'متوفر',
+                    status: AvailabilityStatus.available,
+                    color: Colors.green,
+                  ),
+                  _buildStatusChip(
+                    label: 'منخفض',
+                    status: AvailabilityStatus.low,
+                    color: Colors.orange,
+                  ),
+                  _buildStatusChip(
+                    label: 'نفد',
+                    status: AvailabilityStatus.outOfStock,
+                    color: Colors.red,
+                  ),
+                ],
               ),
+              // Categories keep their own block rather than joining the status
+              // chips: there are many of them (18 in the live catalogue, several
+              // long), and mixing the two kinds of filter makes neither easy to
+              // scan. Capped in height and scrolled VERTICALLY when they
+              // overflow -- a mouse wheel and a finger both work that way -- so
+              // a long category list cannot swallow the item list below.
+              if (_categories.isNotEmpty) ...[
+                SizedBox(height: AppSpacing.verticalSmall),
+                ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 112),
+                  child: SingleChildScrollView(
+                    child: Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final category in _categories)
+                          _buildCategoryChip(category),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
               SizedBox(height: AppSpacing.verticalSmall),
               Expanded(
                 child: ListView.builder(
@@ -523,7 +703,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                                 : warning != null
                                                     ? OutlineInputBorder(
                                                         borderSide: BorderSide(
-                                                          color: isOutOfStock ? Colors.red : Colors.orange,
+                                                          color: isOutOfStock
+                                                              ? OffStock.color
+                                                              : Colors.orange,
                                                           width: 2,
                                                         ),
                                                       )
@@ -542,7 +724,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                     warning,
                                     style: TextStyle(
                                       fontSize: 12,
-                                      color: isOutOfStock ? Colors.red : Colors.orange,
+                                      color: isOutOfStock
+                                          ? OffStock.color
+                                          : Colors.orange,
                                       fontWeight: FontWeight.w500,
                                     ),
                                   ),
@@ -553,9 +737,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                   child: TextButton.icon(
                                     onPressed: () => _convertToCustom(item),
                                     icon: const Icon(Icons.swap_horiz, size: 16),
-                                    label: const Text('تحويل إلى صنف مخصص'),
+                                    label: const Text('تعديل الوصف كصنف مستقل'),
                                     style: TextButton.styleFrom(
-                                      foregroundColor: Colors.orange,
+                                      foregroundColor: OffStock.color,
                                       padding: EdgeInsets.zero,
                                       visualDensity: VisualDensity.compact,
                                       textStyle: const TextStyle(fontSize: 12),
@@ -588,7 +772,13 @@ class _AddItemSheetState extends State<AddItemSheet> {
           padding: AppSpacing.allLarge,
           child: FilledButton(
             onPressed: !_hasAnySelection ? null : _submit,
-            child: Text(_isCustom ? 'إضافة صنف مخصص' : 'إضافة الأصناف المحددة'),
+            child: Text(
+              widget.isEditingCustom
+                  ? 'حفظ التعديل'
+                  : _isCustom
+                      ? 'إضافة ${OffStock.label}'
+                      : 'إضافة الأصناف المحددة',
+            ),
           ),
         ),
       ),

@@ -6,6 +6,7 @@ import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../data/inventory_management_repository.dart';
 
+import '../../../core/logic/debouncer.dart';
 import '../../../core/logic/safe_emit.dart';
 // ── States ──────────────────────────────────────────────────────────────────
 
@@ -104,6 +105,17 @@ class InventoryListCubit extends Cubit<InventoryListState>
     await _fetchInventory();
   }
 
+  /// Refetch without flashing the loading state, keeping search, filters and
+  /// scroll position -- for coming back from a screen that may have edited.
+  Future<void> refresh() {
+    _repo.invalidateInventoryCache();
+    return _fetchInventory();
+  }
+
+  // A bulk edit fires one event per row; refetch once, after the burst.
+  final _realtimeDebounce = Debouncer();
+  void _onRemoteChange() => _realtimeDebounce.run(refresh);
+
   Future<void> _fetchInventory() async {
     final result = await _repo.fetchInventory();
     if (isClosed) return;
@@ -129,8 +141,8 @@ class InventoryListCubit extends Cubit<InventoryListState>
             .onPostgresChanges(
               event: PostgresChangeEvent.all,
               schema: 'public',
-              table: 'inventory_items',
-              callback: (_) => _fetchInventory(),
+              table: 'inventory',
+              callback: (_) => _onRemoteChange(),
             )
             .subscribe();
       case AppFailure(:final error):
@@ -141,6 +153,7 @@ class InventoryListCubit extends Cubit<InventoryListState>
 
   @override
   Future<void> close() async {
+    _realtimeDebounce.cancel();
     await _channel?.unsubscribe();
     return super.close();
   }

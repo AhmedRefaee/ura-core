@@ -1,11 +1,12 @@
 import 'package:equatable/equatable.dart';
 import 'entity.dart';
+import 'off_stock_kind.dart';
 import 'order_item.dart';
 import 'profile.dart';
 
 enum OrderDirection { outbound, inboundRep, inboundExternal }
 
-enum OrderStatus { assigned, pickedUp, onTheMove, delivered, deliveredToStorage }
+enum OrderStatus { assigned, pickedUp, onTheMove, delivered }
 
 /// Single source of truth for order-type display text — every place in the
 /// app that shows an order's type (direction picker, list tiles, filters,
@@ -18,12 +19,24 @@ extension OrderDirectionLabel on OrderDirection {
       };
 }
 
+/// Which entity category a picker should default to for a given direction:
+/// an outbound order heads to a توريد entity, an inbound one comes from a
+/// مشتريات entity. Kept next to the labels so every picker defaults the same.
+extension OrderDirectionEntityCategory on OrderDirection {
+  EntityCategory get defaultEntityCategory => switch (this) {
+        OrderDirection.outbound => EntityCategory.outgoing,
+        OrderDirection.inboundRep => EntityCategory.incoming,
+        OrderDirection.inboundExternal => EntityCategory.incoming,
+      };
+}
+
 class Order extends Equatable {
   final String id;
   final String? referenceCode;
   final OrderDirection direction;
   final String entityId;
   final Entity? entity;
+  final String? projectId;
   final String? repId;
   final Profile? rep;
   final Profile? creator;
@@ -44,6 +57,7 @@ class Order extends Equatable {
     required this.direction,
     required this.entityId,
     this.entity,
+    this.projectId,
     this.repId,
     this.rep,
     this.creator,
@@ -62,6 +76,25 @@ class Order extends Equatable {
   /// True when the order includes items that come from / go to physical storage.
   /// Distinguishes outbound-storage (Flow 1) from outbound-external (Flow 2).
   bool get involvesStorage => items.any((i) => i.inventoryId != null);
+
+  /// Every item the rep has to source himself, in list order.
+  ///
+  /// Wider than `is_custom`: an inventory row that had a zero balance when the
+  /// order was written is the same errand for the rep, and used to be shown as
+  /// a passive orange warning instead of joining this list. See
+  /// [offStockKindOf] for how the two are told apart.
+  List<OrderItem> get offStockItems =>
+      items.where((i) => offStockKindOf(i, direction) != null).toList();
+
+  /// True when the order has at least one item the rep must source himself --
+  /// whether or not it's mixed with real inventory items.
+  bool get hasOffStockItems =>
+      items.any((i) => offStockKindOf(i, direction) != null);
+
+  int get offStockItemsCount => offStockItems.length;
+
+  int get offStockPurchasedCount =>
+      offStockItems.where((i) => i.purchasedAt != null).length;
 
   factory Order.fromMap(Map<String, dynamic> map) {
     OrderDirection direction;
@@ -82,8 +115,6 @@ class Order extends Equatable {
         status = OrderStatus.onTheMove;
       case 'delivered':
         status = OrderStatus.delivered;
-      case 'delivered_to_storage':
-        status = OrderStatus.deliveredToStorage;
       default:
         status = OrderStatus.assigned;
     }
@@ -99,6 +130,7 @@ class Order extends Equatable {
       direction: direction,
       entityId: map['entity_id'] as String,
       entity: entityMap != null ? Entity.fromMap(entityMap) : null,
+      projectId: map['project_id'] as String?,
       repId: map['rep_id'] as String?,
       rep: repMap != null ? Profile.fromMap(repMap) : null,
       creator: creatorMap != null ? Profile.fromMap(creatorMap) : null,
@@ -138,8 +170,6 @@ class Order extends Equatable {
         return 'في الطريق';
       case OrderStatus.delivered:
         return 'تم التسليم';
-      case OrderStatus.deliveredToStorage:
-        return 'تم الاستلام في المخزن';
     }
   }
 
@@ -149,7 +179,6 @@ class Order extends Equatable {
         'picked_up' => OrderStatus.pickedUp,
         'on_the_move' => OrderStatus.onTheMove,
         'delivered' => OrderStatus.delivered,
-        'delivered_to_storage' => OrderStatus.deliveredToStorage,
         _ => OrderStatus.assigned,
       };
 

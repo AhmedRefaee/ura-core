@@ -1,18 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
+import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/models/order_edit_log_entry.dart';
+import '../../../shared/models/off_stock_kind.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../../shared/widgets/location_link.dart';
+import '../../../shared/widgets/off_stock.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
 import '../../../features/chat/data/chat_repository.dart';
+import '../../inventory/ui/inventory_form_screen.dart';
 import '../../../features/chat/ui/chat_thread_screen.dart';
 import '../../../features/verifier/data/order_repository.dart';
 import '../../../features/verifier/logic/create_order_cubit.dart';
@@ -21,6 +27,7 @@ import '../../../features/verifier/ui/create_order_screen.dart';
 import '../../../features/verifier/ui/edit_order_screen.dart';
 import '../logic/task_detail_cubit.dart';
 import '../../profile/ui/profile_screen.dart';
+import '../../delivery_receipts/ui/delivery_receipts_section.dart';
 
 class TaskDetailScreen extends StatelessWidget {
   final String orderId;
@@ -204,16 +211,20 @@ class _TaskDetailView extends StatelessWidget {
               OrderStatusStepper(order: order),
               const SizedBox(height: 16),
               OrderStatusTimeline(order: order, auditLog: auditLog),
+              DeliveryReceiptsSection.forOrder(order.id),
               const SizedBox(height: 16),
               _ItemsCard(
                 items: order.items,
                 orderStatus: order.status,
                 orderDirection: order.direction,
+                auditLog: auditLog,
               ),
               const SizedBox(height: 16),
               _EditHistorySection(orderId: order.id),
-              const SizedBox(height: 16),
-              _CommunicationHistorySection(orderId: order.id),
+              if (kChatEnabled) ...[
+                const SizedBox(height: 16),
+                _CommunicationHistorySection(orderId: order.id),
+              ],
             ],
           ),
         );
@@ -359,10 +370,12 @@ class _ItemsCard extends StatelessWidget {
   final List<OrderItem> items;
   final OrderStatus orderStatus;
   final OrderDirection orderDirection;
+  final List<AuditLogEntry> auditLog;
   const _ItemsCard({
     required this.items,
     required this.orderStatus,
     required this.orderDirection,
+    required this.auditLog,
   });
 
   String _fmt(DateTime? dt) {
@@ -394,6 +407,7 @@ class _ItemsCard extends StatelessWidget {
                 fmt: _fmt,
                 orderStatus: orderStatus,
                 orderDirection: orderDirection,
+                auditLog: auditLog,
               ),
             ),
           ],
@@ -408,15 +422,19 @@ class _ItemRow extends StatelessWidget {
   final String Function(DateTime?) fmt;
   final OrderStatus orderStatus;
   final OrderDirection orderDirection;
+  final List<AuditLogEntry> auditLog;
   const _ItemRow({
     required this.item,
     required this.fmt,
     required this.orderStatus,
     required this.orderDirection,
+    required this.auditLog,
   });
 
   @override
   Widget build(BuildContext context) {
+    final kind = offStockKindOf(item, orderDirection);
+
     Color checkColor;
     IconData checkIcon;
     String checkLabel;
@@ -441,11 +459,9 @@ class _ItemRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Icon(
-            item.isCustom
-                ? Icons.shopping_bag_outlined
-                : Icons.inventory_outlined,
+            kind == null ? Icons.inventory_outlined : OffStock.iconFor(kind),
             size: 18,
-            color: item.isCustom ? Colors.orange : Colors.teal,
+            color: kind == null ? Colors.teal : OffStock.color,
           ),
           const SizedBox(width: 10),
           Expanded(
@@ -462,26 +478,53 @@ class _ItemRow extends StatelessWidget {
                       : 'الكمية: ${formatQty(item.quantity)}',
                   style: const TextStyle(fontSize: 12, color: Colors.grey),
                 ),
-                if (!item.isCustom &&
-                    item.wasUnavailableAtCreation &&
-                    orderDirection == OrderDirection.outbound)
-                  Chip(
-                    avatar: const Icon(
-                      Icons.warning_amber_rounded,
-                      color: Colors.orange,
-                      size: 16,
-                    ),
-                    label: const Text(
-                      'غير متوفر',
-                      style: TextStyle(fontSize: 11, color: Colors.orange),
-                    ),
-                    backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                    side: BorderSide(
-                      color: Colors.orange.withValues(alpha: 0.4),
-                    ),
-                    visualDensity: VisualDensity.compact,
+                if (kind != null) ...[
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: OffStock.badge(kind),
                   ),
-                if (!item.isCustom &&
+                  if (orderDirection == OrderDirection.outbound)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        children: [
+                          Icon(
+                            item.purchasedAt != null
+                                ? Icons.check_circle
+                                : Icons.radio_button_unchecked,
+                            size: 14,
+                            color: item.purchasedAt != null
+                                ? Colors.green
+                                : Colors.grey,
+                          ),
+                          const SizedBox(width: 4),
+                          Text(
+                            item.purchasedAt != null ? 'تم الشراء' : 'لم يُشترَ بعد',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: item.purchasedAt != null
+                                  ? Colors.green
+                                  : Colors.grey,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  if (orderDirection == OrderDirection.outbound &&
+                      item.purchasedAt != null) ...[
+                    Text(
+                      fmt(item.purchasedAt),
+                      style: const TextStyle(fontSize: 11, color: Colors.grey),
+                    ),
+                    if (auditLog.forOffStockItem(item.id) case final entry?
+                      when entry.locationLat != null && entry.locationLng != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: LocationLink(lat: entry.locationLat!, lng: entry.locationLng!),
+                      ),
+                  ],
+                ],
+                if (kind == null &&
                     !(item.checkStatus == ItemCheckStatus.pending &&
                         orderStatus == OrderStatus.delivered)) ...[
                   Row(
@@ -516,9 +559,72 @@ class _ItemRow extends StatelessWidget {
               ],
             ),
           ),
+          // Promoting an off-stock item into the catalogue only makes sense
+          // once the order is done and the item has actually been sourced --
+          // before that it is still just a line on a request.
+          if (item.isCustom && orderStatus == OrderStatus.delivered)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, size: 20),
+              tooltip: 'خيارات الصنف',
+              onSelected: (value) {
+                if (value == 'add_to_storage') {
+                  _openAddToStorage(context, item);
+                }
+              },
+              itemBuilder: (_) => const [
+                PopupMenuItem(
+                  value: 'add_to_storage',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.add_box_outlined, color: Colors.teal),
+                    title: Text('إضافة للمخزن'),
+                  ),
+                ),
+              ],
+            ),
         ],
       ),
     );
+  }
+
+  /// Opens the inventory form pre-filled from the off-stock item's payload.
+  /// Every prefilled field is optional in that form, so an item that needs no
+  /// brand or packaging detail is simply saved without it.
+  void _openAddToStorage(BuildContext context, OrderItem item) async {
+    final json = item.customItemJson;
+    final prefill = CustomItemPrefill(
+      name: json != null
+          ? (json['name'] as String? ?? item.customDescription ?? '')
+          : (item.customDescription ?? ''),
+      // Deliberately NOT item.effectiveQuantity -- see the storage screen's
+      // copy of this. The ordered amount is not the stock count, and a verifier
+      // cannot set a stock count at all: the RPC forces theirs to zero.
+      quantity: 0,
+      unit: json?['unit'] as String? ?? 'قطعة',
+      sku: json?['sku'] as String?,
+      category: json?['category'] as String?,
+      minQuantity: (json?['minQty'] as num?)?.toDouble() ?? 0,
+      description: json?['description'] as String?,
+      brand: json?['brand'] as String?,
+      variety: json?['variety'] as String?,
+      packagingSize: (json?['packagingSize'] as num?)?.toDouble(),
+      packagingSizeUnit: json?['packagingSizeUnit'] as String?,
+    );
+
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => InventoryFormScreen(prefill: prefill)),
+    );
+
+    if (added == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('تمت إضافة "${prefill.name}" للمخزن'),
+          backgroundColor: Colors.teal,
+        ),
+      );
+    }
   }
 }
 

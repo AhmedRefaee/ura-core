@@ -26,8 +26,6 @@
 		<string>$(FLUTTER_BUILD_NUMBER)</string>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
-		<key>NSMicrophoneUsageDescription</key>
-		<string>يستخدم التطبيق الميكروفون لإضافة أصناف إلى الطلب عن طريق الصوت</string>
 		<key>UIApplicationSceneManifest</key>
 		<dict>
 			<key>UIApplicationSupportsMultipleScenes</key>
@@ -70,5 +68,7 @@
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>يستخدم التطبيق موقعك لتوثيق مكان تنفيذ إجراءات الطلب.</string>
 	</dict>
 </plist>

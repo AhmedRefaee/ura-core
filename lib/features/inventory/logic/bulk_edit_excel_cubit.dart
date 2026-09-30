@@ -74,7 +74,14 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState>
       'الفئة',
       'حد التنبيه',
       'الوصف',
-      'ملاحظات',
+      // Matches the single-item form's wording: this column is the note
+      // attached to the change-log entry, not a field stored on the item.
+      'ملاحظات (تُحفظ في سجل التغييرات)',
+      'العلامة التجارية',
+      'النوع',
+      'حجم التعبئة',
+      'وحدة التعبئة',
+      'أسماء بديلة (افصل بفاصلة)',
     ];
     for (var i = 0; i < headers.length; i++) {
       final cell = sheet.cell(
@@ -117,6 +124,11 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState>
       setNum(6, item.minQuantity);
       setStr(7, item.description);
       setStr(8, item.notes);
+      setStr(9, item.brand);
+      setStr(10, item.variety);
+      if (item.packagingSize != null) setNum(11, item.packagingSize!);
+      setStr(12, item.packagingSizeUnit);
+      setStr(13, item.aliases?.join(', '));
     }
 
     return excel.encode();
@@ -184,6 +196,11 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState>
           rawAlarmLimit: cellStr(6),
           description: cellStr(7),
           notes: cellStr(8),
+          brand: cellStr(9),
+          variety: cellStr(10),
+          rawPackagingSize: cellStr(11),
+          packagingSizeUnit: cellStr(12),
+          rawAliases: cellStr(13),
         );
 
         if (item.isEmpty) continue;
@@ -284,6 +301,15 @@ class BulkEditExcelCubit extends Cubit<BulkEditExcelState>
         errors.add('حد التنبيه يجب أن يكون رقماً');
       } else if (limit < 0) {
         errors.add('حد التنبيه لا يمكن أن يكون سالباً');
+      }
+    }
+
+    if (item.rawPackagingSize != null && item.rawPackagingSize!.trim().isNotEmpty) {
+      final size = double.tryParse(item.rawPackagingSize!.trim());
+      if (size == null) {
+        errors.add('حجم التعبئة يجب أن يكون رقماً');
+      } else if (size < 0) {
+        errors.add('حجم التعبئة لا يمكن أن يكون سالباً');
       }
     }
 

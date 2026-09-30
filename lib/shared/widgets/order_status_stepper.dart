@@ -13,7 +13,7 @@ class OrderStatusStepper extends StatelessWidget {
         return [
           (status: OrderStatus.assigned, label: 'تم الإنشاء'),
           (
-            status: OrderStatus.deliveredToStorage,
+            status: OrderStatus.delivered,
             label: 'تم الاستلام في المخزن',
           ),
         ];
@@ -22,7 +22,7 @@ class OrderStatusStepper extends StatelessWidget {
           (status: OrderStatus.assigned, label: 'تم الإنشاء'),
           (status: OrderStatus.pickedUp, label: 'تم الشراء'),
           (status: OrderStatus.onTheMove, label: 'في الطريق'),
-          (status: OrderStatus.deliveredToStorage, label: 'استلام المخزن'),
+          (status: OrderStatus.delivered, label: 'استلام المخزن'),
         ];
       case OrderDirection.outbound when order.involvesStorage:
         return [
@@ -32,9 +32,10 @@ class OrderStatusStepper extends StatelessWidget {
           (status: OrderStatus.delivered, label: 'تم التسليم'),
         ];
       case OrderDirection.outbound:
+        // Flow 2 -- pure خارج المخزون, nothing to pick up from storage, so
+        // there is no pickedUp step in this flow at all.
         return [
           (status: OrderStatus.assigned, label: 'معين'),
-          (status: OrderStatus.pickedUp, label: 'تم الاستلام'),
           (status: OrderStatus.onTheMove, label: 'في الطريق'),
           (status: OrderStatus.delivered, label: 'تم التسليم'),
         ];
@@ -43,18 +44,7 @@ class OrderStatusStepper extends StatelessWidget {
 
   int _currentIndex(List<({OrderStatus status, String label})> steps) {
     final index = steps.indexWhere((step) => step.status == order.status);
-    if (index >= 0) return index;
-    if (order.direction == OrderDirection.inboundExternal &&
-        order.status == OrderStatus.delivered) {
-      return steps.length - 1;
-    }
-    if (order.direction == OrderDirection.inboundRep &&
-        order.status == OrderStatus.delivered) {
-      return steps.length - 1;
-    }
-    return order.status == OrderStatus.deliveredToStorage
-        ? steps.length - 1
-        : 0;
+    return index >= 0 ? index : 0;
   }
 
   @override

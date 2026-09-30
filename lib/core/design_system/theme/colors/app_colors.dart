@@ -44,7 +44,6 @@ class AppColors {
   static const Color orderStatusPickedUp = OrderStatusColors.pickedUp;
   static const Color orderStatusOnTheMove = OrderStatusColors.onTheMove;
   static const Color orderStatusDelivered = OrderStatusColors.delivered;
-  static const Color orderStatusDeliveredToStorage = OrderStatusColors.deliveredToStorage;
 
   // ========================================
   // Order Direction Colors

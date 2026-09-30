@@ -49,12 +49,14 @@ class RepOrdersRepository {
     }
   }
 
-  Future<AppResult<void>> startMove(String orderId, {String? notes}) async {
+  Future<AppResult<void>> startMove(String orderId, {String? notes, double? lat, double? lng}) async {
     try {
       logger.d('RepOrdersRepository → startMove: $orderId');
       final result = await _supabase.rpc('start_move', params: {
         'target_order_id': orderId,
         'p_notes': notes,
+        'p_location_lat': lat,
+        'p_location_lng': lng,
       });
       if (result['success'] as bool? ?? false) {
         logger.i('RepOrdersRepository → startMove success: $orderId');
@@ -67,12 +69,14 @@ class RepOrdersRepository {
     }
   }
 
-  Future<AppResult<void>> markPickedUp(String orderId, {String? notes}) async {
+  Future<AppResult<void>> markPickedUp(String orderId, {String? notes, double? lat, double? lng}) async {
     try {
       logger.d('RepOrdersRepository → markPickedUp: $orderId');
       final result = await _supabase.rpc('mark_picked_up', params: {
         'target_order_id': orderId,
         'p_notes': notes,
+        'p_location_lat': lat,
+        'p_location_lng': lng,
       });
       if (result['success'] as bool? ?? false) {
         logger.i('RepOrdersRepository → markPickedUp success: $orderId');
@@ -85,12 +89,14 @@ class RepOrdersRepository {
     }
   }
 
-  Future<AppResult<void>> markDelivered(String orderId, {String? notes}) async {
+  Future<AppResult<void>> markDelivered(String orderId, {String? notes, double? lat, double? lng}) async {
     try {
       logger.d('RepOrdersRepository → markDelivered: $orderId');
       final result = await _supabase.rpc('mark_delivered', params: {
         'target_order_id': orderId,
         'p_notes': notes,
+        'p_location_lat': lat,
+        'p_location_lng': lng,
       });
       if (result['success'] as bool? ?? false) {
         logger.i('RepOrdersRepository → markDelivered success: $orderId');
@@ -103,13 +109,40 @@ class RepOrdersRepository {
     }
   }
 
+  Future<AppResult<void>> toggleOffStockPurchased(
+    String orderItemId,
+    bool purchased, {
+    String? notes,
+    double? lat,
+    double? lng,
+  }) async {
+    try {
+      logger.d('RepOrdersRepository → toggleOffStockPurchased: $orderItemId -> $purchased');
+      final result = await _supabase.rpc('toggle_off_stock_item_purchased', params: {
+        'target_item_id': orderItemId,
+        'p_purchased': purchased,
+        'p_notes': notes,
+        'p_location_lat': lat,
+        'p_location_lng': lng,
+      });
+      if (result['success'] as bool? ?? false) {
+        logger.i('RepOrdersRepository → toggleOffStockPurchased success: $orderItemId');
+        return const AppSuccess(null);
+      }
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
+    } catch (e, st) {
+      logger.e('RepOrdersRepository → toggleOffStockPurchased failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
   Future<AppResult<List<AuditLogEntry>>> fetchAuditLog(String orderId) async {
     try {
       logger.d('RepOrdersRepository → fetchAuditLog: $orderId');
       final data = await _supabase
           .from('audit_log')
           .select(
-              'id, order_id, action, old_status, new_status, performed_by, details, notes, server_timestamp, '
+              'id, order_id, action, old_status, new_status, performed_by, details, notes, server_timestamp, location_lat, location_lng, '
               'performer:profiles!audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)')
           .eq('order_id', orderId)
           .order('server_timestamp');

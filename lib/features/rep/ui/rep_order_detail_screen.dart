@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
+import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
+import '../../../shared/models/off_stock_kind.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../../shared/widgets/off_stock.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
+import '../../../shared/widgets/location_link.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
+import '../../delivery_receipts/logic/create_delivery_receipt_cubit.dart';
+import '../../delivery_receipts/ui/create_delivery_receipt_screen.dart';
+import '../../delivery_receipts/ui/delivery_receipts_section.dart';
 import '../logic/rep_order_detail_cubit.dart';
 
 class RepOrderDetailScreen extends StatelessWidget {
@@ -69,7 +77,9 @@ class RepOrderDetailScreen extends StatelessWidget {
               ),
             ],
           ),
-          floatingActionButton: _ChatBridgeButton(order: order),
+          floatingActionButton: kChatEnabled
+              ? _ChatBridgeButton(order: order)
+              : null,
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -84,6 +94,8 @@ class RepOrderDetailScreen extends StatelessWidget {
               _ItemsSection(
                 order: order,
               ),
+              const SizedBox(height: 24),
+              _OffStockChecklistSection(state: state),
               const SizedBox(height: 24),
               _ActionSection(state: state),
               const SizedBox(height: 24),
@@ -342,18 +354,17 @@ class _ItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final showWarning = !item.isCustom &&
-        item.wasUnavailableAtCreation &&
-        direction == OrderDirection.outbound;
+    // One question, one answer: does the rep have to source this himself? The
+    // orange "غير متوفر" warning that used to live here answered it for only
+    // half the items that needed it.
+    final kind = offStockKindOf(item, direction);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Icon(
-          item.isCustom
-              ? Icons.shopping_bag_outlined
-              : Icons.inventory_outlined,
-          color: item.isCustom ? Colors.orange : Colors.teal,
+          kind == null ? Icons.inventory_outlined : OffStock.iconFor(kind),
+          color: kind == null ? Colors.teal : OffStock.color,
         ),
         title: Text(item.displayName),
         subtitle: Column(
@@ -361,24 +372,17 @@ class _ItemTile extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text('الكمية: ${formatQty(item.effectiveQuantity)}'),
-            if (showWarning)
-              Chip(
-                avatar: const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  size: 16,
-                ),
-                label: const Text(
-                  'غير متوفر',
-                  style: TextStyle(fontSize: 11, color: Colors.orange),
-                ),
-                backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                side: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
-                visualDensity: VisualDensity.compact,
+            if (kind != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: OffStock.badge(kind),
               ),
           ],
         ),
-        trailing: item.isCustom ? null : _CheckStatusIcon(item.checkStatus),
+        // A check status is the storage actor's verdict on handing an item
+        // over. Nothing is handed over for an item the rep buys outside, so
+        // the icon would only ever read "pending" forever.
+        trailing: kind != null ? null : _CheckStatusIcon(item.checkStatus),
       ),
     );
   }
@@ -401,6 +405,112 @@ class _CheckStatusIcon extends StatelessWidget {
   }
 }
 
+// ─── Off-stock Purchase Checklist ──────────────────────────────────────────────
+// A main-event section, not a quiet addendum to _ItemsSection: the rep can
+// check items off in any order, at any point in the order's life, with no
+// fixed slot in the assigned→picked_up→on_the_move→delivered sequence —
+// the only constraint is that it stops making sense once delivered.
+
+String _fmtPurchasedAt(DateTime dt) {
+  final l = dt.toLocal();
+  final h = l.hour.toString().padLeft(2, '0');
+  final m = l.minute.toString().padLeft(2, '0');
+  return '${l.day}/${l.month}/${l.year} $h:$m';
+}
+
+class _OffStockChecklistSection extends StatelessWidget {
+  final RepOrderDetailLoaded state;
+  const _OffStockChecklistSection({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final order = state.order;
+    if (order.direction != OrderDirection.outbound || !order.hasOffStockItems) {
+      return const SizedBox.shrink();
+    }
+
+    final offStockItems = order.offStockItems;
+    final interactive = order.status != OrderStatus.delivered && !state.isActing;
+
+    return OffStock.section(
+      count: offStockItems.length,
+      // CheckboxListTile paints its background/ink splash on the nearest
+      // Material ancestor -- without this, OffStock.section()'s own colored
+      // Container hides that painting. MaterialType.transparency keeps the
+      // section's tint visible underneath while giving the tiles a real
+      // Material to paint on.
+      child: Material(
+        type: MaterialType.transparency,
+        child: Column(
+          children: [
+            for (final item in offStockItems)
+              CheckboxListTile(
+                value: item.purchasedAt != null,
+                onChanged: interactive
+                    ? (checked) => context
+                        .read<RepOrderDetailCubit>()
+                        .toggleOffStockPurchased(item.id, checked ?? false)
+                    : null,
+                controlAffinity: ListTileControlAffinity.leading,
+                activeColor: OffStock.color,
+                title: Text(
+                  item.displayName,
+                  style: const TextStyle(fontWeight: FontWeight.w600),
+                ),
+                subtitle: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('الكمية: ${formatQty(item.effectiveQuantity)}'),
+                    // Spelled out rather than badged here: this is the one
+                    // screen where the rep is deciding what to go and buy, so
+                    // "we don't carry it" and "we carry it but ran out" are
+                    // worth a full sentence each.
+                    Text(
+                      OffStock.explanationFor(
+                        offStockKindOf(item, order.direction)!,
+                      ),
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: OffStock.color.withValues(alpha: 0.8),
+                      ),
+                    ),
+                    if (item.purchasedAt != null) ...[
+                      Text(
+                        'تم الشراء ${_fmtPurchasedAt(item.purchasedAt!)}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: OffStock.color.withValues(alpha: 0.8),
+                        ),
+                      ),
+                      if (state.auditLog.forOffStockItem(item.id) case final entry?
+                        when entry.locationLat != null && entry.locationLng != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: LocationLink(lat: entry.locationLat!, lng: entry.locationLng!),
+                        ),
+                    ],
+                  ],
+                ),
+                isThreeLine: true,
+              ),
+            if (!interactive && order.status == OrderStatus.delivered)
+              Padding(
+                padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                child: Text(
+                  'تم تسليم الطلب — هذا السجل للعرض فقط',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: OffStock.color.withValues(alpha: 0.7),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Action Section ───────────────────────────────────────────────────────────
 
 class _ActionSection extends StatefulWidget {
@@ -413,6 +523,7 @@ class _ActionSection extends StatefulWidget {
 
 class _ActionSectionState extends State<_ActionSection> {
   final _notesController = TextEditingController();
+  final _receiptsKey = GlobalKey<DeliveryReceiptsSectionState>();
 
   @override
   void dispose() {
@@ -436,16 +547,35 @@ class _ActionSectionState extends State<_ActionSection> {
     if (status == OrderStatus.delivered &&
         (dir == OrderDirection.outbound ||
             dir == OrderDirection.inboundExternal)) {
-      return _CompletedCard(
+      const completed = _CompletedCard(
         icon: Icons.check_circle,
         message: 'تم تسليم هذا الطلب',
       );
-    }
-
-    if (status == OrderStatus.deliveredToStorage) {
-      return _CompletedCard(
-        icon: Icons.verified,
-        message: 'تم الاستلام في المخزن',
+      if (dir != OrderDirection.outbound) return completed;
+      // Optional, never forced: a سند can also be filed later from the
+      // سندات tab, detached from this order.
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          completed,
+          const SizedBox(height: 12),
+          OutlinedButton.icon(
+            onPressed: () async {
+              final filed = await openCreateDeliveryReceipt(
+                context,
+                launch: DeliveryReceiptLaunch(
+                  orderId: order.id,
+                  entity: order.entity,
+                  projectId: order.projectId,
+                ),
+              );
+              if (filed) _receiptsKey.currentState?.reload();
+            },
+            icon: const Icon(Icons.receipt_long_outlined),
+            label: const Text('إنشاء سند استلام'),
+          ),
+          DeliveryReceiptsSection.forOrder(order.id, key: _receiptsKey),
+        ],
       );
     }
 
@@ -474,9 +604,7 @@ class _ActionSectionState extends State<_ActionSection> {
 
     Widget? actionButton;
 
-    if (status == OrderStatus.assigned &&
-        (dir == OrderDirection.inboundRep ||
-            (dir == OrderDirection.outbound && !order.involvesStorage))) {
+    if (status == OrderStatus.assigned && dir == OrderDirection.inboundRep) {
       actionButton = _ActionButton(
         isActing: isActing,
         canAct: canProceed,
@@ -484,6 +612,22 @@ class _ActionSectionState extends State<_ActionSection> {
         label: 'تأكيد الاستلام',
         onPressed: () =>
             context.read<RepOrderDetailCubit>().markPickedUp(notes: _notes),
+      );
+    }
+
+    // Flow 2 -- pure خارج المخزون outbound order, nothing to pick up from
+    // storage. Go straight to "start moving": there is no meaningful
+    // "confirm receipt" step when nothing was received from anywhere.
+    if (status == OrderStatus.assigned &&
+        dir == OrderDirection.outbound &&
+        !order.involvesStorage) {
+      actionButton = _ActionButton(
+        isActing: isActing,
+        canAct: canProceed,
+        icon: Icons.local_shipping_outlined,
+        label: 'ابدأ التنقل',
+        onPressed: () =>
+            context.read<RepOrderDetailCubit>().startMove(notes: _notes),
       );
     }
 

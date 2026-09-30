@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:equatable/equatable.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/audit_log_entry.dart';
@@ -45,6 +46,7 @@ class TaskDetailCubit extends Cubit<TaskDetailState>
   final OrderRepository _verifierRepo;
   final String orderId;
   final bool useVerifierRepository;
+  RealtimeChannel? _channel;
 
   TaskDetailCubit(
     this._repo,
@@ -66,10 +68,19 @@ class TaskDetailCubit extends Cubit<TaskDetailState>
     }
   }
 
+  @override
+  Future<void> close() async {
+    await _channel?.unsubscribe();
+    return super.close();
+  }
+
   Future<void> load() async {
     logger.d('TaskDetailCubit → load: $orderId');
     safeEmit(TaskDetailLoading());
+    await _fetchOrderDetail();
+  }
 
+  Future<void> _fetchOrderDetail() async {
     final results = await Future.wait([
       useVerifierRepository
           ? _verifierRepo.fetchOrderDetail(orderId)
@@ -102,5 +113,31 @@ class TaskDetailCubit extends Cubit<TaskDetailState>
         auditLog: (results[1] as AppSuccess<List<AuditLogEntry>>).data,
       ),
     );
+
+    // Supabase isn't bootstrapped in unit tests that exercise this cubit in
+    // isolation -- the live app always initializes it before any cubit runs,
+    // so skipping the subscription here only ever happens off that path.
+    if (_channel == null) {
+      try {
+        _channel = Supabase.instance.client
+            .channel('task-detail-$orderId-$hashCode')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'orders',
+              // Only this order: unfiltered, every change to any order in
+              // the organization refetched this screen's order + audit log.
+              filter: PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: 'id',
+                value: orderId,
+              ),
+              callback: (_) => _fetchOrderDetail(),
+            )
+            .subscribe();
+      } catch (e) {
+        logger.d('TaskDetailCubit → skipping realtime subscription: $e');
+      }
+    }
   }
 }

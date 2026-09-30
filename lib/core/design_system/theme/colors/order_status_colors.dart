@@ -13,7 +13,6 @@ class OrderStatusColors {
   static const Color pickedUp = Color(0xFFFB8C00); // Orange
   static const Color onTheMove = Color(0xFFFBC02D); // Yellow
   static const Color delivered = Color(0xFF43A047); // Green
-  static const Color deliveredToStorage = Color(0xFF43A047); // Green
 
   // ========================================
   // Order Direction Colors

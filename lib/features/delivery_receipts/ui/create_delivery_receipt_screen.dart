@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:printing/printing.dart';
@@ -258,6 +259,51 @@ class _ErrorBanner extends StatelessWidget {
       ),
     );
   }
+}
+
+/// One horizontally scrollable row of filter chips, instead of Wrap, for
+/// screens (like the items step's category filters) where wrapping to
+/// several rows eats too much vertical space above a long list.
+///
+/// A plain horizontal SingleChildScrollView/ListView can't be dragged with a
+/// mouse -- Flutter's default ScrollBehavior leaves PointerDeviceKind.mouse
+/// out of dragDevices and draws no scrollbar -- so on desktop web, chips
+/// past the right edge would be simply unreachable. This wraps the list in
+/// a ScrollBehavior that restores mouse drag, plus a visible Scrollbar, so
+/// scrolling works the same way on touch and with a mouse.
+class _FilterChipsRow extends StatelessWidget {
+  final List<Widget> chips;
+  const _FilterChipsRow({required this.chips});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 40,
+      child: ScrollConfiguration(
+        behavior: _MouseDragScrollBehavior(),
+        child: Scrollbar(
+          thumbVisibility: true,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
+            itemCount: chips.length,
+            separatorBuilder: (_, _) => const SizedBox(width: 8),
+            itemBuilder: (_, i) => chips[i],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MouseDragScrollBehavior extends MaterialScrollBehavior {
+  @override
+  Set<PointerDeviceKind> get dragDevices => {
+        PointerDeviceKind.touch,
+        PointerDeviceKind.mouse,
+        PointerDeviceKind.stylus,
+        PointerDeviceKind.trackpad,
+      };
 }
 
 // ── Step 1: الجهة ─────────────────────────────────────────────────────────────
@@ -622,34 +668,29 @@ class _ItemsStepState extends State<_ItemsStep> {
                   ),
                 ),
                 SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
-                    child: Wrap(
-                      spacing: 8,
-                      runSpacing: 4,
-                      children: [
-                        FilterChip(
-                          label: Text(
-                            selected == 0 ? 'المحدد فقط' : 'المحدد فقط ($selected)',
-                          ),
-                          selected: _selectedOnly,
-                          onSelected: (v) => setState(() => _selectedOnly = v),
+                  child: _FilterChipsRow(
+                    chips: [
+                      FilterChip(
+                        label: Text(
+                          selected == 0 ? 'المحدد فقط' : 'المحدد فقط ($selected)',
                         ),
-                        if (categories.length > 1) ...[
+                        selected: _selectedOnly,
+                        onSelected: (v) => setState(() => _selectedOnly = v),
+                      ),
+                      if (categories.length > 1) ...[
+                        ChoiceChip(
+                          label: const Text('كل الفئات'),
+                          selected: _category == null,
+                          onSelected: (_) => setState(() => _category = null),
+                        ),
+                        for (final c in categories)
                           ChoiceChip(
-                            label: const Text('كل الفئات'),
-                            selected: _category == null,
-                            onSelected: (_) => setState(() => _category = null),
+                            label: Text(c),
+                            selected: _category == c,
+                            onSelected: (_) => setState(() => _category = c),
                           ),
-                          for (final c in categories)
-                            ChoiceChip(
-                              label: Text(c),
-                              selected: _category == c,
-                              onSelected: (_) => setState(() => _category = c),
-                            ),
-                        ],
                       ],
-                    ),
+                    ],
                   ),
                 ),
                 if (visible.isEmpty)

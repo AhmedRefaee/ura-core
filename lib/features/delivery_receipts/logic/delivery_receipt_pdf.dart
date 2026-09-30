@@ -45,6 +45,17 @@ class DeliveryReceiptPdf {
   static const _uraGreen = PdfColor.fromInt(0xFF5B9A3C);
   static const _border = pw.BorderSide(width: 0.8);
 
+  // Each items table is its own top-level widget in MultiPage's build list,
+  // not one Table spanning everything -- pw.Table only auto-splits across
+  // pages when MultiPage sees it directly (`child is SpanningWidget`), but
+  // this file wraps every table in _ltr (a plain Directionality), which
+  // hides that from the check. Chunking sidesteps it entirely: a page
+  // simply starts a fresh top-level widget wherever the previous one ran
+  // out of room, which is exactly the page-break behavior we want anyway,
+  // each chunk small enough (<=20 rows) to always fit on one page by
+  // itself. Row numbers (م) count across chunks, never resetting per page.
+  static const _maxRowsPerPage = 20;
+
   static Future<Uint8List> build({
     required String entityName,
     required String projectName,
@@ -106,7 +117,17 @@ class DeliveryReceiptPdf {
               ? '      /      /      '
               : '${date.day.toString().padLeft(2, '0')} / ${date.month.toString().padLeft(2, '0')} / ${date.year}'),
           pw.SizedBox(height: 6),
-          _itemsTable(lines),
+          for (var start = 0; start < lines.length; start += _maxRowsPerPage) ...[
+            // A hard break before every chunk but the first: two chunks
+            // both fitting in the leftover space on one page would still
+            // read as "more than 20 rows on this page" even though each
+            // table on it is individually capped -- one table per page.
+            if (start > 0) pw.NewPage(),
+            _itemsTable(
+              lines.sublist(start, (start + _maxRowsPerPage).clamp(0, lines.length)),
+              start,
+            ),
+          ],
           if (notes != null && notes.trim().isNotEmpty)
             pw.Padding(
               padding: const pw.EdgeInsets.only(top: 6),
@@ -194,7 +215,10 @@ class DeliveryReceiptPdf {
                 : const pw.TextStyle(fontSize: 9.5)),
       );
 
-  static pw.Widget _itemsTable(List<ReceiptPdfLine> lines) {
+  /// One page's worth of rows (<=_maxRowsPerPage). [startIndex] is this
+  /// chunk's offset into the full line list, so م keeps counting up across
+  /// pages instead of restarting at 1 on each one.
+  static pw.Widget _itemsTable(List<ReceiptPdfLine> chunk, int startIndex) {
     // Visual left-to-right: ملاحظات | الكمية | الوحدة | اسم الصنف ووصفه | م
     return _ltr(
       pw.Table(
@@ -217,17 +241,17 @@ class DeliveryReceiptPdf {
             _cell('اسم الصنف ووصفه', header: true),
             _cell('م', header: true),
           ]),
-          for (var i = 0; i < lines.length; i++)
+          for (var i = 0; i < chunk.length; i++)
             pw.TableRow(children: [
-              _cell(lines[i].note ?? '', singleLine: true),
-              _cell(formatQty(lines[i].quantity)),
-              _cell(lines[i].unit),
+              _cell(chunk[i].note ?? '', singleLine: true),
+              _cell(formatQty(chunk[i].quantity)),
+              _cell(chunk[i].unit),
               _cell(
-                [lines[i].itemName, if (lines[i].description?.trim().isNotEmpty ?? false) lines[i].description!.trim()]
+                [chunk[i].itemName, if (chunk[i].description?.trim().isNotEmpty ?? false) chunk[i].description!.trim()]
                     .join(' - '),
                 align: pw.TextAlign.right,
               ),
-              _cell('${i + 1}'),
+              _cell('${startIndex + i + 1}'),
             ]),
         ],
       ),

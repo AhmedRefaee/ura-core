@@ -59,6 +59,30 @@ void main() {
     if (out != null) File(out).writeAsBytesSync(bytes);
   });
 
+  test('more than 20 items spans multiple pages, numbered continuously', () async {
+    final font = File('C:/Windows/Fonts/tahoma.ttf');
+    final bold = File('C:/Windows/Fonts/tahomabd.ttf');
+    if (!font.existsSync()) return;
+
+    final bytes = await DeliveryReceiptPdf.build(
+      entityName: 'صندوق التنمية العقارية',
+      projectName: 'توريد أثاث المقر الرئيسي',
+      date: DateTime(2026, 9, 26),
+      theme: pw.ThemeData.withFont(
+        base: pw.Font.ttf(font.readAsBytesSync().buffer.asByteData()),
+        bold: pw.Font.ttf((bold.existsSync() ? bold : font).readAsBytesSync().buffer.asByteData()),
+      ),
+      lines: [
+        for (var i = 1; i <= 25; i++)
+          ReceiptPdfLine(itemName: 'بند $i', unit: 'حبة', quantity: i.toDouble()),
+      ],
+    );
+
+    expect(bytes.length, greaterThan(1000));
+    final out = Platform.environment['RECEIPT_PDF_MULTIPAGE_OUT'];
+    if (out != null) File(out).writeAsBytesSync(bytes);
+  });
+
   test('the سند shows only the packaging part of a description', () {
     expect(packagingOf('جودة عالية مصنوعه من 100 % دسم الحليب الابقار / كرتون 4*2.75كيلو جرام'), 'كرتون 4*2.75كيلو جرام');
     expect(packagingOf('طازج مبرد من حليب الأبقار الطبيعي بروتين لا يقل عن 6 ملغم/ 180مل'), '180مل');

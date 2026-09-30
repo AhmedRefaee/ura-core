@@ -99,7 +99,9 @@ class DeliveryReceiptPdf {
           _infoLine('الجهة المستفيدة', entityName),
           _infoLine('المشروع', projectName),
           _infoLine('التاريخ', date == null
-              ? ''
+              // Same day/month/year shape as a real date, blank segments --
+              // not dots -- for the receiving side to fill in by hand.
+              ? '      /      /      '
               : '${date.day.toString().padLeft(2, '0')} / ${date.month.toString().padLeft(2, '0')} / ${date.year}'),
           pw.SizedBox(height: 6),
           _itemsTable(lines),

@@ -4,6 +4,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:printing/printing.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/entity.dart';
+import '../../../shared/logic/unit_conversion.dart';
 import '../../../shared/models/project_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../projects/logic/boq_excel.dart';
@@ -776,10 +777,28 @@ class _ItemCardState extends State<_ItemCard> {
         (widget.quantity > 0 ? formatQty(widget.quantity) : ''),
   );
 
+  RegisteredPackaging? get _registered => registeredPackagingOf(widget.item);
+
   @override
   void dispose() {
     _ctrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _calculateFromDelivery(RegisteredPackaging registered) async {
+    final result = await showDialog<double>(
+      context: context,
+      builder: (_) => _ConvertDeliveryDialog(
+        itemName: widget.item.itemName,
+        registeredUnitLabel: widget.item.unit,
+        registered: registered,
+      ),
+    );
+    if (result != null && mounted) {
+      final text = formatQty(result);
+      _ctrl.text = text;
+      context.read<CreateDeliveryReceiptCubit>().setQuantityText(widget.item.id, text);
+    }
   }
 
   void _step(int delta) {
@@ -925,6 +944,12 @@ class _ItemCardState extends State<_ItemCard> {
                     ),
                   ),
                 ),
+                if (_registered != null)
+                  IconButton.filledTonal(
+                    onPressed: widget.enabled ? () => _calculateFromDelivery(_registered!) : null,
+                    icon: const Icon(Icons.calculate_outlined),
+                    tooltip: 'حساب الكمية من التسليم الفعلي',
+                  ),
                 IconButton.filledTonal(
                   onPressed: widget.enabled && (picked || invalid)
                       ? () => _step(-1)
@@ -974,6 +999,143 @@ class _ItemCardState extends State<_ItemCard> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// What was actually delivered -- quantity, unit, pack count -- converted
+/// live into the item's registered unit. Nothing reaches the quantity field
+/// until "تأكيد" is pressed; the computed number is only ever a preview
+/// until then.
+class _ConvertDeliveryDialog extends StatefulWidget {
+  final String itemName;
+  final String registeredUnitLabel;
+  final RegisteredPackaging registered;
+  const _ConvertDeliveryDialog({
+    required this.itemName,
+    required this.registeredUnitLabel,
+    required this.registered,
+  });
+
+  @override
+  State<_ConvertDeliveryDialog> createState() => _ConvertDeliveryDialogState();
+}
+
+class _ConvertDeliveryDialogState extends State<_ConvertDeliveryDialog> {
+  final _qty = TextEditingController();
+  final _packs = TextEditingController(text: '1');
+  late QuantityUnit _unit = widget.registered.baseUnit;
+
+  @override
+  void dispose() {
+    _qty.dispose();
+    _packs.dispose();
+    super.dispose();
+  }
+
+  double? get _result {
+    final qty = parseLocalizedNumber(_qty.text);
+    final packs = parseLocalizedNumber(_packs.text);
+    if (qty == null || qty <= 0 || packs == null || packs <= 0) return null;
+    return calculateReceiptQuantity(
+      registered: widget.registered,
+      deliveredQuantity: qty,
+      deliveredUnit: _unit,
+      deliveredPackCount: packs,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final result = _result;
+    // Limited to the registered unit's own dimension (mass stays with mass,
+    // volume with volume) -- calculateReceiptQuantity's null-for-mismatch
+    // guard exists for other callers of this module; this picker just never
+    // offers an incompatible unit in the first place.
+    final compatibleUnits = QuantityUnit.ofDimension(widget.registered.baseUnit.dimension);
+    const numeric = TextInputType.numberWithOptions(decimal: true);
+
+    return AlertDialog(
+      title: Text('حساب الكمية — ${widget.itemName}'),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '1 ${widget.registeredUnitLabel} = ${formatQty(widget.registered.packSize)} '
+            '${widget.registered.baseUnit.label} × ${formatQty(widget.registered.packCount)} = '
+            '${formatQty(widget.registered.totalInBaseUnit)} ${widget.registered.baseUnit.label}',
+            style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                flex: 3,
+                child: TextField(
+                  controller: _qty,
+                  autofocus: true,
+                  keyboardType: numeric,
+                  onChanged: (_) => setState(() {}),
+                  decoration: const InputDecoration(
+                    labelText: 'الكمية الفعلية',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                flex: 2,
+                child: DropdownButtonFormField<QuantityUnit>(
+                  initialValue: _unit,
+                  decoration: const InputDecoration(
+                    labelText: 'الوحدة',
+                    border: OutlineInputBorder(),
+                  ),
+                  items: [
+                    for (final u in compatibleUnits)
+                      DropdownMenuItem(value: u, child: Text(u.label)),
+                  ],
+                  onChanged: (u) => setState(() => _unit = u ?? _unit),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          TextField(
+            controller: _packs,
+            keyboardType: numeric,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'عدد العبوات',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            result == null
+                ? 'أدخل الكمية والعبوات لمعاينة الناتج'
+                : '= ${formatQty(result)} ${widget.registeredUnitLabel}',
+            style: theme.textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.bold,
+              color: result == null ? scheme.outline : scheme.primary,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('إلغاء'),
+        ),
+        FilledButton(
+          onPressed: result == null ? null : () => Navigator.pop(context, result),
+          child: const Text('تأكيد'),
+        ),
+      ],
     );
   }
 }

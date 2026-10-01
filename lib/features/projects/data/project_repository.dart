@@ -63,6 +63,10 @@ class ProjectRepository {
     required String id,
     String? name,
     String? letterheadImageUrl,
+    // Distinguishes "don't touch the letterhead" (letterheadImageUrl left
+    // null, the ?-prefixed map entry below omits the key entirely) from
+    // "clear it" (this flag forces the key in with an explicit null value).
+    bool clearLetterhead = false,
   }) async {
     try {
       logger.d('ProjectRepository → updateProject | id: $id');
@@ -70,7 +74,7 @@ class ProjectRepository {
           .from('projects')
           .update({
             if (name != null) 'name': name.trim(),
-            'letterhead_image_url': ?letterheadImageUrl,
+            if (clearLetterhead) 'letterhead_image_url': null else 'letterhead_image_url': ?letterheadImageUrl,
           })
           .eq('id', id)
           .select()

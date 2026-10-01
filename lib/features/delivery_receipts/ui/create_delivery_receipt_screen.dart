@@ -585,6 +585,19 @@ class _ItemsStepState extends State<_ItemsStep> {
     context.read<CreateDeliveryReceiptCubit>().submit();
   }
 
+  Future<void> _pickCustomDate(DateTime? current) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? now,
+      firstDate: DateTime(now.year - 2),
+      lastDate: DateTime(now.year + 1),
+    );
+    if (picked != null && mounted) {
+      context.read<CreateDeliveryReceiptCubit>().setCustomDate(picked);
+    }
+  }
+
   Future<void> _cancel(BuildContext context) async {
     final state = widget.state;
     if (state.selectedCount > 0) {
@@ -733,8 +746,9 @@ class _ItemsStepState extends State<_ItemsStep> {
             state: state,
             onSubmit: _submit,
             onCancel: () => _cancel(context),
-            onHandwrittenDateChanged: (v) =>
-                context.read<CreateDeliveryReceiptCubit>().setHandwrittenDate(v),
+            onDateModeChanged: (mode) =>
+                context.read<CreateDeliveryReceiptCubit>().setDateMode(mode),
+            onPickCustomDate: () => _pickCustomDate(state.customDate),
             // The bad row may be scrolled away; this filter shows it.
             onReviewInvalid: () => setState(() {
               _selectedOnly = true;
@@ -1145,14 +1159,19 @@ class _SubmitBar extends StatelessWidget {
   final VoidCallback onSubmit;
   final VoidCallback onCancel;
   final VoidCallback onReviewInvalid;
-  final ValueChanged<bool> onHandwrittenDateChanged;
+  final ValueChanged<ReceiptDateMode> onDateModeChanged;
+  final VoidCallback onPickCustomDate;
   const _SubmitBar({
     required this.state,
     required this.onSubmit,
     required this.onCancel,
     required this.onReviewInvalid,
-    required this.onHandwrittenDateChanged,
+    required this.onDateModeChanged,
+    required this.onPickCustomDate,
   });
+
+  static String _formatCustomDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   @override
   Widget build(BuildContext context) {
@@ -1192,29 +1211,48 @@ class _SubmitBar extends StatelessWidget {
                   ),
                 ),
               ),
-              // Default: the سند is stamped with today's date. Toggled on,
-              // the date line prints blank so it can be filled in by hand at
-              // the moment of delivery instead.
-              InkWell(
-                onTap: state.submitting
-                    ? null
-                    : () => onHandwrittenDateChanged(!state.handwrittenDate),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'كتابة التاريخ يدوياً عند التسليم',
-                          style: theme.textTheme.bodyMedium,
-                        ),
+              // Three ways to date the سند: stamped with today (default),
+              // left blank for the receiving side to fill in by hand at
+              // delivery, or a specific date the creator picks themselves.
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Row(
+                  children: [
+                    Text('تاريخ السند', style: theme.textTheme.bodyMedium),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Wrap(
+                        alignment: WrapAlignment.end,
+                        spacing: 6,
+                        runSpacing: 4,
+                        children: [
+                          ChoiceChip(
+                            label: const Text('اليوم'),
+                            selected: state.dateMode == ReceiptDateMode.today,
+                            onSelected: state.submitting
+                                ? null
+                                : (_) => onDateModeChanged(ReceiptDateMode.today),
+                          ),
+                          ChoiceChip(
+                            label: const Text('يدوي عند التسليم'),
+                            selected: state.dateMode == ReceiptDateMode.blank,
+                            onSelected: state.submitting
+                                ? null
+                                : (_) => onDateModeChanged(ReceiptDateMode.blank),
+                          ),
+                          ChoiceChip(
+                            label: Text(
+                              state.dateMode == ReceiptDateMode.custom && state.customDate != null
+                                  ? _formatCustomDate(state.customDate!)
+                                  : 'تاريخ آخر',
+                            ),
+                            selected: state.dateMode == ReceiptDateMode.custom,
+                            onSelected: state.submitting ? null : (_) => onPickCustomDate(),
+                          ),
+                        ],
                       ),
-                      Switch(
-                        value: state.handwrittenDate,
-                        onChanged: state.submitting ? null : onHandwrittenDateChanged,
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
               const SizedBox(height: 4),

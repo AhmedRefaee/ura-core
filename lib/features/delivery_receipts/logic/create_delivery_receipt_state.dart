@@ -1,5 +1,11 @@
 part of 'create_delivery_receipt_cubit.dart';
 
+/// today (default): stamped with the day the سند is filed.
+/// blank: the date line prints empty, for the receiving side to fill in by
+/// hand at delivery.
+/// custom: a specific date the creator picked themselves.
+enum ReceiptDateMode { today, blank, custom }
+
 class CreateDeliveryReceiptState extends Equatable {
   final bool loading;
   final List<Entity> entities;
@@ -29,9 +35,10 @@ class CreateDeliveryReceiptState extends Equatable {
   final bool submitting;
   final String? error;
 
-  /// True: the سند PDF's date is left blank for the receiving side to fill
-  /// in by hand at delivery. False (default): stamped with today's date.
-  final bool handwrittenDate;
+  final ReceiptDateMode dateMode;
+
+  /// Only meaningful when [dateMode] is [ReceiptDateMode.custom].
+  final DateTime? customDate;
 
   /// Set once the سند is filed, so the screen can preview/share it.
   final Uint8List? pdfBytes;
@@ -51,7 +58,8 @@ class CreateDeliveryReceiptState extends Equatable {
     this.droppedFromOriginal = 0,
     this.submitting = false,
     this.error,
-    this.handwrittenDate = false,
+    this.dateMode = ReceiptDateMode.today,
+    this.customDate,
     this.pdfBytes,
     this.receiptId,
   });
@@ -88,7 +96,12 @@ class CreateDeliveryReceiptState extends Equatable {
     bool clearError = false,
     Uint8List? pdfBytes,
     String? receiptId,
-    bool? handwrittenDate,
+    ReceiptDateMode? dateMode,
+    DateTime? customDate,
+    // Switching to today/blank must actually drop a previously-picked
+    // custom date, not just stop showing it -- customDate ?? this.customDate
+    // alone could never clear it once set.
+    bool clearCustomDate = false,
   }) {
     return CreateDeliveryReceiptState(
       loading: loading ?? this.loading,
@@ -106,7 +119,8 @@ class CreateDeliveryReceiptState extends Equatable {
       error: clearError ? null : (error ?? this.error),
       pdfBytes: pdfBytes ?? this.pdfBytes,
       receiptId: receiptId ?? this.receiptId,
-      handwrittenDate: handwrittenDate ?? this.handwrittenDate,
+      dateMode: dateMode ?? this.dateMode,
+      customDate: clearCustomDate ? null : (customDate ?? this.customDate),
     );
   }
 
@@ -126,6 +140,7 @@ class CreateDeliveryReceiptState extends Equatable {
         submitting,
         error,
         receiptId,
-        handwrittenDate,
+        dateMode,
+        customDate,
       ];
 }

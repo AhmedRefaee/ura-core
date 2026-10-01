@@ -145,6 +145,32 @@ void main() {
     expect(cubit.state.canSubmit, isTrue);
   });
 
+  test('defaults to today, and setDateMode switches between today/blank with no leftover custom date', () async {
+    final cubit = build(const DeliveryReceiptLaunch(entity: entity, projectId: 'p2'));
+    await cubit.init();
+    expect(cubit.state.dateMode, ReceiptDateMode.today);
+
+    cubit.setCustomDate(DateTime(2026, 5, 1));
+    expect(cubit.state.dateMode, ReceiptDateMode.custom);
+    expect(cubit.state.customDate, DateTime(2026, 5, 1));
+
+    cubit.setDateMode(ReceiptDateMode.blank);
+    expect(cubit.state.dateMode, ReceiptDateMode.blank);
+    expect(cubit.state.customDate, isNull, reason: 'switching away from custom must drop the picked date');
+
+    cubit.setDateMode(ReceiptDateMode.today);
+    expect(cubit.state.dateMode, ReceiptDateMode.today);
+  });
+
+  test('setCustomDate sets the mode and the date together', () async {
+    final cubit = build(const DeliveryReceiptLaunch(entity: entity, projectId: 'p2'));
+    await cubit.init();
+
+    cubit.setCustomDate(DateTime(2026, 1, 15));
+    expect(cubit.state.dateMode, ReceiptDateMode.custom);
+    expect(cubit.state.customDate, DateTime(2026, 1, 15));
+  });
+
   test('setItemNote sets, trims, and clears a per-item note', () async {
     final cubit = build(const DeliveryReceiptLaunch(entity: entity, projectId: 'p2'));
     await cubit.init();

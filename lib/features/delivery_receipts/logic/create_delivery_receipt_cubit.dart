@@ -202,7 +202,17 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     emit(state.copyWith(quantities: next, clearError: true));
   }
 
-  void setHandwrittenDate(bool value) => emit(state.copyWith(handwrittenDate: value));
+  /// Switches to "today" or "blank" -- for "custom", use [setCustomDate]
+  /// instead, which sets the mode and the date together so the two can
+  /// never disagree (a bare mode switch to custom with no date picked yet
+  /// would have nothing to submit).
+  void setDateMode(ReceiptDateMode mode) {
+    assert(mode != ReceiptDateMode.custom, 'use setCustomDate for a custom date');
+    emit(state.copyWith(dateMode: mode, clearCustomDate: true));
+  }
+
+  void setCustomDate(DateTime date) =>
+      emit(state.copyWith(dateMode: ReceiptDateMode.custom, customDate: date));
 
   /// Free-text note for one item's line in the سند. Empty (after trimming)
   /// clears it rather than storing a blank entry.
@@ -229,7 +239,11 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       final pdf = await DeliveryReceiptPdf.build(
         entityName: entity.name,
         projectName: project.name,
-        date: state.handwrittenDate ? null : DateTime.now(),
+        date: switch (state.dateMode) {
+          ReceiptDateMode.today => DateTime.now(),
+          ReceiptDateMode.blank => null,
+          ReceiptDateMode.custom => state.customDate,
+        },
         clientLogoBytes: await _fetchLetterhead(project.letterheadImageUrl),
         notes: notes,
         lines: [

@@ -117,4 +117,15 @@ class ProjectDetailCubit extends Cubit<ProjectDetailState> {
         return error.message;
     }
   }
+
+  Future<String?> removeLetterhead() async {
+    final updated = await _repo.updateProject(id: state.project.id, clearLetterhead: true);
+    switch (updated) {
+      case AppSuccess(:final data):
+        emit(state.copyWith(project: data));
+        return null;
+      case AppFailure(:final error):
+        return error.message;
+    }
+  }
 }

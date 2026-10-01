@@ -117,6 +117,9 @@ class ProjectDetailScreen extends StatelessWidget {
                     onChange: canEditLetterhead
                         ? () => _changeLetterhead(context)
                         : null,
+                    onRemove: canEditLetterhead
+                        ? () => _removeLetterhead(context)
+                        : null,
                   ),
                   const SizedBox(height: 16),
                   _ItemsCard(state: state),
@@ -171,6 +174,33 @@ class ProjectDetailScreen extends StatelessWidget {
     );
   }
 
+  Future<void> _removeLetterhead(BuildContext context) async {
+    final cubit = context.read<ProjectDetailCubit>();
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('إزالة نموذج السند؟'),
+        content: const Text('سيُنشأ السند بدون رأس بعد ذلك، حتى تضاف صورة جديدة.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('إلغاء'),
+          ),
+          FilledButton.tonal(
+            style: FilledButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('إزالة'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final error = await cubit.removeLetterhead();
+    messenger.showSnackBar(
+      SnackBar(content: Text(error ?? 'تمت إزالة نموذج السند')),
+    );
+  }
 }
 
 Future<void> confirmDeleteProjectItem(BuildContext context, ProjectItem item) async {
@@ -271,7 +301,8 @@ class _LetterheadImageState extends State<_LetterheadImage> {
 class _LetterheadCard extends StatelessWidget {
   final String? url;
   final VoidCallback? onChange;
-  const _LetterheadCard({required this.url, required this.onChange});
+  final VoidCallback? onRemove;
+  const _LetterheadCard({required this.url, required this.onChange, required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
@@ -289,6 +320,13 @@ class _LetterheadCard extends StatelessWidget {
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const Spacer(),
+                if (url != null && onRemove != null)
+                  TextButton.icon(
+                    onPressed: onRemove,
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    label: const Text('إزالة'),
+                    style: TextButton.styleFrom(foregroundColor: Theme.of(context).colorScheme.error),
+                  ),
                 if (onChange != null)
                   TextButton.icon(
                     onPressed: onChange,

@@ -4,6 +4,7 @@ import '../../../core/di/injection.dart';
 import '../../../shared/models/entity.dart';
 import '../../../shared/models/profile.dart';
 import '../../../shared/models/project.dart';
+import '../../../shared/logic/unit_conversion.dart';
 import '../../../shared/models/project_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../auth/logic/auth_cubit.dart';
@@ -516,12 +517,25 @@ class _ItemFormState extends State<_ItemForm> {
         ? ''
         : formatQty(widget.item!.unitPrice!),
   );
+
+  // Packaging: optional, for converting an actual delivery into this
+  // item's registered unit on a سند (see unit_conversion.dart). Enabled
+  // automatically when editing an item that already has it set.
+  late bool _packagingEnabled = widget.item != null && registeredPackagingOf(widget.item!) != null;
+  late final _packSize = TextEditingController(
+    text: widget.item?.packagingUnitSize == null ? '' : formatQty(widget.item!.packagingUnitSize!),
+  );
+  late final _packCount = TextEditingController(
+    text: widget.item?.packagingUnitCount == null ? '' : formatQty(widget.item!.packagingUnitCount!),
+  );
+  late QuantityUnit? _baseUnit = QuantityUnit.tryParse(widget.item?.packagingBaseUnit);
+
   bool _saving = false;
   String? _error;
 
   @override
   void dispose() {
-    for (final c in [_category, _name, _desc, _qty, _unit, _price]) {
+    for (final c in [_category, _name, _desc, _qty, _unit, _price, _packSize, _packCount]) {
       c.dispose();
     }
     super.dispose();
@@ -531,6 +545,16 @@ class _ItemFormState extends State<_ItemForm> {
     final q = parseLocalizedNumber(_qty.text);
     final p = parseLocalizedNumber(_price.text);
     return q == null || p == null ? null : round2(q * p);
+  }
+
+  /// `"1 <unit> = <total> <base unit label>"`, confirming what was just
+  /// typed before the item is saved.
+  String? get _packagingPreview {
+    final size = parseLocalizedNumber(_packSize.text);
+    final count = parseLocalizedNumber(_packCount.text);
+    if (size == null || count == null || _baseUnit == null) return null;
+    final unitLabel = _unit.text.trim().isEmpty ? 'وحدة' : _unit.text.trim();
+    return '1 $unitLabel = ${formatQty(size * count)} ${_baseUnit!.label}';
   }
 
   Future<void> _save() async {
@@ -543,6 +567,12 @@ class _ItemFormState extends State<_ItemForm> {
     if (_price.text.trim().isNotEmpty && price == null) {
       // Saving would silently drop the price.
       setState(() => _error = 'سعر الوحدة ليس رقماً');
+      return;
+    }
+    final packSize = parseLocalizedNumber(_packSize.text);
+    final packCount = parseLocalizedNumber(_packCount.text);
+    if (_packagingEnabled && (packSize == null || packSize <= 0 || packCount == null || packCount <= 0 || _baseUnit == null)) {
+      setState(() => _error = 'أكمل حجم العبوة والوحدة والعدد، أو عطّل تفاصيل التعبئة');
       return;
     }
     setState(() {
@@ -561,6 +591,9 @@ class _ItemFormState extends State<_ItemForm> {
         unit: _unit.text.trim(),
         unitPrice: price,
         totalPrice: _total,
+        packagingUnitSize: _packagingEnabled ? packSize : null,
+        packagingUnitCount: _packagingEnabled ? packCount : null,
+        packagingBaseUnit: _packagingEnabled ? _baseUnit!.name : null,
       ),
     );
     if (!mounted) return;
@@ -671,6 +704,57 @@ class _ItemFormState extends State<_ItemForm> {
                   : 'الإجمالي: ${formatQty(_total!)}',
             ),
           ),
+          const SizedBox(height: 4),
+          SwitchListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('تفاصيل التعبئة'),
+            subtitle: const Text('لحساب كمية السند تلقائياً من الكمية الفعلية المسلّمة'),
+            value: _packagingEnabled,
+            onChanged: (v) => setState(() => _packagingEnabled = v),
+          ),
+          if (_packagingEnabled) ...[
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _packSize,
+                    keyboardType: numeric,
+                    onChanged: (_) => setState(() {}),
+                    decoration: const InputDecoration(
+                      labelText: 'حجم العبوة الواحدة',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: DropdownButtonFormField<QuantityUnit>(
+                    initialValue: _baseUnit,
+                    decoration: const InputDecoration(
+                      labelText: 'الوحدة',
+                      border: OutlineInputBorder(),
+                    ),
+                    items: [
+                      for (final u in QuantityUnit.values)
+                        DropdownMenuItem(value: u, child: Text(u.label)),
+                    ],
+                    onChanged: (u) => setState(() => _baseUnit = u),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _packCount,
+              keyboardType: numeric,
+              onChanged: (_) => setState(() {}),
+              decoration: InputDecoration(
+                labelText: 'عدد العبوات لكل "${_unit.text.trim().isEmpty ? 'وحدة' : _unit.text.trim()}"',
+                border: const OutlineInputBorder(),
+                helperText: _packagingPreview,
+              ),
+            ),
+          ],
           if (_error != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),

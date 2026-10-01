@@ -21,6 +21,16 @@ class ProjectItem extends Equatable {
   final String unit;
   final double? unitPrice;
   final double? totalPrice;
+
+  /// Packaging the registered [unit] represents, for converting an actual
+  /// delivery (see `lib/shared/logic/unit_conversion.dart`) into this
+  /// quotation's unit on a سند -- e.g. "1 كرتون = 1.65 كجم × 4" stores
+  /// packagingUnitSize 1.65, packagingUnitCount 4, packagingBaseUnit
+  /// 'kilogram'. All three null (the common case) means this item has no
+  /// such relationship and the سند quantity is entered directly, as always.
+  final double? packagingUnitSize;
+  final double? packagingUnitCount;
+  final String? packagingBaseUnit;
   final DateTime? createdAt;
 
   const ProjectItem({
@@ -34,6 +44,9 @@ class ProjectItem extends Equatable {
     required this.unit,
     this.unitPrice,
     this.totalPrice,
+    this.packagingUnitSize,
+    this.packagingUnitCount,
+    this.packagingBaseUnit,
     this.createdAt,
   });
 
@@ -49,6 +62,9 @@ class ProjectItem extends Equatable {
       unit: map['unit'] as String,
       unitPrice: (map['unit_price'] as num?)?.toDouble(),
       totalPrice: (map['total_price'] as num?)?.toDouble(),
+      packagingUnitSize: (map['packaging_unit_size'] as num?)?.toDouble(),
+      packagingUnitCount: (map['packaging_unit_count'] as num?)?.toDouble(),
+      packagingBaseUnit: map['packaging_base_unit'] as String?,
       createdAt: map['created_at'] != null
           ? DateTime.parse(map['created_at'] as String)
           : null,
@@ -65,10 +81,14 @@ class ProjectItem extends Equatable {
         'unit': unit,
         if (unitPrice != null) 'unit_price': unitPrice,
         if (totalPrice != null) 'total_price': totalPrice,
+        'packaging_unit_size': packagingUnitSize,
+        'packaging_unit_count': packagingUnitCount,
+        'packaging_base_unit': packagingBaseUnit,
       };
 
   /// One element of `replace_project_items`' p_items; the server assigns
-  /// sort_order from array position.
+  /// sort_order from array position. Packaging isn't settable from Excel
+  /// import yet, so it's deliberately not sent here.
   Map<String, dynamic> toReplaceJson() => {
         'category': category,
         'item_name': itemName,
@@ -87,9 +107,25 @@ class ProjectItem extends Equatable {
         'unit': unit,
         'unit_price': unitPrice,
         'total_price': totalPrice,
+        'packaging_unit_size': packagingUnitSize,
+        'packaging_unit_count': packagingUnitCount,
+        'packaging_base_unit': packagingBaseUnit,
       };
 
   @override
-  List<Object?> get props =>
-      [id, projectId, category, sortOrder, itemName, description, quantity, unit, unitPrice, totalPrice];
+  List<Object?> get props => [
+        id,
+        projectId,
+        category,
+        sortOrder,
+        itemName,
+        description,
+        quantity,
+        unit,
+        unitPrice,
+        totalPrice,
+        packagingUnitSize,
+        packagingUnitCount,
+        packagingBaseUnit,
+      ];
 }

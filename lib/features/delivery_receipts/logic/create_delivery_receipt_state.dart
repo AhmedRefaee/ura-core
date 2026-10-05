@@ -6,6 +6,13 @@ part of 'create_delivery_receipt_cubit.dart';
 /// custom: a specific date the creator picked themselves.
 enum ReceiptDateMode { today, blank, custom }
 
+/// One سند already created during a submit() that split the picks by
+/// category -- see CreateDeliveryReceiptCubit.submit/advanceToNextReceipt.
+/// Only the first is shown immediately; the rest sit in
+/// [CreateDeliveryReceiptState.remainingReceipts] until the rep dismisses
+/// the one on screen.
+typedef FiledReceipt = ({String receiptId, Uint8List pdfBytes, String categoryLabel});
+
 class CreateDeliveryReceiptState extends Equatable {
   final bool loading;
   final List<Entity> entities;
@@ -44,6 +51,23 @@ class CreateDeliveryReceiptState extends Equatable {
   final Uint8List? pdfBytes;
   final String? receiptId;
 
+  /// Settings-menu toggle: file one سند per category instead of a single
+  /// one covering every picked item. Forced off while editing (see submit())
+  /// -- a replace operation has exactly one old سند to replace, so splitting
+  /// the replacement into several has no sane meaning.
+  final bool splitByCategory;
+
+  /// سندات already created by the current submit() that haven't been shown
+  /// yet -- only populated right after a split submit, drained one at a
+  /// time by advanceToNextReceipt() as the rep dismisses each preview.
+  final List<FiledReceipt> remainingReceipts;
+
+  /// The category of the سند currently in [receiptId]/[pdfBytes], and how
+  /// many this submit() produced in total -- both only meaningful once a
+  /// سند has been filed, for _FiledView's "(2 من 3) — الفئة" title.
+  final String? currentCategoryLabel;
+  final int totalReceiptsThisSubmit;
+
   const CreateDeliveryReceiptState({
     this.loading = false,
     this.entities = const [],
@@ -62,6 +86,10 @@ class CreateDeliveryReceiptState extends Equatable {
     this.customDate,
     this.pdfBytes,
     this.receiptId,
+    this.splitByCategory = false,
+    this.remainingReceipts = const [],
+    this.currentCategoryLabel,
+    this.totalReceiptsThisSubmit = 1,
   });
 
   /// What the entity step lists: only entities a سند can be filed for.
@@ -78,6 +106,13 @@ class CreateDeliveryReceiptState extends Equatable {
       invalid.isEmpty &&
       quantities.values.any((q) => q > 0) &&
       !submitting;
+
+  /// How many separate سندات splitByCategory would actually produce right
+  /// now, for the settings dialog's preview line. Counts distinct
+  /// categories among picked items only -- an empty category string is
+  /// still one group (uncategorized items), same as submit()'s grouping.
+  int get chosenCategoryCount =>
+      items.where((i) => (quantities[i.id] ?? 0) > 0).map((i) => i.category).toSet().length;
 
   CreateDeliveryReceiptState copyWith({
     bool? loading,
@@ -102,6 +137,10 @@ class CreateDeliveryReceiptState extends Equatable {
     // custom date, not just stop showing it -- customDate ?? this.customDate
     // alone could never clear it once set.
     bool clearCustomDate = false,
+    bool? splitByCategory,
+    List<FiledReceipt>? remainingReceipts,
+    String? currentCategoryLabel,
+    int? totalReceiptsThisSubmit,
   }) {
     return CreateDeliveryReceiptState(
       loading: loading ?? this.loading,
@@ -121,6 +160,10 @@ class CreateDeliveryReceiptState extends Equatable {
       receiptId: receiptId ?? this.receiptId,
       dateMode: dateMode ?? this.dateMode,
       customDate: clearCustomDate ? null : (customDate ?? this.customDate),
+      splitByCategory: splitByCategory ?? this.splitByCategory,
+      remainingReceipts: remainingReceipts ?? this.remainingReceipts,
+      currentCategoryLabel: currentCategoryLabel ?? this.currentCategoryLabel,
+      totalReceiptsThisSubmit: totalReceiptsThisSubmit ?? this.totalReceiptsThisSubmit,
     );
   }
 
@@ -142,5 +185,9 @@ class CreateDeliveryReceiptState extends Equatable {
         receiptId,
         dateMode,
         customDate,
+        splitByCategory,
+        remainingReceipts,
+        currentCategoryLabel,
+        totalReceiptsThisSubmit,
       ];
 }

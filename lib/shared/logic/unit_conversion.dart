@@ -1,5 +1,3 @@
-import '../models/project_item.dart';
-
 /// Physical dimension a [QuantityUnit] measures. Converting between units of
 /// different dimensions (e.g. kg -> L) is never valid -- see [convertQuantity].
 enum UnitDimension { mass, volume, count }
@@ -52,7 +50,9 @@ double? convertQuantity(double value, QuantityUnit from, QuantityUnit to) {
 
 /// What "1 registered unit" (e.g. 1 كرتون) amounts to: [packSize] of
 /// [baseUnit], [packCount] times over -- e.g. 1.65 kg per pack × 4 packs =
-/// 6.6 kg in one registered كرتون.
+/// 6.6 kg in one registered كرتون. Entered by hand every time, from the
+/// contract and the actual delivery فاتورة -- see
+/// `create_delivery_receipt_screen.dart`'s `_ConvertDeliveryDialog`.
 class RegisteredPackaging {
   final double packSize;
   final double packCount;
@@ -65,20 +65,6 @@ class RegisteredPackaging {
   });
 
   double get totalInBaseUnit => packSize * packCount;
-}
-
-/// Reads a [ProjectItem]'s packaging columns into a [RegisteredPackaging],
-/// or null if the item was never set up with one (the common case --
-/// سند quantity entry for such items is unaffected, exactly as before this
-/// feature existed).
-RegisteredPackaging? registeredPackagingOf(ProjectItem item) {
-  final size = item.packagingUnitSize;
-  final count = item.packagingUnitCount;
-  final unit = QuantityUnit.tryParse(item.packagingBaseUnit);
-  if (size == null || count == null || unit == null || size <= 0 || count <= 0) {
-    return null;
-  }
-  return RegisteredPackaging(packSize: size, packCount: count, baseUnit: unit);
 }
 
 /// How many registered units [deliveredQuantity] of [deliveredUnit], across

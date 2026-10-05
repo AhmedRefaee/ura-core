@@ -2,15 +2,18 @@ import 'dart:typed_data';
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
+import '../../../core/errors/app_error.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
 import '../../../shared/models/delivery_receipt.dart';
+import '../../../shared/models/delivery_receipt_draft.dart';
 import '../../../shared/models/entity.dart';
 import '../../../shared/models/project.dart';
 import '../../../shared/models/project_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../projects/data/project_repository.dart';
 import '../../verifier/data/entity_repository.dart';
+import '../data/delivery_receipt_draft_repository.dart';
 import '../data/delivery_receipt_repository.dart';
 import '../data/delivery_receipt_storage_service.dart';
 import 'delivery_receipt_pdf.dart';
@@ -30,15 +33,41 @@ class DeliveryReceiptLaunch {
   /// note are pre-filled; filing archives it in the same transaction.
   final DeliveryReceipt? replacing;
 
-  const DeliveryReceiptLaunch({this.orderId, this.entity, this.projectId, this.replacing});
+  /// Resuming a locally-saved draft: its quantities, notes, date and split
+  /// setting are pre-filled once its project's items load. Entity/project
+  /// themselves are looked up by id from what init() fetches, rather than
+  /// reconstructed here, so a stale draft can never show outdated entity
+  /// info -- see CreateDeliveryReceiptCubit.init()/_prefillFromDraft().
+  final DeliveryReceiptDraft? draft;
+
+  const DeliveryReceiptLaunch({this.orderId, this.entity, this.projectId, this.replacing, this.draft});
 
   DeliveryReceiptLaunch.edit(DeliveryReceipt receipt)
       : orderId = receipt.orderId,
         entity = receipt.entity,
         projectId = receipt.projectId,
-        replacing = receipt;
+        replacing = receipt,
+        draft = null;
+
+  DeliveryReceiptLaunch.resumeDraft(DeliveryReceiptDraft d)
+      : orderId = d.orderId,
+        entity = null,
+        projectId = null,
+        replacing = null,
+        draft = d;
 
   bool get isEdit => replacing != null;
+}
+
+/// Groups [items] by category, in each category's first-appearance order --
+/// '' (uncategorized) is just another group, not special-cased. What
+/// submit() splits a سند into when splitByCategory is on.
+List<List<ProjectItem>> groupItemsByCategory(List<ProjectItem> items) {
+  final byCategory = <String, List<ProjectItem>>{};
+  for (final i in items) {
+    (byCategory[i.category] ??= []).add(i);
+  }
+  return byCategory.values.toList();
 }
 
 class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
@@ -46,15 +75,23 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
   final ProjectRepository _projects;
   final DeliveryReceiptRepository _receipts;
   final DeliveryReceiptStorageService _storage;
+  final DeliveryReceiptDraftRepository _drafts;
   final DeliveryReceiptLaunch launch;
+
+  /// The draft this session resumed from, if any -- saveDraft() overwrites
+  /// it instead of creating a duplicate, and a successful submit() deletes
+  /// it rather than leaving a stale copy behind.
+  String? _draftId;
 
   CreateDeliveryReceiptCubit(
     this._entities,
     this._projects,
     this._receipts,
     this._storage,
+    this._drafts,
     this.launch,
-  ) : super(const CreateDeliveryReceiptState());
+  )   : _draftId = launch.draft?.id,
+        super(const CreateDeliveryReceiptState());
 
   Future<void> init() async {
     emit(state.copyWith(loading: true, clearError: true));
@@ -74,7 +111,13 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
         return;
     }
     final entity = launch.entity;
-    if (entity != null) await selectEntity(entity, preselectProjectId: launch.projectId);
+    final draft = launch.draft;
+    if (entity != null) {
+      await selectEntity(entity, preselectProjectId: launch.projectId);
+    } else if (draft != null) {
+      final match = state.entities.where((e) => e.id == draft.entityId).firstOrNull;
+      if (match != null) await selectEntity(match, preselectProjectId: draft.projectId);
+    }
   }
 
   /// Back to the entity step.
@@ -145,6 +188,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       case AppSuccess(:final data):
         emit(state.copyWith(loading: false, items: data));
         _prefillFromReplaced(project, data);
+        _prefillFromDraft(project, data);
       case AppFailure(:final error):
         emit(state.copyWith(loading: false, error: error.message));
     }
@@ -174,6 +218,34 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       quantities: quantities,
       itemNotes: itemNotes,
       droppedFromOriginal: old.items.length - quantities.length,
+    ));
+  }
+
+  /// Resuming a saved draft: carry its quantities, notes, date choice and
+  /// split setting over, once, onto the lines that still exist (a draft can
+  /// sit for a while; the quotation may have changed since it was saved).
+  void _prefillFromDraft(Project project, List<ProjectItem> items) {
+    final draft = launch.draft;
+    if (draft == null || _prefilled || project.id != draft.projectId) return;
+    _prefilled = true;
+    final present = {for (final i in items) i.id};
+    final quantities = <String, double>{
+      for (final entry in draft.quantities.entries)
+        if (present.contains(entry.key)) entry.key: entry.value,
+    };
+    final itemNotes = <String, String>{
+      for (final entry in draft.itemNotes.entries)
+        if (present.contains(entry.key)) entry.key: entry.value,
+    };
+    emit(state.copyWith(
+      quantities: quantities,
+      itemNotes: itemNotes,
+      dateMode: ReceiptDateMode.values.firstWhere(
+        (m) => m.name == draft.dateMode,
+        orElse: () => ReceiptDateMode.today,
+      ),
+      customDate: draft.customDate,
+      splitByCategory: draft.splitByCategory,
     ));
   }
 
@@ -214,6 +286,11 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
   void setCustomDate(DateTime date) =>
       emit(state.copyWith(dateMode: ReceiptDateMode.custom, customDate: date));
 
+  /// Settings-menu toggle: submit() files one سند per category instead of
+  /// one covering every picked item. No effect while editing -- see
+  /// submit()'s own note on why a replace operation can't split.
+  void setSplitByCategory(bool value) => emit(state.copyWith(splitByCategory: value));
+
   /// Free-text note for one item's line in the سند. Empty (after trimming)
   /// clears it rather than storing a blank entry.
   void setItemNote(String projectItemId, String note) {
@@ -227,6 +304,32 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     emit(state.copyWith(itemNotes: next));
   }
 
+  /// Saves current progress locally so the rep can leave and pick this سند
+  /// back up later -- nothing is sent to the server, nothing is filed yet.
+  /// Overwrites the same draft if this session already started from one,
+  /// rather than piling up a duplicate every time.
+  Future<void> saveDraft() async {
+    final entity = state.entity;
+    final project = state.project;
+    if (entity == null || project == null || state.quantities.isEmpty) return;
+    final id = _draftId ?? '${DateTime.now().microsecondsSinceEpoch}';
+    _draftId = id;
+    await _drafts.save(DeliveryReceiptDraft(
+      id: id,
+      entityId: entity.id,
+      entityName: entity.name,
+      projectId: project.id,
+      projectName: project.name,
+      orderId: launch.orderId,
+      quantities: Map.of(state.quantities),
+      itemNotes: Map.of(state.itemNotes),
+      dateMode: state.dateMode.name,
+      customDate: state.customDate,
+      splitByCategory: state.splitByCategory,
+      savedAt: DateTime.now(),
+    ));
+  }
+
   Future<void> submit({String? notes}) async {
     final entity = state.entity;
     final project = state.project;
@@ -235,6 +338,56 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
 
     final chosen = state.items.where((i) => (state.quantities[i.id] ?? 0) > 0).toList();
 
+    // A replace operation has exactly one old سند to replace -- splitting
+    // the replacement into several, with no single one being "the"
+    // replacement, has no sane meaning. The settings toggle is hidden
+    // while editing for the same reason; this is the belt-and-braces
+    // backstop in case state ever disagrees with the UI.
+    final splitting = state.splitByCategory && launch.replacing == null;
+    final groups = splitting ? groupItemsByCategory(chosen) : [chosen];
+
+    final filed = <FiledReceipt>[];
+    for (final group in groups) {
+      final result = await _fileOne(entity: entity, project: project, items: group, notes: notes);
+      switch (result) {
+        case AppSuccess(:final data):
+          filed.add(data);
+        case AppFailure(:final error):
+          // Whatever already filed in this loop stays filed -- there's no
+          // undo -- but submitting stops here rather than pretending the
+          // remaining categories went out too.
+          emit(state.copyWith(submitting: false, error: error.message));
+          return;
+      }
+    }
+
+    // At least one سند came out of this -- the draft it started from (if
+    // any) is now superseded, not just in-progress.
+    if (_draftId != null) {
+      await _drafts.delete(_draftId!);
+      _draftId = null;
+    }
+
+    emit(state.copyWith(
+      submitting: false,
+      receiptId: filed.first.receiptId,
+      pdfBytes: filed.first.pdfBytes,
+      remainingReceipts: filed.skip(1).toList(),
+      currentCategoryLabel: filed.first.categoryLabel,
+      totalReceiptsThisSubmit: filed.length,
+    ));
+  }
+
+
+  /// Builds, uploads, and records one سند covering exactly [items]. Plain
+  /// submit() calls this once with every picked item; a split submit calls
+  /// it once per category.
+  Future<AppResult<FiledReceipt>> _fileOne({
+    required Entity entity,
+    required Project project,
+    required List<ProjectItem> items,
+    required String? notes,
+  }) async {
     try {
       final pdf = await DeliveryReceiptPdf.build(
         entityName: entity.name,
@@ -247,7 +400,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
         clientLogoBytes: await _fetchLetterhead(project.letterheadImageUrl),
         notes: notes,
         lines: [
-          for (final i in chosen)
+          for (final i in items)
             ReceiptPdfLine(
               itemName: i.itemName,
               description: packagingOf(i.description),
@@ -264,8 +417,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
         case AppSuccess(:final data):
           pdfUrl = data;
         case AppFailure(:final error):
-          emit(state.copyWith(submitting: false, error: error.message));
-          return;
+          return AppFailure(error);
       }
 
       final created = await _receipts.createDeliveryReceipt(
@@ -276,7 +428,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
         pdfUrl: pdfUrl,
         notes: (notes?.trim().isEmpty ?? true) ? null : notes!.trim(),
         items: [
-          for (final i in chosen)
+          for (final i in items)
             {
               'project_item_id': i.id,
               'quantity_delivered': state.quantities[i.id],
@@ -286,14 +438,31 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       );
       switch (created) {
         case AppSuccess(:final data):
-          emit(state.copyWith(submitting: false, pdfBytes: pdf, receiptId: data));
+          return AppSuccess((receiptId: data, pdfBytes: pdf, categoryLabel: items.first.category));
         case AppFailure(:final error):
-          emit(state.copyWith(submitting: false, error: error.message));
+          return AppFailure(error);
       }
     } catch (e, st) {
       logger.e('CreateDeliveryReceiptCubit → submit failed', error: e, stackTrace: st);
-      emit(state.copyWith(submitting: false, error: 'تعذر إنشاء السند، حاول مرة أخرى'));
+      return const AppFailure(
+        AppError(message: 'تعذر إنشاء السند، حاول مرة أخرى', type: AppErrorType.unknown),
+      );
     }
+  }
+
+  /// Shows the next queued سند after the rep dismisses the one currently on
+  /// screen, when a split submit produced more than one. The screen checks
+  /// remainingReceipts itself and pops the whole سند flow instead once this
+  /// has nothing left to advance to.
+  void advanceToNextReceipt() {
+    if (state.remainingReceipts.isEmpty) return;
+    final next = state.remainingReceipts.first;
+    emit(state.copyWith(
+      receiptId: next.receiptId,
+      pdfBytes: next.pdfBytes,
+      remainingReceipts: state.remainingReceipts.skip(1).toList(),
+      currentCategoryLabel: next.categoryLabel,
+    ));
   }
 
   /// A missing or unreachable letterhead shouldn't block filing the سند --

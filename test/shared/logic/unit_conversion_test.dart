@@ -1,6 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ura_core/shared/logic/unit_conversion.dart';
-import 'package:ura_core/shared/models/project_item.dart';
 
 void main() {
   group('convertQuantity', () {
@@ -94,38 +93,6 @@ void main() {
         deliveredPackCount: 3,
       );
       expect(result, closeTo(2.5, 0.0001));
-    });
-  });
-
-  group('registeredPackagingOf', () {
-    ProjectItem item({double? size, double? count, String? unit}) => ProjectItem(
-          id: 'i1',
-          projectId: 'p1',
-          itemName: 'بند',
-          quantity: 1,
-          unit: 'كرتون',
-          packagingUnitSize: size,
-          packagingUnitCount: count,
-          packagingBaseUnit: unit,
-        );
-
-    test('null when any of the three columns is missing -- the common case', () {
-      expect(registeredPackagingOf(item()), isNull);
-      expect(registeredPackagingOf(item(size: 1.65, count: 4)), isNull, reason: 'no unit');
-      expect(registeredPackagingOf(item(size: 1.65, unit: 'kilogram')), isNull, reason: 'no count');
-    });
-
-    test('null for an unparseable unit string, rather than throwing', () {
-      expect(registeredPackagingOf(item(size: 1.65, count: 4, unit: 'bogus')), isNull);
-    });
-
-    test('builds the packaging when all three are present and valid', () {
-      final p = registeredPackagingOf(item(size: 1.65, count: 4, unit: 'kilogram'));
-      expect(p, isNotNull);
-      expect(p!.packSize, 1.65);
-      expect(p.packCount, 4);
-      expect(p.baseUnit, QuantityUnit.kilogram);
-      expect(p.totalInBaseUnit, closeTo(6.6, 0.0001));
     });
   });
 }

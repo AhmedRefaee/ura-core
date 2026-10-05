@@ -1,3 +1,4 @@
+import 'package:flutter/cupertino.dart' show CupertinoPicker;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
@@ -9,6 +10,7 @@ import '../../../shared/models/project_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../projects/logic/boq_excel.dart';
 import '../logic/create_delivery_receipt_cubit.dart';
+import '../logic/delivery_receipt_pdf.dart' show packagingOf;
 
 /// Opens the سند flow. Resolves to true once a سند was actually filed.
 Future<bool> openCreateDeliveryReceipt(
@@ -28,6 +30,8 @@ Future<bool> openCreateDeliveryReceipt(
 
 enum _Step { entity, project, items }
 
+enum _LeaveChoice { save, discard, cancel }
+
 /// Three full-screen steps -- الجهة، المشروع، البنود -- built for a rep on
 /// the move: one hand, big targets, no dropdowns to aim at. Back walks the
 /// steps instead of leaving the flow.
@@ -38,18 +42,57 @@ class CreateDeliveryReceiptScreen extends StatelessWidget {
       ? _Step.entity
       : (s.project == null ? _Step.project : _Step.items);
 
-  static void _back(BuildContext context, CreateDeliveryReceiptState s) {
+  static Future<void> _back(BuildContext context, CreateDeliveryReceiptState s) async {
     final cubit = context.read<CreateDeliveryReceiptCubit>();
     switch (_stepOf(s)) {
       case _Step.entity:
         Navigator.of(context).pop(false);
       case _Step.project:
-        cubit.clearEntity();
+        if (await _confirmLeaveWithProgress(context, s)) cubit.clearEntity();
       case _Step.items:
-        // A single project was picked automatically; there's no project
-        // step to go back to.
-        s.projects.length <= 1 ? cubit.clearEntity() : cubit.clearProject();
+        if (await _confirmLeaveWithProgress(context, s)) {
+          // A single project was picked automatically; there's no project
+          // step to go back to.
+          s.projects.length <= 1 ? cubit.clearEntity() : cubit.clearProject();
+        }
     }
+  }
+
+  /// Stepping back from here would silently throw away any quantities
+  /// already typed -- offers to save them as a draft first instead. Returns
+  /// whether the caller should proceed with its original step-back; when
+  /// the rep chooses to save, this already popped the whole سند flow
+  /// itself, so the caller must not also act.
+  static Future<bool> _confirmLeaveWithProgress(BuildContext context, CreateDeliveryReceiptState s) async {
+    if (s.quantities.isEmpty) return true;
+    final cubit = context.read<CreateDeliveryReceiptCubit>();
+    final choice = await showDialog<_LeaveChoice>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('سيتم فقدان البنود المختارة'),
+        content: Text('اخترت ${s.selectedCount} بند. يمكنك حفظها كمسودة لتتابعها لاحقاً، أو تجاهلها.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(_LeaveChoice.cancel),
+            child: const Text('إلغاء'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(_LeaveChoice.discard),
+            child: Text('تجاهل', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(ctx).pop(_LeaveChoice.save),
+            child: const Text('حفظ كمسودة'),
+          ),
+        ],
+      ),
+    );
+    if (choice == _LeaveChoice.save) {
+      await cubit.saveDraft();
+      if (context.mounted) Navigator.of(context).pop(false);
+      return false;
+    }
+    return choice == _LeaveChoice.discard;
   }
 
   @override
@@ -79,6 +122,15 @@ class CreateDeliveryReceiptScreen extends StatelessWidget {
                     ? null
                     : () => _back(context, state),
               ),
+              // Splitting by category only makes sense while picking items,
+              // and never while editing -- see submit()'s note on why a
+              // replace operation can't split. Kept out of the items step's
+              // own toolbar on purpose: that screen is for search, typing
+              // quantities, and the calculator -- settings live here instead.
+              actions: [
+                if (step == _Step.items && !context.read<CreateDeliveryReceiptCubit>().launch.isEdit)
+                  _SettingsMenuButton(state: state),
+              ],
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(4),
                 child: LinearProgressIndicator(
@@ -95,6 +147,136 @@ class CreateDeliveryReceiptScreen extends StatelessWidget {
               _Step.items => _ItemsStep(state: state),
             },
           ),
+        );
+      },
+    );
+  }
+}
+
+/// The "extra info" realm the items step itself stays free of -- right now
+/// just one setting, opened from an icon rather than crowding the main
+/// search/quantity/calculator flow.
+class _SettingsMenuButton extends StatelessWidget {
+  final CreateDeliveryReceiptState state;
+  const _SettingsMenuButton({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      icon: const Icon(Icons.tune),
+      tooltip: 'إعدادات السند',
+      onPressed: () => showDialog<void>(
+        context: context,
+        builder: (_) => _SendSettingsDialog(cubit: context.read<CreateDeliveryReceiptCubit>()),
+      ),
+    );
+  }
+}
+
+class _SendSettingsDialog extends StatefulWidget {
+  final CreateDeliveryReceiptCubit cubit;
+  const _SendSettingsDialog({required this.cubit});
+
+  @override
+  State<_SendSettingsDialog> createState() => _SendSettingsDialogState();
+}
+
+class _SendSettingsDialogState extends State<_SendSettingsDialog> {
+  static String _formatCustomDate(DateTime d) =>
+      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
+
+  Future<void> _pickCustomDate(DateTime? current) async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: current ?? now,
+      firstDate: DateTime(now.year - 2),
+      lastDate: DateTime(now.year + 1),
+    );
+    if (picked != null && mounted) widget.cubit.setCustomDate(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return BlocBuilder<CreateDeliveryReceiptCubit, CreateDeliveryReceiptState>(
+      bloc: widget.cubit,
+      builder: (context, state) {
+        final count = state.chosenCategoryCount;
+        return AlertDialog(
+          title: const Text('إعدادات السند'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Three ways to date the سند: stamped with today (default),
+              // left blank for the receiving side to fill in by hand at
+              // delivery, or a specific date the creator picks themselves.
+              Text('تاريخ السند', style: Theme.of(context).textTheme.titleSmall),
+              const SizedBox(height: 6),
+              Wrap(
+                spacing: 6,
+                runSpacing: 4,
+                children: [
+                  ChoiceChip(
+                    label: const Text('اليوم'),
+                    selected: state.dateMode == ReceiptDateMode.today,
+                    onSelected: state.submitting
+                        ? null
+                        : (_) => widget.cubit.setDateMode(ReceiptDateMode.today),
+                  ),
+                  ChoiceChip(
+                    label: const Text('يدوي عند التسليم'),
+                    selected: state.dateMode == ReceiptDateMode.blank,
+                    onSelected: state.submitting
+                        ? null
+                        : (_) => widget.cubit.setDateMode(ReceiptDateMode.blank),
+                  ),
+                  ChoiceChip(
+                    label: Text(
+                      state.dateMode == ReceiptDateMode.custom && state.customDate != null
+                          ? _formatCustomDate(state.customDate!)
+                          : 'تاريخ آخر',
+                    ),
+                    selected: state.dateMode == ReceiptDateMode.custom,
+                    onSelected: state.submitting ? null : (_) => _pickCustomDate(state.customDate),
+                  ),
+                ],
+              ),
+              const Divider(height: 24),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('سند منفصل لكل فئة'),
+                subtitle: Text(
+                  state.splitByCategory && count > 0
+                      ? 'سيتم إنشاء $count سند منفصل حسب فئات البنود المختارة'
+                      : 'بدلاً من سند واحد يضم كل البنود المختارة، حسب فئات العقد',
+                ),
+                value: state.splitByCategory,
+                onChanged: (v) => widget.cubit.setSplitByCategory(v),
+              ),
+              const Divider(height: 24),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.save_outlined),
+                title: const Text('حفظ كمسودة الآن'),
+                subtitle: const Text('يحفظ البنود والكميات المختارة هنا فقط، دون إنشاء السند'),
+                enabled: state.quantities.isNotEmpty,
+                onTap: () async {
+                  await widget.cubit.saveDraft();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(const SnackBar(content: Text('تم حفظ المسودة')));
+                  }
+                },
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: const Text('تم'),
+            ),
+          ],
         );
       },
     );
@@ -272,9 +454,27 @@ class _ErrorBanner extends StatelessWidget {
 /// past the right edge would be simply unreachable. This wraps the list in
 /// a ScrollBehavior that restores mouse drag, plus a visible Scrollbar, so
 /// scrolling works the same way on touch and with a mouse.
-class _FilterChipsRow extends StatelessWidget {
+class _FilterChipsRow extends StatefulWidget {
   final List<Widget> chips;
   const _FilterChipsRow({required this.chips});
+
+  @override
+  State<_FilterChipsRow> createState() => _FilterChipsRowState();
+}
+
+class _FilterChipsRowState extends State<_FilterChipsRow> {
+  // Scrollbar needs an explicit controller on a horizontal list -- it isn't
+  // eligible for PrimaryScrollController, which only auto-attaches to a
+  // vertical scrollable. Without this, debug builds assert on every frame
+  // (asserts are stripped in --release, which is why this stayed invisible
+  // on the deployed web build).
+  final _controller = ScrollController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -283,13 +483,15 @@ class _FilterChipsRow extends StatelessWidget {
       child: ScrollConfiguration(
         behavior: _MouseDragScrollBehavior(),
         child: Scrollbar(
+          controller: _controller,
           thumbVisibility: true,
           child: ListView.separated(
+            controller: _controller,
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 10),
-            itemCount: chips.length,
+            itemCount: widget.chips.length,
             separatorBuilder: (_, _) => const SizedBox(width: 8),
-            itemBuilder: (_, i) => chips[i],
+            itemBuilder: (_, i) => widget.chips[i],
           ),
         ),
       ),
@@ -585,19 +787,6 @@ class _ItemsStepState extends State<_ItemsStep> {
     context.read<CreateDeliveryReceiptCubit>().submit();
   }
 
-  Future<void> _pickCustomDate(DateTime? current) async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: current ?? now,
-      firstDate: DateTime(now.year - 2),
-      lastDate: DateTime(now.year + 1),
-    );
-    if (picked != null && mounted) {
-      context.read<CreateDeliveryReceiptCubit>().setCustomDate(picked);
-    }
-  }
-
   Future<void> _cancel(BuildContext context) async {
     final state = widget.state;
     if (state.selectedCount > 0) {
@@ -746,9 +935,6 @@ class _ItemsStepState extends State<_ItemsStep> {
             state: state,
             onSubmit: _submit,
             onCancel: () => _cancel(context),
-            onDateModeChanged: (mode) =>
-                context.read<CreateDeliveryReceiptCubit>().setDateMode(mode),
-            onPickCustomDate: () => _pickCustomDate(state.customDate),
             // The bad row may be scrolled away; this filter shows it.
             onReviewInvalid: () => setState(() {
               _selectedOnly = true;
@@ -790,8 +976,7 @@ class _ItemCardState extends State<_ItemCard> {
         widget.invalidText ??
         (widget.quantity > 0 ? formatQty(widget.quantity) : ''),
   );
-
-  RegisteredPackaging? get _registered => registeredPackagingOf(widget.item);
+  bool _expanded = false;
 
   @override
   void dispose() {
@@ -799,13 +984,12 @@ class _ItemCardState extends State<_ItemCard> {
     super.dispose();
   }
 
-  Future<void> _calculateFromDelivery(RegisteredPackaging registered) async {
+  Future<void> _calculateFromDelivery() async {
     final result = await showDialog<double>(
       context: context,
       builder: (_) => _ConvertDeliveryDialog(
         itemName: widget.item.itemName,
         registeredUnitLabel: widget.item.unit,
-        registered: registered,
       ),
     );
     if (result != null && mounted) {
@@ -813,16 +997,6 @@ class _ItemCardState extends State<_ItemCard> {
       _ctrl.text = text;
       context.read<CreateDeliveryReceiptCubit>().setQuantityText(widget.item.id, text);
     }
-  }
-
-  void _step(int delta) {
-    final current = parseLocalizedNumber(_ctrl.text) ?? 0;
-    final next = (current + delta).clamp(0, double.infinity).toDouble();
-    _ctrl.text = next == 0 ? '' : formatQty(next);
-    context.read<CreateDeliveryReceiptCubit>().setQuantityText(
-      widget.item.id,
-      _ctrl.text,
-    );
   }
 
   Future<void> _editNote() async {
@@ -871,6 +1045,11 @@ class _ItemCardState extends State<_ItemCard> {
     final picked = widget.quantity > 0;
     final invalid = widget.invalidText != null;
     final hasNote = (widget.note ?? '').isNotEmpty;
+    final hasDescription = item.description != null && item.description!.isNotEmpty;
+    // unitPrice/totalPrice come back null from the server for roles the
+    // سند RPC doesn't consider commercial -- see project_item_pricing_visible()
+    // in the migration. A rep who can't see pricing just gets no price line.
+    final hasPrice = item.unitPrice != null;
 
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 5),
@@ -893,10 +1072,26 @@ class _ItemCardState extends State<_ItemCard> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Expanded(
-                  child: Text(
-                    item.itemName,
-                    style: theme.textTheme.titleMedium?.copyWith(
-                      fontWeight: FontWeight.w600,
+                  // The big title names the بند and, right alongside it,
+                  // the exact packaging text that ends up printed on the
+                  // سند itself -- packagingOf() is the same function
+                  // create_delivery_receipt_cubit.dart runs before handing
+                  // a line to DeliveryReceiptPdf, so this is never out of
+                  // sync with what the printed سند actually says.
+                  child: RichText(
+                    text: TextSpan(
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                        color: scheme.onSurface,
+                      ),
+                      children: [
+                        TextSpan(text: item.itemName),
+                        if (packagingOf(item.description) != null)
+                          TextSpan(
+                            text: '  —  ${packagingOf(item.description)}',
+                            style: theme.textTheme.bodyMedium?.copyWith(color: scheme.outline),
+                          ),
+                      ],
                     ),
                   ),
                 ),
@@ -914,23 +1109,55 @@ class _ItemCardState extends State<_ItemCard> {
                     tooltip: hasNote ? 'تعديل الملاحظة' : 'إضافة ملاحظة لهذا البند',
                   ),
                 ),
+                SizedBox(
+                  width: 36,
+                  height: 36,
+                  child: IconButton(
+                    padding: EdgeInsets.zero,
+                    onPressed: () => setState(() => _expanded = !_expanded),
+                    icon: Icon(
+                      _expanded ? Icons.expand_less : Icons.expand_more,
+                      color: scheme.outline,
+                    ),
+                    tooltip: _expanded ? 'إخفاء التفاصيل' : 'عرض الوصف والسعر والكمية في العرض',
+                  ),
+                ),
                 if (picked)
                   Icon(Icons.check_circle, color: scheme.primary, size: 22),
               ],
             ),
-            if (item.description != null && item.description!.isNotEmpty)
+            if (_expanded) ...[
+              if (hasDescription)
+                Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Text(item.description!, style: theme.textTheme.bodySmall),
+                ),
+              Padding(
+                padding: const EdgeInsets.only(top: 6),
+                child: Text(
+                  'الوحدة: ${item.unit}',
+                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
-                  item.description!,
-                  style: theme.textTheme.bodySmall,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  'الكمية الإجمالية في العرض: ${formatQty(item.quantity)} ${item.unit}',
+                  style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
                 ),
               ),
+              if (hasPrice)
+                Padding(
+                  padding: const EdgeInsets.only(top: 2),
+                  child: Text(
+                    'سعر العرض: ${formatMoney(item.unitPrice!)}',
+                    style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
+                  ),
+                ),
+            ],
             if (hasNote)
               Padding(
-                padding: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.only(top: 6),
                 child: Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -950,29 +1177,13 @@ class _ItemCardState extends State<_ItemCard> {
             const SizedBox(height: 10),
             Row(
               children: [
-                Expanded(
-                  child: Text(
-                    'في العرض: ${formatQty(item.quantity)} ${item.unit}',
-                    style: theme.textTheme.bodySmall?.copyWith(
-                      color: scheme.outline,
-                    ),
-                  ),
-                ),
-                if (_registered != null)
-                  IconButton.filledTonal(
-                    onPressed: widget.enabled ? () => _calculateFromDelivery(_registered!) : null,
-                    icon: const Icon(Icons.calculate_outlined),
-                    tooltip: 'حساب الكمية من التسليم الفعلي',
-                  ),
                 IconButton.filledTonal(
-                  onPressed: widget.enabled && (picked || invalid)
-                      ? () => _step(-1)
-                      : null,
-                  icon: const Icon(Icons.remove),
-                  tooltip: 'إنقاص',
+                  onPressed: widget.enabled ? _calculateFromDelivery : null,
+                  icon: const Icon(Icons.calculate_outlined),
+                  tooltip: 'حساب الكمية من التسليم الفعلي',
                 ),
-                SizedBox(
-                  width: 84,
+                const SizedBox(width: 8),
+                Expanded(
                   child: TextField(
                     controller: _ctrl,
                     enabled: widget.enabled,
@@ -987,7 +1198,7 @@ class _ItemCardState extends State<_ItemCard> {
                         .read<CreateDeliveryReceiptCubit>()
                         .setQuantityText(item.id, v),
                     decoration: InputDecoration(
-                      hintText: '0',
+                      hintText: '0 ${item.unit}',
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 10),
                       border: OutlineInputBorder(
@@ -998,16 +1209,6 @@ class _ItemCardState extends State<_ItemCard> {
                     ),
                   ),
                 ),
-                IconButton.filled(
-                  onPressed: widget.enabled ? () => _step(1) : null,
-                  icon: const Icon(Icons.add),
-                  tooltip: 'زيادة',
-                ),
-                const SizedBox(width: 6),
-                ConstrainedBox(
-                  constraints: const BoxConstraints(minWidth: 36),
-                  child: Text(item.unit, style: theme.textTheme.bodyMedium),
-                ),
               ],
             ),
           ],
@@ -1017,18 +1218,154 @@ class _ItemCardState extends State<_ItemCard> {
   }
 }
 
-/// What was actually delivered -- quantity, unit, pack count -- converted
-/// live into the item's registered unit. Nothing reaches the quantity field
-/// until "تأكيد" is pressed; the computed number is only ever a preview
-/// until then.
+/// All units offered in a [_UnitWheel] -- every دائرة a بند could be counted
+/// in, not just the registered item's own dimension. The registered side
+/// can be filled in manually (see [_ConvertDeliveryDialog]) before its
+/// dimension is even known, so the wheel can't be pre-filtered the way a
+/// delivered-only picker could; a weight-vs-volume mismatch is instead
+/// caught and explained once both sides are filled in.
+const _wheelUnits = QuantityUnit.values;
+
+/// One "iPhone dial"-style unit picker next to a quantity field -- the shape
+/// Ahmed asked for both for what's registered and what was actually
+/// delivered: a scrollable wheel on one side, a number field on the other.
+class _UnitWheel extends StatefulWidget {
+  final QuantityUnit value;
+  final ValueChanged<QuantityUnit> onChanged;
+  const _UnitWheel({required this.value, required this.onChanged});
+
+  @override
+  State<_UnitWheel> createState() => _UnitWheelState();
+}
+
+class _UnitWheelState extends State<_UnitWheel> {
+  late final _controller = FixedExtentScrollController(
+    initialItem: _wheelUnits.indexOf(widget.value),
+  );
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 96,
+      width: 84,
+      decoration: BoxDecoration(
+        border: Border.all(color: scheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      // Same fix as the category filter chips row: Flutter's default
+      // ScrollBehavior leaves PointerDeviceKind.mouse out of dragDevices,
+      // so without this a desktop-web mouse simply can't drag the wheel at
+      // all -- it looks "stuck" even though touch/trackpad work fine.
+      child: ScrollConfiguration(
+        behavior: _MouseDragScrollBehavior(),
+        child: CupertinoPicker(
+          scrollController: _controller,
+          itemExtent: 32,
+          onSelectedItemChanged: (i) => widget.onChanged(_wheelUnits[i]),
+          selectionOverlay: Container(
+            decoration: BoxDecoration(
+              border: Border.symmetric(
+                horizontal: BorderSide(color: scheme.primary.withValues(alpha: 0.4)),
+              ),
+            ),
+          ),
+          children: [for (final u in _wheelUnits) Center(child: Text(u.label))],
+        ),
+      ),
+    );
+  }
+}
+
+/// One [_UnitWheel] + unit-size field + شد (per-pack count) field -- what a
+/// pack *is*: how big one unit inside it is, and how many of those it
+/// holds. Both sides of the conversion are described this way, the عقد's
+/// pack and the فاتورة's.
+class _WheelQuantityGroup extends StatelessWidget {
+  final QuantityUnit unit;
+  final ValueChanged<QuantityUnit> onUnitChanged;
+  final TextEditingController qtyController;
+  final TextEditingController packsController;
+  final String qtyLabel;
+  final VoidCallback onChanged;
+  final bool autofocus;
+  const _WheelQuantityGroup({
+    required this.unit,
+    required this.onUnitChanged,
+    required this.qtyController,
+    required this.packsController,
+    required this.qtyLabel,
+    required this.onChanged,
+    this.autofocus = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const numeric = TextInputType.numberWithOptions(decimal: true);
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _UnitWheel(
+          value: unit,
+          onChanged: (u) {
+            onUnitChanged(u);
+            onChanged();
+          },
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            children: [
+              TextField(
+                controller: qtyController,
+                autofocus: autofocus,
+                keyboardType: numeric,
+                onChanged: (_) => onChanged(),
+                decoration: InputDecoration(
+                  labelText: qtyLabel,
+                  border: const OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: packsController,
+                keyboardType: numeric,
+                onChanged: (_) => onChanged(),
+                decoration: const InputDecoration(
+                  labelText: 'شد',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Both sides of a سند conversion, entered entirely by hand, every time:
+/// what one registered unit is per the عقد, and what the فاتورة actually
+/// says was delivered. Nothing here is detected or remembered from a
+/// previous سند -- different deliveries of the exact same بند can come in
+/// different شد (a dozen a carton once, two dozen another time), so neither
+/// side is ever assumed. Nothing reaches the quantity field until "تأكيد"
+/// is pressed; the computed number is only ever a preview until then.
 class _ConvertDeliveryDialog extends StatefulWidget {
   final String itemName;
   final String registeredUnitLabel;
-  final RegisteredPackaging registered;
+
   const _ConvertDeliveryDialog({
     required this.itemName,
     required this.registeredUnitLabel,
-    required this.registered,
   });
 
   @override
@@ -1036,27 +1373,93 @@ class _ConvertDeliveryDialog extends StatefulWidget {
 }
 
 class _ConvertDeliveryDialogState extends State<_ConvertDeliveryDialog> {
-  final _qty = TextEditingController();
-  final _packs = TextEditingController(text: '1');
-  late QuantityUnit _unit = widget.registered.baseUnit;
+  // Both sides describe a pack the same way, because that's what a pack
+  // actually is: the size of one unit inside it (500 جم, 1.75 كجم, 2 لتر)
+  // and how many of those the pack holds (شد). The عقد's pack and the
+  // فاتورة's pack are then just two numbers in the same base unit, and the
+  // rate between them is one division.
+
+  // من العقد -- what one registered unit (e.g. 1 كرتون) amounts to.
+  final _regQty = TextEditingController();
+  final _regPacks = TextEditingController(text: '1');
+  QuantityUnit _regUnit = QuantityUnit.kilogram;
+
+  // من الفاتورة -- what one *bought* pack amounts to.
+  final _boughtQty = TextEditingController();
+  final _boughtPacks = TextEditingController(text: '1');
+  QuantityUnit _boughtUnit = QuantityUnit.kilogram;
+
+  /// How many of those bought packs were actually bought -- the last
+  /// multiplication, applied to the rate once it's known.
+  final _count = TextEditingController();
 
   @override
   void dispose() {
-    _qty.dispose();
-    _packs.dispose();
+    _regQty.dispose();
+    _regPacks.dispose();
+    _boughtQty.dispose();
+    _boughtPacks.dispose();
+    _count.dispose();
     super.dispose();
   }
 
-  double? get _result {
-    final qty = parseLocalizedNumber(_qty.text);
-    final packs = parseLocalizedNumber(_packs.text);
-    if (qty == null || qty <= 0 || packs == null || packs <= 0) return null;
+  RegisteredPackaging? get _registered => _packOf(_regQty, _regPacks, _regUnit);
+
+  RegisteredPackaging? get _boughtPack => _packOf(_boughtQty, _boughtPacks, _boughtUnit);
+
+  static RegisteredPackaging? _packOf(
+    TextEditingController size,
+    TextEditingController packs,
+    QuantityUnit unit,
+  ) {
+    final s = parseLocalizedNumber(size.text);
+    final p = parseLocalizedNumber(packs.text);
+    if (s == null || s <= 0 || p == null || p <= 0) return null;
+    return RegisteredPackaging(packSize: s, packCount: p, baseUnit: unit);
+  }
+
+  /// What ONE bought pack is worth in registered units -- shown as soon as
+  /// both packs are described, before the count is even typed, so the
+  /// multiplication behind the final number is never hidden.
+  double? get _rate {
+    final registered = _registered;
+    final bought = _boughtPack;
+    if (registered == null || bought == null) return null;
     return calculateReceiptQuantity(
-      registered: widget.registered,
-      deliveredQuantity: qty,
-      deliveredUnit: _unit,
-      deliveredPackCount: packs,
+      registered: registered,
+      deliveredQuantity: bought.packSize,
+      deliveredUnit: bought.baseUnit,
+      deliveredPackCount: bought.packCount,
     );
+  }
+
+  double? get _result {
+    final rate = _rate;
+    final count = parseLocalizedNumber(_count.text);
+    if (rate == null || count == null || count <= 0) return null;
+    return rate * count;
+  }
+
+  /// Why there's no number yet, or the dimension mismatch that's stopping
+  /// one -- shown in place of the result instead of a bare "enter a value".
+  String get _statusText {
+    if (_registered == null) return 'أدخل بيانات العقد أولاً';
+    if (_boughtPack == null) return 'أدخل بيانات العبوة المشتراة';
+    if (_rate == null) return 'لا يمكن التحويل بين وزن وحجم -- تحقق من الوحدتين';
+    return 'أدخل عدد العبوات المشتراة لمعاينة الناتج';
+  }
+
+  /// More decimal places than formatQty's 2 -- a per-unit rate is often a
+  /// small fraction (e.g. 1 delivered كجم against a 40kg registered بند is
+  /// 0.025), and rounding that to 2 decimals would show "0.03": a rate
+  /// nearly 20% off from what it actually is.
+  static String _formatRate(double v) {
+    var s = v.toStringAsFixed(4);
+    if (s.contains('.')) {
+      s = s.replaceFirst(RegExp(r'0+$'), '');
+      s = s.replaceFirst(RegExp(r'\.$'), '');
+    }
+    return s;
   }
 
   @override
@@ -1064,81 +1467,78 @@ class _ConvertDeliveryDialogState extends State<_ConvertDeliveryDialog> {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final result = _result;
-    // Limited to the registered unit's own dimension (mass stays with mass,
-    // volume with volume) -- calculateReceiptQuantity's null-for-mismatch
-    // guard exists for other callers of this module; this picker just never
-    // offers an incompatible unit in the first place.
-    final compatibleUnits = QuantityUnit.ofDimension(widget.registered.baseUnit.dimension);
-    const numeric = TextInputType.numberWithOptions(decimal: true);
+    final rate = _rate;
+    final isSized = RegExp(r'^\s*[0-9٠-٩]').hasMatch(widget.registeredUnitLabel);
 
     return AlertDialog(
       title: Text('حساب الكمية — ${widget.itemName}'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '1 ${widget.registeredUnitLabel} = ${formatQty(widget.registered.packSize)} '
-            '${widget.registered.baseUnit.label} × ${formatQty(widget.registered.packCount)} = '
-            '${formatQty(widget.registered.totalInBaseUnit)} ${widget.registered.baseUnit.label}',
-            style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
-          ),
-          const SizedBox(height: 12),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                flex: 3,
-                child: TextField(
-                  controller: _qty,
-                  autofocus: true,
-                  keyboardType: numeric,
-                  onChanged: (_) => setState(() {}),
-                  decoration: const InputDecoration(
-                    labelText: 'الكمية الفعلية',
-                    border: OutlineInputBorder(),
-                  ),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('من العقد', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            _WheelQuantityGroup(
+              unit: _regUnit,
+              onUnitChanged: (u) => _regUnit = u,
+              qtyController: _regQty,
+              packsController: _regPacks,
+              qtyLabel: '1 ${widget.registeredUnitLabel} =',
+              autofocus: true,
+              onChanged: () => setState(() {}),
+            ),
+            const SizedBox(height: 16),
+            Text('من الفاتورة', style: theme.textTheme.titleSmall),
+            const SizedBox(height: 8),
+            _WheelQuantityGroup(
+              unit: _boughtUnit,
+              onUnitChanged: (u) => _boughtUnit = u,
+              qtyController: _boughtQty,
+              packsController: _boughtPacks,
+              qtyLabel: '1 عبوة مشتراة =',
+              onChanged: () => setState(() {}),
+            ),
+            if (rate != null) ...[
+              const Divider(height: 24),
+              Text(
+                'معدل التحويل: 1 عبوة مشتراة = ${_formatRate(rate)}'
+                '${isSized ? '' : ' ${widget.registeredUnitLabel}'}',
+                style: theme.textTheme.bodyMedium?.copyWith(
+                  color: scheme.primary,
+                  fontWeight: FontWeight.w600,
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                flex: 2,
-                child: DropdownButtonFormField<QuantityUnit>(
-                  initialValue: _unit,
-                  decoration: const InputDecoration(
-                    labelText: 'الوحدة',
-                    border: OutlineInputBorder(),
-                  ),
-                  items: [
-                    for (final u in compatibleUnits)
-                      DropdownMenuItem(value: u, child: Text(u.label)),
-                  ],
-                  onChanged: (u) => setState(() => _unit = u ?? _unit),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _count,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                onChanged: (_) => setState(() {}),
+                decoration: const InputDecoration(
+                  labelText: 'كم عبوة اشتريت؟',
+                  border: OutlineInputBorder(),
+                  isDense: true,
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            controller: _packs,
-            keyboardType: numeric,
-            onChanged: (_) => setState(() {}),
-            decoration: const InputDecoration(
-              labelText: 'عدد العبوات',
-              border: OutlineInputBorder(),
+            const SizedBox(height: 14),
+            Text(
+              result == null
+                  ? _statusText
+                  // The registered unit's own name already states its size
+                  // (e.g. "40 كجم") when that's what was typed in for it --
+                  // repeating it after the number would double it up
+                  // ("= 12 40 كجم"), so only echo it when it's a plain name.
+                  : isSized
+                      ? '= ${formatQty(result)}'
+                      : '= ${formatQty(result)} ${widget.registeredUnitLabel}',
+              style: theme.textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: result == null ? scheme.outline : scheme.primary,
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-          Text(
-            result == null
-                ? 'أدخل الكمية والعبوات لمعاينة الناتج'
-                : '= ${formatQty(result)} ${widget.registeredUnitLabel}',
-            style: theme.textTheme.titleMedium?.copyWith(
-              fontWeight: FontWeight.bold,
-              color: result == null ? scheme.outline : scheme.primary,
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
       actions: [
         TextButton(
@@ -1159,19 +1559,12 @@ class _SubmitBar extends StatelessWidget {
   final VoidCallback onSubmit;
   final VoidCallback onCancel;
   final VoidCallback onReviewInvalid;
-  final ValueChanged<ReceiptDateMode> onDateModeChanged;
-  final VoidCallback onPickCustomDate;
   const _SubmitBar({
     required this.state,
     required this.onSubmit,
     required this.onCancel,
     required this.onReviewInvalid,
-    required this.onDateModeChanged,
-    required this.onPickCustomDate,
   });
-
-  static String _formatCustomDate(DateTime d) =>
-      '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')}/${d.year}';
 
   @override
   Widget build(BuildContext context) {
@@ -1209,50 +1602,6 @@ class _SubmitBar extends StatelessWidget {
                         ? TextDecoration.underline
                         : null,
                   ),
-                ),
-              ),
-              // Three ways to date the سند: stamped with today (default),
-              // left blank for the receiving side to fill in by hand at
-              // delivery, or a specific date the creator picks themselves.
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4),
-                child: Row(
-                  children: [
-                    Text('تاريخ السند', style: theme.textTheme.bodyMedium),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Wrap(
-                        alignment: WrapAlignment.end,
-                        spacing: 6,
-                        runSpacing: 4,
-                        children: [
-                          ChoiceChip(
-                            label: const Text('اليوم'),
-                            selected: state.dateMode == ReceiptDateMode.today,
-                            onSelected: state.submitting
-                                ? null
-                                : (_) => onDateModeChanged(ReceiptDateMode.today),
-                          ),
-                          ChoiceChip(
-                            label: const Text('يدوي عند التسليم'),
-                            selected: state.dateMode == ReceiptDateMode.blank,
-                            onSelected: state.submitting
-                                ? null
-                                : (_) => onDateModeChanged(ReceiptDateMode.blank),
-                          ),
-                          ChoiceChip(
-                            label: Text(
-                              state.dateMode == ReceiptDateMode.custom && state.customDate != null
-                                  ? _formatCustomDate(state.customDate!)
-                                  : 'تاريخ آخر',
-                            ),
-                            selected: state.dateMode == ReceiptDateMode.custom,
-                            onSelected: state.submitting ? null : (_) => onPickCustomDate(),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
                 ),
               ),
               const SizedBox(height: 4),
@@ -1316,30 +1665,44 @@ class _FiledView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final cubit = context.read<CreateDeliveryReceiptCubit>();
+    final hasMore = state.remainingReceipts.isNotEmpty;
+    final total = state.totalReceiptsThisSubmit;
+    final position = total - state.remainingReceipts.length;
+    final category = state.currentCategoryLabel;
+
+    // Splitting by category produced more than one سند this submit --
+    // advance to the next one instead of leaving the flow; only the very
+    // last one actually closes it.
+    void proceed() => hasMore ? cubit.advanceToNextReceipt() : Navigator.of(context).pop(true);
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
-        if (!didPop) Navigator.of(context).pop(true);
+        if (!didPop) proceed();
       },
       child: Scaffold(
         appBar: AppBar(
-          title: Text(
-            context.read<CreateDeliveryReceiptCubit>().launch.isEdit ? 'تم تعديل السند' : 'تم إنشاء السند',
-          ),
+          title: Text([
+            cubit.launch.isEdit ? 'تم تعديل السند' : 'تم إنشاء السند',
+            if (total > 1) '($position من $total)',
+            if (total > 1 && (category?.isNotEmpty ?? false)) '— $category',
+          ].join(' ')),
           automaticallyImplyLeading: false,
           actions: [
             Padding(
               padding: const EdgeInsetsDirectional.only(end: 8),
               child: FilledButton(
-                onPressed: () => Navigator.of(context).pop(true),
-                child: const Text('تم'),
+                onPressed: proceed,
+                child: Text(hasMore ? 'التالي' : 'تم'),
               ),
             ),
           ],
         ),
         body: PdfPreview(
           build: (_) async => state.pdfBytes!,
-          pdfFileName: 'سند_استلام_${state.project?.name ?? ''}.pdf',
+          pdfFileName: 'سند_استلام_${state.project?.name ?? ''}'
+              '${(category?.isNotEmpty ?? false) ? '_$category' : ''}.pdf',
           canChangePageFormat: false,
           canChangeOrientation: false,
           canDebug: false,

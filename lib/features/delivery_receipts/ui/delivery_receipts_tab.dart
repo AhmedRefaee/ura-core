@@ -2,8 +2,11 @@ import 'package:flutter/material.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../shared/models/delivery_receipt.dart';
+import '../../../shared/models/delivery_receipt_draft.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../data/delivery_receipt_draft_repository.dart';
 import '../data/delivery_receipt_repository.dart';
+import '../logic/create_delivery_receipt_cubit.dart' show DeliveryReceiptLaunch;
 import 'create_delivery_receipt_screen.dart';
 import 'receipt_actions.dart';
 
@@ -20,6 +23,7 @@ class DeliveryReceiptsTab extends StatefulWidget {
 
 class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
   late Future<AppResult<List<DeliveryReceipt>>> _future = _load();
+  List<DeliveryReceiptDraft> _drafts = sl<DeliveryReceiptDraftRepository>().list();
 
   // The empty state has its own big "سند جديد"; don't show two.
   bool _hasReceipts = false;
@@ -37,8 +41,41 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
     await next;
   }
 
+  void _reloadDrafts() => setState(() => _drafts = sl<DeliveryReceiptDraftRepository>().list());
+
   Future<void> _create() async {
+    // Whether or not a سند actually got filed, the drafts list may have
+    // changed (one saved, resumed, or deleted) during that visit.
     if (await openCreateDeliveryReceipt(context)) _refresh();
+    _reloadDrafts();
+  }
+
+  Future<void> _resumeDraft(DeliveryReceiptDraft draft) async {
+    if (await openCreateDeliveryReceipt(context, launch: DeliveryReceiptLaunch.resumeDraft(draft))) {
+      _refresh();
+    }
+    _reloadDrafts();
+  }
+
+  Future<void> _deleteDraft(DeliveryReceiptDraft draft) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('حذف المسودة؟'),
+        content: Text('سيتم حذف مسودة "${draft.projectName}" نهائياً — لا يمكن التراجع.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.of(ctx).pop(false), child: const Text('إلغاء')),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text('حذف', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed ?? false) {
+      await sl<DeliveryReceiptDraftRepository>().delete(draft.id);
+      _reloadDrafts();
+    }
   }
 
   @override
@@ -59,35 +96,112 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
           if (result == null) return const Center(child: CircularProgressIndicator());
           return RefreshIndicator(
             onRefresh: _refresh,
-            child: switch (result) {
-              AppFailure(:final error) => _Scrollable(
-                  child: _Message(
-                    icon: Icons.cloud_off_outlined,
-                    title: 'تعذر تحميل السندات',
-                    subtitle: error.message,
-                    action: OutlinedButton.icon(
-                      onPressed: _refresh,
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('إعادة المحاولة'),
-                    ),
-                  ),
+            child: Column(
+              children: [
+                if (_drafts.isNotEmpty)
+                  _DraftsSection(drafts: _drafts, onResume: _resumeDraft, onDelete: _deleteDraft),
+                Expanded(
+                  child: switch (result) {
+                    AppFailure(:final error) => _Scrollable(
+                        child: _Message(
+                          icon: Icons.cloud_off_outlined,
+                          title: 'تعذر تحميل السندات',
+                          subtitle: error.message,
+                          action: OutlinedButton.icon(
+                            onPressed: _refresh,
+                            icon: const Icon(Icons.refresh),
+                            label: const Text('إعادة المحاولة'),
+                          ),
+                        ),
+                      ),
+                    AppSuccess(:final data) when data.isEmpty => _Scrollable(
+                        child: _Message(
+                          icon: Icons.receipt_long_outlined,
+                          title: 'لا توجد سندات بعد',
+                          subtitle: 'أنشئ سند استلام لأي تسليم — من الطلب بعد تسليمه، أو من هنا في أي وقت',
+                          action: FilledButton.icon(
+                            onPressed: _create,
+                            icon: const Icon(Icons.add),
+                            label: const Text('سند جديد'),
+                          ),
+                        ),
+                      ),
+                    AppSuccess(:final data) => _ReceiptList(receipts: data, onChanged: _refresh),
+                  },
                 ),
-              AppSuccess(:final data) when data.isEmpty => _Scrollable(
-                  child: _Message(
-                    icon: Icons.receipt_long_outlined,
-                    title: 'لا توجد سندات بعد',
-                    subtitle: 'أنشئ سند استلام لأي تسليم — من الطلب بعد تسليمه، أو من هنا في أي وقت',
-                    action: FilledButton.icon(
-                      onPressed: _create,
-                      icon: const Icon(Icons.add),
-                      label: const Text('سند جديد'),
-                    ),
-                  ),
-                ),
-              AppSuccess(:final data) => _ReceiptList(receipts: data, onChanged: _refresh),
-            },
+              ],
+            ),
           );
         },
+      ),
+    );
+  }
+}
+
+/// Drafts saved on this device, newest first -- see
+/// CreateDeliveryReceiptCubit.saveDraft(). Shown above the filed سندات so a
+/// paused سند is never one screen harder to find than a finished one.
+class _DraftsSection extends StatelessWidget {
+  final List<DeliveryReceiptDraft> drafts;
+  final ValueChanged<DeliveryReceiptDraft> onResume;
+  final ValueChanged<DeliveryReceiptDraft> onDelete;
+  const _DraftsSection({required this.drafts, required this.onResume, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Container(
+      width: double.infinity,
+      color: theme.colorScheme.surfaceContainerLow,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.edit_note, size: 18, color: theme.colorScheme.primary),
+              const SizedBox(width: 6),
+              Text('مسودات', style: theme.textTheme.titleSmall),
+              const Spacer(),
+              Text('${drafts.length}', style: theme.textTheme.bodySmall),
+            ],
+          ),
+          for (final d in drafts)
+            _DraftTile(draft: d, onResume: () => onResume(d), onDelete: () => onDelete(d)),
+          const SizedBox(height: 4),
+        ],
+      ),
+    );
+  }
+}
+
+class _DraftTile extends StatelessWidget {
+  final DeliveryReceiptDraft draft;
+  final VoidCallback onResume;
+  final VoidCallback onDelete;
+  const _DraftTile({required this.draft, required this.onResume, required this.onDelete});
+
+  @override
+  Widget build(BuildContext context) {
+    final saved = draft.savedAt.toLocal();
+    final when = '${saved.year}/${saved.month}/${saved.day} '
+        '${saved.hour.toString().padLeft(2, '0')}:${saved.minute.toString().padLeft(2, '0')}';
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      child: ListTile(
+        leading: const Icon(Icons.edit_note),
+        title: Text(draft.projectName, maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Text(
+          '${draft.entityName} · ${draft.itemCount == 1 ? 'بند واحد' : '${draft.itemCount} بنود'} · $when',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        onTap: onResume,
+        trailing: IconButton(
+          icon: const Icon(Icons.delete_outline),
+          tooltip: 'حذف المسودة',
+          onPressed: onDelete,
+        ),
       ),
     );
   }

@@ -54,6 +54,7 @@ import '../../features/projects/logic/boq_excel_cubit.dart';
 import '../../features/projects/logic/project_detail_cubit.dart';
 import '../../features/projects/logic/projects_cubit.dart';
 import '../../shared/models/project.dart';
+import '../../features/delivery_receipts/data/delivery_receipt_draft_repository.dart';
 import '../../features/delivery_receipts/data/delivery_receipt_repository.dart';
 import '../../features/delivery_receipts/data/delivery_receipt_storage_service.dart';
 import '../../features/delivery_receipts/logic/create_delivery_receipt_cubit.dart';
@@ -74,6 +75,9 @@ Future<void> setupDependencies() async {
   sl.registerLazySingleton<LocalProfileSource>(() => LocalProfileSource(prefs));
   sl.registerLazySingleton<NotificationService>(() => NotificationService());
   sl.registerLazySingleton<SettingsRepository>(() => SettingsRepository(prefs));
+  sl.registerLazySingleton<DeliveryReceiptDraftRepository>(
+    () => DeliveryReceiptDraftRepository(prefs),
+  );
   sl.registerLazySingleton<ThemeCubit>(() => ThemeCubit(sl<SettingsRepository>()));
   sl.registerLazySingleton<NotificationsRepository>(() => NotificationsRepository());
   sl.registerLazySingleton<NotificationsBadgeCubit>(
@@ -187,6 +191,7 @@ Future<void> setupDependencies() async {
       sl<ProjectRepository>(),
       sl<DeliveryReceiptRepository>(),
       sl<DeliveryReceiptStorageService>(),
+      sl<DeliveryReceiptDraftRepository>(),
       launch,
     ),
   );

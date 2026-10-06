@@ -19,13 +19,22 @@ const _maxMessageChars = 4000;
 class PasteAddItemView extends StatefulWidget {
   final List<InventoryItem> inventory;
   final void Function(List<({InventoryItem item, double quantity})> items) onAddInventoryItems;
-  final void Function(String description, double quantity, {String? sourceInventoryId}) onAddCustomItem;
+  final void Function(String description, double quantity, {String? sourceInventoryId})? onAddCustomItem;
+
+  /// Wording for the review step, and what the message is matched against.
+  /// Defaults are the order flow's; the سند flow matches against a project's
+  /// quotation, so it passes [AiReviewCopy.quotation] and no custom-item
+  /// callback.
+  final AiReviewCopy copy;
+  final String catalogLabel;
 
   const PasteAddItemView({
     super.key,
     required this.inventory,
     required this.onAddInventoryItems,
-    required this.onAddCustomItem,
+    this.onAddCustomItem,
+    this.copy = AiReviewCopy.text,
+    this.catalogLabel = 'المخزون',
   });
 
   @override
@@ -105,15 +114,16 @@ class _PasteAddItemViewState extends State<PasteAddItemView> {
               return switch (state) {
                 AiAddItemIdle() => _buildCompose(context),
                 AiAddItemMatching() =>
-                  const _CenteredMessage(text: 'جاري تحليل الرسالة ومطابقتها مع المخزون...'),
+                  _CenteredMessage(text: 'جاري تحليل الرسالة ومطابقتها مع ${widget.catalogLabel}...'),
                 AiAddItemReviewing() => AiItemReviewView(
                     state: state,
-                    copy: AiReviewCopy.text,
+                    copy: widget.copy,
                     onConfirm: () => _confirm(state),
                     onRetry: () => context.read<AiAddItemCubit>().retry(),
                   ),
                 AiAddItemError() => _ErrorView(
                     message: state.message,
+                    copy: widget.copy,
                     onRetry: () => context.read<AiAddItemCubit>().retry(),
                   ),
               };
@@ -193,8 +203,9 @@ class _CenteredMessage extends StatelessWidget {
 class _ErrorView extends StatelessWidget {
   final String message;
   final VoidCallback onRetry;
+  final AiReviewCopy copy;
 
-  const _ErrorView({required this.message, required this.onRetry});
+  const _ErrorView({required this.message, required this.onRetry, required this.copy});
 
   @override
   Widget build(BuildContext context) {
@@ -208,8 +219,8 @@ class _ErrorView extends StatelessWidget {
           SizedBox(height: AppSpacing.verticalLarge),
           FilledButton.icon(
             onPressed: onRetry,
-            icon: Icon(AiReviewCopy.text.retryIcon),
-            label: Text(AiReviewCopy.text.retryLabel),
+            icon: Icon(copy.retryIcon),
+            label: Text(copy.retryLabel),
           ),
         ],
       ),

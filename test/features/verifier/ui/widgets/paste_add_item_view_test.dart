@@ -9,6 +9,7 @@ import 'package:ura_core/core/errors/app_error.dart';
 import 'package:ura_core/core/errors/app_result.dart';
 import 'package:ura_core/features/verifier/data/item_match_repository.dart';
 import 'package:ura_core/features/verifier/logic/ai_add_item_cubit.dart';
+import 'package:ura_core/features/verifier/ui/widgets/ai_item_review_view.dart' show AiReviewCopy;
 import 'package:ura_core/features/verifier/ui/widgets/paste_add_item_view.dart';
 import 'package:ura_core/shared/models/inventory_item.dart';
 import 'package:ura_core/shared/models/item_match_result.dart';
@@ -145,6 +146,60 @@ void main() {
     expect(added!.single.item, water);
     expect(added!.single.quantity, 3);
     expect(find.text('open'), findsOneWidget, reason: 'the paste screen should have closed');
+  });
+
+  /// Pastes a message against a quotation: one phrase matches [water], one
+  /// matches nothing. Leaves the review step on screen.
+  Future<void> pumpQuotationReview(
+    WidgetTester tester, {
+    required void Function(List<({InventoryItem item, double quantity})> items) onAdd,
+  }) async {
+    when(() => repository.matchText(any(), any())).thenAnswer(
+      (_) async => const AppSuccess(
+        ItemMatchResult(
+          matches: [MatchedItem(itemId: 'item-water', quantity: 3, confidence: 0.95)],
+          unmatched: [UnmatchedItem(text: 'كرسي مكتب', quantity: 2, unit: 'حبة')],
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(MaterialApp(
+      home: BlocProvider(
+        create: (_) => AiAddItemCubit(repository),
+        child: PasteAddItemView(
+          inventory: const [water],
+          copy: AiReviewCopy.quotation,
+          catalogLabel: 'عرض المشروع',
+          onAddInventoryItems: onAdd,
+        ),
+      ),
+    ));
+
+    await tester.enterText(find.byType(TextField), 'محتاج مياه وكرسي');
+    await tester.pump();
+    await tester.tap(find.text('تحليل الرسالة'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('against a quotation, unmatched phrases can never be opted in as off-stock items, '
+      'and no quantities are offered', (tester) async {
+    await pumpQuotationReview(tester, onAdd: (_) {});
+
+    expect(find.text('بنود من عرض المشروع'), findsOneWidget);
+    expect(find.text('غير موجودة في عرض المشروع'), findsOneWidget);
+    expect(find.byType(Checkbox), findsNothing, reason: 'a سند line must come from the quotation');
+    expect(find.byType(TextFormField), findsNothing, reason: 'a pasted quantity is not trusted for a سند');
+    expect(find.text('تأكيد وتحديد 1 صنف'), findsOneWidget);
+  });
+
+  testWidgets('confirming a quotation review hands back which lines were named',
+      (tester) async {
+    List<({InventoryItem item, double quantity})>? added;
+    await pumpQuotationReview(tester, onAdd: (items) => added = items);
+
+    await tester.tap(find.text('تأكيد وتحديد 1 صنف'));
+    await tester.pumpAndSettle();
+    expect(added!.single.item.id, 'item-water');
   });
 
   testWidgets('a failed analysis offers a way back to the message', (tester) async {

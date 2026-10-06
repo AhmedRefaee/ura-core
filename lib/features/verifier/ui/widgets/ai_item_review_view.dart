@@ -13,13 +13,14 @@ import '../../../../shared/widgets/off_stock.dart';
 void applyAiReview(
   AiAddItemReviewing state, {
   required void Function(List<({InventoryItem item, double quantity})> items) onAddInventoryItems,
-  required void Function(String description, double quantity, {String? sourceInventoryId}) onAddCustomItem,
+  void Function(String description, double quantity, {String? sourceInventoryId})? onAddCustomItem,
 }) {
   if (state.matches.isNotEmpty) {
     onAddInventoryItems(
       state.matches.map((m) => (item: m.item, quantity: m.quantity)).toList(),
     );
   }
+  if (onAddCustomItem == null) return;
   for (final u in state.unmatched.where((u) => u.includeAsCustom)) {
     final payload = jsonEncode({
       'name': u.name,
@@ -41,6 +42,18 @@ class AiReviewCopy {
   final String emptyMessage;
   final IconData retryIcon;
   final String retryLabel;
+  final String matchedHeading;
+  final String unmatchedHeading;
+  final String confirmLabel;
+
+  /// Whether a phrase that matched nothing can be opted in as an off-stock
+  /// item. A سند can't: its lines are the project's quotation, nothing else.
+  final bool allowCustomItems;
+
+  /// Whether the review shows (and lets the user edit) the quantities the
+  /// message named. A سند does not: a pasted quantity is almost never in the
+  /// quotation's unit, so the paste only identifies the بنود.
+  final bool showQuantities;
 
   const AiReviewCopy({
     required this.summaryIcon,
@@ -49,6 +62,11 @@ class AiReviewCopy {
     required this.emptyMessage,
     required this.retryIcon,
     required this.retryLabel,
+    this.matchedHeading = 'أصناف من المخزون',
+    this.unmatchedHeading = 'غير متوفرة في المخزون',
+    this.confirmLabel = 'تأكيد وإضافة',
+    this.allowCustomItems = true,
+    this.showQuantities = true,
   });
 
   static const text = AiReviewCopy(
@@ -58,6 +76,22 @@ class AiReviewCopy {
     emptyMessage: 'لم يتم التعرف على أي صنف في الرسالة، راجع النص وحاول مجدداً',
     retryIcon: Icons.edit,
     retryLabel: 'تعديل النص',
+  );
+
+  /// The same pasted message, matched against a project's quotation lines
+  /// to fill in a سند.
+  static const quotation = AiReviewCopy(
+    summaryIcon: Icons.chat_bubble_outline,
+    summaryPrefix: 'فهمت',
+    emptyIcon: Icons.search_off,
+    emptyMessage: 'لم يتم التعرف على أي بند من عرض المشروع في الرسالة، راجع النص وحاول مجدداً',
+    retryIcon: Icons.edit,
+    retryLabel: 'تعديل النص',
+    matchedHeading: 'بنود من عرض المشروع',
+    unmatchedHeading: 'غير موجودة في عرض المشروع',
+    confirmLabel: 'تأكيد وتحديد',
+    allowCustomItems: false,
+    showQuantities: false,
   );
 }
 
@@ -135,28 +169,31 @@ class AiItemReviewView extends StatelessWidget {
                 for (var i = 0; i < state.ambiguous.length; i++)
                   _AmbiguousTile(
                     ambiguous: state.ambiguous[i],
+                    showQuantity: copy.showQuantities,
                     onChoose: (item) => cubit.resolveAmbiguous(i, item),
                     onDismiss: () => cubit.dismissAmbiguous(i),
                   ),
                 SizedBox(height: AppSpacing.verticalLarge),
               ],
               if (state.matches.isNotEmpty) ...[
-                Text('أصناف من المخزون', style: theme.textTheme.titleMedium),
+                Text(copy.matchedHeading, style: theme.textTheme.titleMedium),
                 SizedBox(height: AppSpacing.verticalSmall),
                 for (var i = 0; i < state.matches.length; i++)
                   _MatchTile(
                     match: state.matches[i],
+                    showQuantity: copy.showQuantities,
                     onQuantityChanged: (q) => cubit.updateMatchQuantity(i, q),
                     onRemove: () => cubit.removeMatch(i),
                   ),
               ],
               if (state.unmatched.isNotEmpty) ...[
                 SizedBox(height: AppSpacing.verticalLarge),
-                Text('غير متوفرة في المخزون', style: theme.textTheme.titleMedium),
+                Text(copy.unmatchedHeading, style: theme.textTheme.titleMedium),
                 SizedBox(height: AppSpacing.verticalSmall),
                 for (var i = 0; i < state.unmatched.length; i++)
                   _UnmatchedTile(
                     unmatched: state.unmatched[i],
+                    allowCustom: copy.allowCustomItems,
                     onToggle: (v) => cubit.updateUnmatched(i, includeAsCustom: v),
                     onQuantityChanged: (q) => cubit.updateUnmatched(i, quantity: q),
                   ),
@@ -176,7 +213,7 @@ class AiItemReviewView extends StatelessWidget {
         FilledButton(
           onPressed: state.canConfirm ? onConfirm : null,
           child: Text(
-            'تأكيد وإضافة ${state.matches.length + state.unmatched.where((u) => u.includeAsCustom).length} صنف',
+            '${copy.confirmLabel} ${state.matches.length + state.unmatched.where((u) => u.includeAsCustom).length} صنف',
           ),
         ),
       ],
@@ -186,10 +223,16 @@ class AiItemReviewView extends StatelessWidget {
 
 class _AmbiguousTile extends StatelessWidget {
   final ReviewAmbiguous ambiguous;
+  final bool showQuantity;
   final ValueChanged<InventoryItem> onChoose;
   final VoidCallback onDismiss;
 
-  const _AmbiguousTile({required this.ambiguous, required this.onChoose, required this.onDismiss});
+  const _AmbiguousTile({
+    required this.ambiguous,
+    required this.showQuantity,
+    required this.onChoose,
+    required this.onDismiss,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -208,7 +251,9 @@ class _AmbiguousTile extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    '${ambiguous.text} · الكمية: ${ambiguous.quantity.toString()} ${ambiguous.unit}',
+                    showQuantity
+                        ? '${ambiguous.text} · الكمية: ${ambiguous.quantity.toString()} ${ambiguous.unit}'
+                        : ambiguous.text,
                     style: const TextStyle(fontWeight: FontWeight.w500),
                   ),
                 ),
@@ -241,10 +286,16 @@ class _AmbiguousTile extends StatelessWidget {
 
 class _MatchTile extends StatelessWidget {
   final ReviewMatch match;
+  final bool showQuantity;
   final ValueChanged<double> onQuantityChanged;
   final VoidCallback onRemove;
 
-  const _MatchTile({required this.match, required this.onQuantityChanged, required this.onRemove});
+  const _MatchTile({
+    required this.match,
+    required this.showQuantity,
+    required this.onQuantityChanged,
+    required this.onRemove,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -260,6 +311,7 @@ class _MatchTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(match.item.itemName, style: const TextStyle(fontWeight: FontWeight.w500)),
+                  Text(match.item.unit, style: const TextStyle(fontSize: 12, color: Colors.grey)),
                   SizedBox(height: AppSpacing.verticalXSmall),
                   Container(
                     padding: EdgeInsets.symmetric(horizontal: AppSpacing.horizontalXSmall, vertical: 2),
@@ -275,7 +327,8 @@ class _MatchTile extends StatelessWidget {
                 ],
               ),
             ),
-            SizedBox(
+            if (showQuantity)
+              SizedBox(
               width: 72,
               child: TextFormField(
                 initialValue: match.quantity.toString(),
@@ -295,17 +348,29 @@ class _MatchTile extends StatelessWidget {
 
 class _UnmatchedTile extends StatelessWidget {
   final ReviewUnmatched unmatched;
+  final bool allowCustom;
   final ValueChanged<bool> onToggle;
   final ValueChanged<double> onQuantityChanged;
 
   const _UnmatchedTile({
     required this.unmatched,
+    required this.allowCustom,
     required this.onToggle,
     required this.onQuantityChanged,
   });
 
   @override
   Widget build(BuildContext context) {
+    if (!allowCustom) {
+      return Card(
+        margin: EdgeInsets.only(bottom: AppSpacing.verticalSmall),
+        child: ListTile(
+          leading: const Icon(Icons.block, color: Colors.grey),
+          title: Text(unmatched.name),
+          subtitle: const Text('لن يُضاف'),
+        ),
+      );
+    }
     return Card(
       margin: EdgeInsets.only(bottom: AppSpacing.verticalSmall),
       child: Padding(

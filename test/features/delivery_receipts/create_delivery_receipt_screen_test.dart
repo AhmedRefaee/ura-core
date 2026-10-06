@@ -262,6 +262,13 @@ void main() {
     expect(find.byIcon(Icons.tune), findsNothing);
   });
 
+  testWidgets('the paste-from-message button sits beside the search field', (tester) async {
+    await tester.pumpWidget(await buildScreen([lebna, qishta]));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('تحديد البنود من رسالة'), findsOneWidget);
+  });
+
   testWidgets('the calculator button shows on every item, no matter its unit or description', (tester) async {
     tester.view.physicalSize = const Size(800, 4000);
     tester.view.devicePixelRatio = 1.0;

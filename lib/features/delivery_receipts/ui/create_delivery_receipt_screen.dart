@@ -9,8 +9,12 @@ import '../../../shared/logic/unit_conversion.dart';
 import '../../../shared/models/project_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../projects/logic/boq_excel.dart';
+import '../../verifier/logic/ai_add_item_cubit.dart';
+import '../../verifier/ui/widgets/ai_item_review_view.dart' show AiReviewCopy;
+import '../../verifier/ui/widgets/paste_add_item_view.dart';
 import '../logic/create_delivery_receipt_cubit.dart';
 import '../logic/delivery_receipt_pdf.dart' show packagingOf;
+import '../logic/project_item_matching.dart';
 
 /// Opens the سند flow. Resolves to true once a سند was actually filed.
 Future<bool> openCreateDeliveryReceipt(
@@ -753,6 +757,11 @@ class _ItemsStepState extends State<_ItemsStep> {
   String? _category;
   bool _selectedOnly = false;
 
+  /// The بنود a pasted message named, or null when no message is narrowing
+  /// the list. Only identifies lines -- quantities are never taken from the
+  /// message, since they rarely match the quotation's unit.
+  Set<String>? _pastedIds;
+
   // Search keys folded once per items list, not per keystroke.
   List<ProjectItem>? _keyedFor;
   List<String> _keys = const [];
@@ -774,6 +783,7 @@ class _ItemsStepState extends State<_ItemsStep> {
     return [
       for (var i = 0; i < s.items.length; i++)
         if ((_category == null || s.items[i].category == _category) &&
+            (_pastedIds == null || _pastedIds!.contains(s.items[i].id)) &&
             (!_selectedOnly ||
                 (s.quantities[s.items[i].id] ?? 0) > 0 ||
                 s.invalid.containsKey(s.items[i].id)) &&
@@ -785,6 +795,39 @@ class _ItemsStepState extends State<_ItemsStep> {
   void _submit() {
     FocusManager.instance.primaryFocus?.unfocus();
     context.read<CreateDeliveryReceiptCubit>().submit();
+  }
+
+  /// The order flow's paste-a-message entry, pointed at this project's
+  /// quotation instead of the inventory. It only finds *which* بنود the
+  /// message is about -- the list narrows to them and the rep types each
+  /// quantity (or uses the calculator), because a pasted quantity is almost
+  /// never in the quotation's unit.
+  Future<void> _pasteFromMessage() async {
+    FocusManager.instance.primaryFocus?.unfocus();
+    var pasted = <String>{};
+    final added = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => BlocProvider(
+          create: (_) => sl<AiAddItemCubit>(),
+          child: PasteAddItemView(
+            inventory: [for (final i in widget.state.items) i.toMatchable()],
+            copy: AiReviewCopy.quotation,
+            catalogLabel: 'عرض المشروع',
+            onAddInventoryItems: (picked) => pasted = {for (final p in picked) p.item.id},
+          ),
+        ),
+      ),
+    );
+    if (added == true && pasted.isNotEmpty && mounted) {
+      setState(() {
+        _pastedIds = pasted;
+        _selectedOnly = false;
+        _category = null;
+        _search.clear();
+        _query = '';
+      });
+    }
   }
 
   Future<void> _cancel(BuildContext context) async {
@@ -863,10 +906,21 @@ class _ItemsStepState extends State<_ItemsStep> {
                 SliverToBoxAdapter(
                   child: Padding(
                     padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-                    child: _SearchField(
-                      controller: _search,
-                      hint: 'ابحث عن بند',
-                      onChanged: (v) => setState(() => _query = v),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: _SearchField(
+                            controller: _search,
+                            hint: 'ابحث عن بند',
+                            onChanged: (v) => setState(() => _query = v),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.content_paste_go),
+                          tooltip: 'تحديد البنود من رسالة',
+                          onPressed: state.submitting ? null : _pasteFromMessage,
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -880,6 +934,13 @@ class _ItemsStepState extends State<_ItemsStep> {
                         selected: _selectedOnly,
                         onSelected: (v) => setState(() => _selectedOnly = v),
                       ),
+                      if (_pastedIds != null)
+                        FilterChip(
+                          avatar: const Icon(Icons.content_paste_go, size: 16),
+                          label: Text('من الرسالة (${_pastedIds!.length})'),
+                          selected: true,
+                          onSelected: (_) => setState(() => _pastedIds = null),
+                        ),
                       if (categories.length > 1) ...[
                         ChoiceChip(
                           label: const Text('كل الفئات'),

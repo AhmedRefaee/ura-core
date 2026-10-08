@@ -5,7 +5,7 @@ import type { AuditLogEntry } from '../types/domain';
 function entry(overrides: Partial<AuditLogEntry>): AuditLogEntry {
   return {
     id: 'a1', orderId: 'o1', action: 'status_change', oldStatus: null, newStatus: null,
-    performer: null, notes: null, serverTimestamp: '2026-09-28T10:00:00Z',
+    performer: null, notes: null, serverTimestamp: '2026-09-28T10:00:00Z', locationLat: null, locationLng: null,
     ...overrides,
   };
 }
@@ -62,5 +62,18 @@ describe('prepareAuditLogForDisplay', () => {
       entry({ id: 'b', newStatus: 'picked_up', serverTimestamp: '2026-09-28T10:05:00Z' }),
     ];
     expect(prepareAuditLogForDisplay(entries)).toHaveLength(2);
+  });
+});
+
+describe('prepareAuditLogForDisplay location', () => {
+  it('keeps the location of the RPC row when it collapses into the generic status_change row', () => {
+    const t = '2026-09-13T12:00:00Z';
+    const out = prepareAuditLogForDisplay([
+      entry({ id: 'g', action: 'status_change', newStatus: 'delivered', serverTimestamp: t }),
+      entry({ id: 'r', action: 'mark_delivered', newStatus: 'delivered', serverTimestamp: t, locationLat: 24.7, locationLng: 46.7 }),
+    ]);
+    expect(out).toHaveLength(1);
+    expect(out[0].locationLat).toBe(24.7);
+    expect(out[0].locationLng).toBe(46.7);
   });
 });

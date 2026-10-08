@@ -125,7 +125,7 @@ export function OrderDetailContent({ orderId, headerActions, stepperOrientation 
       <div className="p-4">
         <h3 className="text-sm font-semibold mb-2">الأصناف</h3>
         <div className="overflow-x-auto">
-          <ItemsTable items={order.items} />
+          <ItemsTable items={order.items} direction={order.direction} />
         </div>
       </div>
     </>

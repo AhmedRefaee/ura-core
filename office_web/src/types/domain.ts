@@ -51,6 +51,8 @@ export interface OrderItem {
   finalQuantity: number | null;
   isCustom: boolean;
   customDescription: string | null;
+  sourceInventoryId: string | null;
+  purchasedAt: string | null;
   checkStatus: ItemCheckStatus;
   checkedBy: string | null;
   checkedAt: string | null;

@@ -1,6 +1,26 @@
 import type { Order } from '../types/domain';
 import { orderDirectionLabel } from '../types/domain';
 import { StatusChip } from './StatusChip';
+import { offStockKind } from '../lib/orderItemView';
+
+const OFF_STOCK_COLOR = '#5E35B1';
+
+/** Purple "+N" pill: this order has items that must be bought from outside the inventory. */
+function OffStockPill({ order }: { order: Order }) {
+  const count = order.items.filter((i) => offStockKind(i, order.direction) !== null).length;
+  if (count === 0) return null;
+  return (
+    <span
+      title={`${count} ${count === 1 ? 'صنف' : 'أصناف'} خارج المخزون`}
+      aria-label={`${count} خارج المخزون`}
+      className="ms-2 inline-flex items-center gap-0.5 rounded-full border px-1.5 text-xs font-medium align-middle"
+      style={{ color: OFF_STOCK_COLOR, borderColor: `${OFF_STOCK_COLOR}66`, background: `${OFF_STOCK_COLOR}14` }}
+    >
+      <span aria-hidden>+</span>
+      {count}
+    </span>
+  );
+}
 
 interface OrdersTableProps {
   orders: Order[];
@@ -34,7 +54,10 @@ export function OrdersTable({ orders, onSelect, selectedId }: OrdersTableProps) 
               selectedId === order.id ? 'bg-surface-inset' : ''
             }`}
           >
-            <td className="px-3">{order.referenceCode ?? order.id.slice(0, 8)}</td>
+            <td className="px-3">
+              {order.referenceCode ?? order.id.slice(0, 8)}
+              <OffStockPill order={order} />
+            </td>
             <td className="px-3">{order.entity?.name ?? '—'}</td>
             <td className="px-3">{orderDirectionLabel[order.direction]}</td>
             <td className="px-3">

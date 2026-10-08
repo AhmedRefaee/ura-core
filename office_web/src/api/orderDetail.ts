@@ -10,7 +10,7 @@ export const ORDER_DETAIL_SELECT =
   'rep:profiles!orders_rep_id_fkey(id, full_name, phone, role, is_approved, created_at), ' +
   'creator:profiles!orders_created_by_fkey(id, full_name, phone, role, is_approved, created_at), ' +
   'order_items(id, order_id, inventory_id, quantity, final_quantity, is_custom, custom_description, source_inventory_id, ' +
-  'check_status, checked_by, checked_at, ' +
+  'check_status, checked_by, checked_at, purchased_at, was_unavailable_at_creation, ' +
   'inventory:inventory!order_items_inventory_id_fkey(id, item_name), ' +
   'checker:profiles!order_items_checked_by_fkey(id, full_name, phone, role, is_approved, created_at))';
 

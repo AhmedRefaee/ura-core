@@ -108,13 +108,13 @@ describe('OrderDetailPanel', () => {
     expect(screen.getByText(/فاحص سالم/)).toBeInTheDocument();
   });
 
-  it('shows a pending-item indicator without a checker name', () => {
+  it('shows no status text for an unchecked stock item', () => {
     detailMock.mockReturnValue({
       order: order({}), // default item has checkStatus 'pending', checker null
       auditLog: [], receipts: [], isLoading: false, isError: false, refetch: vi.fn(),
     });
     renderPanel({ orderId: 'o1', onClose: () => {} });
-    expect(screen.getByText('قيد الانتظار')).toBeInTheDocument();
+    expect(screen.queryByText('قيد الانتظار')).toBeNull();
   });
 
   it('shows an inline audit-log error instead of blanking the panel when the audit log fails to load', () => {

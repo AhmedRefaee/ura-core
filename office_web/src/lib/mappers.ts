@@ -58,6 +58,8 @@ export function mapOrderItem(row: any): OrderItem {
     finalQuantity: row.final_quantity != null ? Number(row.final_quantity) : null,
     isCustom: !!row.is_custom,
     customDescription: row.custom_description ?? null,
+    sourceInventoryId: row.source_inventory_id ?? null,
+    purchasedAt: row.purchased_at ?? null,
     checkStatus: asCheckStatus(row.check_status ?? null),
     checkedBy: row.checked_by ?? null,
     checkedAt: row.checked_at ?? null,

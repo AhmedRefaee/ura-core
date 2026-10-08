@@ -33,4 +33,18 @@ describe('OrdersTable', () => {
     render(<OrdersTable orders={[]} onSelect={() => {}} selectedId={null} />);
     expect(screen.getByText('لا توجد طلبات مطابقة')).toBeInTheDocument();
   });
+
+  it('shows a purple +N pill only on orders with off-stock items', () => {
+    const base = {
+      id: 'i', orderId: 'o1', inventoryId: null, inventoryName: null, quantity: 1, finalQuantity: null,
+      isCustom: true, customDescription: 'x', sourceInventoryId: null, purchasedAt: null,
+      checkStatus: 'pending' as const, checkedBy: null, checkedAt: null, checker: null, wasUnavailableAtCreation: false,
+    };
+    render(<OrdersTable orders={[
+      order({ id: 'a', referenceCode: 'A', items: [base, { ...base, id: 'j' }] }),
+      order({ id: 'b', referenceCode: 'B', items: [] }),
+    ]} onSelect={() => {}} selectedId={null} />);
+    expect(screen.getAllByLabelText(/خارج المخزون/)).toHaveLength(1);
+    expect(screen.getByLabelText('2 خارج المخزون')).toBeInTheDocument();
+  });
 });

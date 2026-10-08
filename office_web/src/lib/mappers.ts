@@ -103,6 +103,8 @@ export function mapAuditLogEntry(row: any): AuditLogEntry {
     performer: row.performer ? mapProfile(row.performer) : null,
     notes: row.notes ?? null,
     serverTimestamp: row.server_timestamp ?? null,
+    locationLat: row.location_lat != null ? Number(row.location_lat) : null,
+    locationLng: row.location_lng != null ? Number(row.location_lng) : null,
   };
 }
 

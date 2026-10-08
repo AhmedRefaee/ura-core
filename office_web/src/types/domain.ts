@@ -89,6 +89,8 @@ export interface AuditLogEntry {
   performer: Profile | null;
   notes: string | null;
   serverTimestamp: string | null;
+  locationLat: number | null;
+  locationLng: number | null;
 }
 
 export interface DeliveryReceiptItem {

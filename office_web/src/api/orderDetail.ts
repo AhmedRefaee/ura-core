@@ -21,7 +21,7 @@ export async function fetchOrderDetail(id: string): Promise<Order> {
 }
 
 const AUDIT_LOG_SELECT =
-  'id, order_id, action, old_status, new_status, notes, server_timestamp, ' +
+  'id, order_id, action, old_status, new_status, notes, server_timestamp, location_lat, location_lng, ' +
   'performer:profiles!audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)';
 
 export async function fetchAuditLog(orderId: string): Promise<AuditLogEntry[]> {

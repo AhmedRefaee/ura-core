@@ -5,6 +5,7 @@ import { orderStatusColor } from '../lib/statusColors';
 import { formatTime } from '../lib/formatDate';
 import { durationBetween } from '../lib/duration';
 import { effectiveStatus } from '../lib/auditLogView';
+import { googleMapsUrl } from '../lib/mapsLink';
 
 const DONE_STATUSES = new Set<OrderStatus>(['delivered', 'delivered_to_storage']);
 
@@ -91,6 +92,16 @@ export function AuditTimeline({ auditLog, orderStatus, error, hoveredStatus, onH
                   )}
                 </div>
                 <p className="text-xs text-text-low whitespace-nowrap">{formatTime(entry.serverTimestamp)}</p>
+                {entry.locationLat != null && entry.locationLng != null && (
+                  <a
+                    href={googleMapsUrl(entry.locationLat, entry.locationLng)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="text-xs text-text-medium hover:underline"
+                  >
+                    📍 عرض الموقع
+                  </a>
+                )}
                 {entry.performer && (
                   <p className="text-xs text-text-low">
                     {entry.performer.role ? `${userRoleLabel[entry.performer.role]} · ` : ''}

@@ -6,7 +6,7 @@ import type { AuditLogEntry } from '../types/domain';
 function entry(overrides: Partial<AuditLogEntry>): AuditLogEntry {
   return {
     id: 'a1', orderId: 'o1', action: 'order_created', oldStatus: null, newStatus: 'assigned',
-    performer: null, notes: null, serverTimestamp: '2026-09-28T10:00:00Z',
+    performer: null, notes: null, serverTimestamp: '2026-09-28T10:00:00Z', locationLat: null, locationLng: null,
     ...overrides,
   };
 }
@@ -100,5 +100,15 @@ describe('AuditTimeline', () => {
     const notHighlighted = screen.getByTestId('audit-row-a1') as HTMLElement;
     expect(highlighted.style.backgroundColor).not.toBe('');
     expect(notHighlighted.style.backgroundColor).toBe('');
+  });
+
+  it('links to Google Maps only on entries that carry a location', () => {
+    render(<AuditTimeline
+      auditLog={[entry({ id: 'a', locationLat: 24.7, locationLng: 46.6 }), entry({ id: 'b', newStatus: 'picked_up' })]}
+      orderStatus="picked_up" error={false} hoveredStatus={null} onHoverEntry={() => {}}
+    />);
+    const links = screen.getAllByRole('link', { name: /عرض الموقع/ });
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', 'https://www.google.com/maps/search/?api=1&query=24.7,46.6');
   });
 });

@@ -7,6 +7,7 @@ import '../../../shared/models/order.dart';
 import '../data/manager_repository.dart';
 
 import '../../../core/logic/safe_emit.dart';
+import '../../../core/logic/debouncer.dart';
 // ── States ────────────────────────────────────────────────────────────────────
 
 abstract class MonitorOrdersState extends Equatable {
@@ -69,6 +70,7 @@ class MonitorOrdersCubit extends Cubit<MonitorOrdersState>
     with SafeEmit<MonitorOrdersState> {
   final ManagerRepository _repo;
   RealtimeChannel? _channel;
+  final _realtimeDebounce = Debouncer();
   int _finishedPage = 0;
   static const int _pageSize = 30;
 
@@ -121,7 +123,7 @@ class MonitorOrdersCubit extends Cubit<MonitorOrdersState>
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'orders',
-          callback: (_) => _onRealtimeEvent(),
+          callback: (_) => _realtimeDebounce.run(_onRealtimeEvent),
         )
         .subscribe();
   }
@@ -166,6 +168,7 @@ class MonitorOrdersCubit extends Cubit<MonitorOrdersState>
 
   @override
   Future<void> close() async {
+    _realtimeDebounce.cancel();
     await _channel?.unsubscribe();
     return super.close();
   }

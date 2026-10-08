@@ -380,8 +380,7 @@ String? _formatOrderDate(DateTime? value) {
 
 String? _formatCompletionDuration(Order order) {
   final deliveredAt = switch (order.status) {
-    OrderStatus.delivered ||
-    OrderStatus.deliveredToStorage => order.deliveredAt,
+    OrderStatus.delivered => order.deliveredAt,
     _ => null,
   };
   if (order.createdAt == null || deliveredAt == null) return null;

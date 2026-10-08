@@ -271,6 +271,25 @@ class CreateOrderCubit extends Cubit<CreateOrderState>
     safeEmit(s.copyWith(items: updated));
   }
 
+  /// Replaces an off-stock item's payload in place, keeping its position and
+  /// its [DraftOrderItem.sourceInventoryId] -- editing the details of an item
+  /// converted from stock must not sever that link.
+  void updateCustomItem(int index, String description, double quantity) {
+    final s = state;
+    if (s is! CreateOrderReady) return;
+    if (index < 0 || index >= s.items.length) return;
+    final existing = s.items[index];
+    if (!existing.isCustom) return;
+    final updated = List<DraftOrderItem>.from(s.items)
+      ..[index] = DraftOrderItem(
+        quantity: quantity,
+        isCustom: true,
+        customDescription: description,
+        sourceInventoryId: existing.sourceInventoryId,
+      );
+    safeEmit(s.copyWith(items: updated));
+  }
+
   void setNotes(String notes) {
     final s = state;
     if (s is! CreateOrderReady) return;

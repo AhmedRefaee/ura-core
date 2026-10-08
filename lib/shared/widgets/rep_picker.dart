@@ -253,7 +253,5 @@ String repStatusLabel(OrderStatus status) {
       return 'في الطريق';
     case OrderStatus.delivered:
       return 'تم التسليم';
-    case OrderStatus.deliveredToStorage:
-      return 'تم الاستلام في المخزن';
   }
 }

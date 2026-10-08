@@ -3,6 +3,7 @@ import 'package:equatable/equatable.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/logging/app_logger.dart';
 import '../data/chat_repository.dart';
 
@@ -28,8 +29,13 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState>
   StreamSubscription<Map<String, int>>? _sub;
   StreamSubscription? _authStateSub;
   AppLifecycleState? _lastLifecycleState;
+  late final _lifecycleObserver = _LifecycleObserver(this);
 
   OrderChatBadgeCubit(this._repo) : super(const OrderChatBadgeState({})) {
+    // Chat is switched off server-side: every subscribe attempt fails with
+    // permission denied and was retried on each resume/token refresh,
+    // logging an error (a Crashlytics event in release) every time.
+    if (!kChatEnabled) return;
     _logDiagnostic('Cubit initialized');
     _monitorAuthState();
     _monitorAppLifecycle();
@@ -80,7 +86,7 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState>
   }
 
   void _monitorAppLifecycle() {
-    WidgetsBinding.instance.addObserver(_LifecycleObserver(this));
+    WidgetsBinding.instance.addObserver(_lifecycleObserver);
   }
 
   void onAppLifecycleChanged(AppLifecycleState state) {
@@ -110,6 +116,7 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState>
   }
 
   void subscribe() {
+    if (!kChatEnabled) return;
     if (_sub != null) {
       logger.w(
         'OrderChatBadgeCubit → Subscribe called but subscription already exists',
@@ -175,10 +182,10 @@ class OrderChatBadgeCubit extends Cubit<OrderChatBadgeState>
   @override
   Future<void> close() {
     logger.d('OrderChatBadgeCubit → close');
-    _logDiagnostic('Cubit closing, cleaning up resources');
     _sub?.cancel();
     _authStateSub?.cancel();
-    WidgetsBinding.instance.removeObserver(_LifecycleObserver(this));
+    // Must be the same instance that was added, or it is never removed.
+    WidgetsBinding.instance.removeObserver(_lifecycleObserver);
     return super.close();
   }
 }

@@ -150,22 +150,15 @@ class NotificationsRepository {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  Future<int> _fetchUnreadRaw(String uid) async {
-    final data = await _supabase
-        .from('notifications')
-        .select('id')
-        .eq('user_id', uid)
-        .eq('is_read', false);
-    return (data as List).length;
-  }
+  // HEAD requests: the server returns only the count, not every unread row's
+  // id -- these run on every change to the notifications table.
+  Future<int> _fetchUnreadRaw(String uid) =>
+      _supabase.from('notifications').count().eq('user_id', uid).eq('is_read', false);
 
-  Future<int> _fetchUnreadChatRaw(String uid) async {
-    final data = await _supabase
-        .from('notifications')
-        .select('id')
-        .eq('user_id', uid)
-        .eq('is_read', false)
-        .ilike('action_route', '/chat%');
-    return (data as List).length;
-  }
+  Future<int> _fetchUnreadChatRaw(String uid) => _supabase
+      .from('notifications')
+      .count()
+      .eq('user_id', uid)
+      .eq('is_read', false)
+      .ilike('action_route', '/chat%');
 }

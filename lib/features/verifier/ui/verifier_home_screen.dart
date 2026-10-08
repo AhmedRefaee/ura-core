@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/widgets/notification_dot.dart';
 import '../../../core/design_system/theme/theme.dart';
@@ -13,9 +14,9 @@ import '../../chat/ui/chat_hub_screen.dart';
 import '../../profile/ui/profile_screen.dart';
 import '../../notifications/logic/chat_badge_cubit.dart';
 import '../../notifications/logic/notifications_badge_cubit.dart';
-import '../../inventory/ui/inventory_availability_screen.dart';
+import '../../delivery_receipts/ui/delivery_receipts_tab.dart';
+import '../../inventory/ui/inventory_management_screen.dart';
 import '../../manager/logic/stats_cubit.dart';
-import '../../manager/ui/rep_list_screen.dart';
 import '../../manager/ui/stats_screen.dart';
 import '../../manager/ui/task_detail_screen.dart';
 import '../logic/create_order_cubit.dart';
@@ -26,6 +27,8 @@ import 'widgets/order_card.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/widgets/order_list_tile.dart';
 import '../../../shared/widgets/order_sort_filter_bar.dart';
+import '../../../shared/widgets/lazy_indexed_stack.dart';
+import '../../../core/logic/debouncer.dart';
 
 class VerifierHomeScreen extends StatelessWidget {
   const VerifierHomeScreen({super.key});
@@ -52,7 +55,11 @@ class _VerifierHomeViewState extends State<_VerifierHomeView> {
   @override
   void initState() {
     super.initState();
-    sl<OrderChatBadgeCubit>().subscribe();
+    // Subscribing is what reaches chat_messages; constructing the cubit does
+    // not. It stays provided below (the order list reads its state to float
+    // urgent orders to the top) but with chat off it simply never fills, and
+    // that sort quietly becomes a no-op.
+    if (kChatEnabled) sl<OrderChatBadgeCubit>().subscribe();
   }
 
   @override
@@ -61,8 +68,12 @@ class _VerifierHomeViewState extends State<_VerifierHomeView> {
       providers: [
         BlocProvider.value(value: sl<OrderChatBadgeCubit>()),
         BlocProvider.value(value: sl<NotificationsBadgeCubit>()),
-        BlocProvider.value(value: sl<ChatBadgeCubit>()),
-        BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
+        // Chat off: these two subscribe to chat tables the server no longer
+        // grants us, so creating them would only produce a stream of
+        // permission errors behind a tab nobody can open.
+        if (kChatEnabled) BlocProvider.value(value: sl<ChatBadgeCubit>()),
+        if (kChatEnabled)
+          BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
       ],
       child: _ScaffoldBody(
         navIndex: _navIndex,
@@ -72,6 +83,11 @@ class _VerifierHomeViewState extends State<_VerifierHomeView> {
   }
 }
 
+/// The verifier's bottom-bar destinations, in display order. Named rather than
+/// numbered so that omitting one (chat) shifts nothing that has to be kept in
+/// sync by hand.
+enum _VerifierTab { orders, inventory, chat, receipts, settings }
+
 class _ScaffoldBody extends StatelessWidget {
   final int navIndex;
   final ValueChanged<int> onNavChanged;
@@ -79,19 +95,43 @@ class _ScaffoldBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Switching on a named tab rather than a raw index: this screen keeps
+    // orders and inventory alive in an IndexedStack, so their positions in the
+    // bar cannot be recomputed from `navIndex` once chat is dropped from the
+    // middle of the list. The bar below is built from the same
+    // `if (kChatEnabled)`, so the two stay aligned by construction.
+    final tabs = <_VerifierTab>[
+      _VerifierTab.orders,
+      _VerifierTab.inventory,
+      if (kChatEnabled) _VerifierTab.chat,
+      _VerifierTab.receipts,
+      _VerifierTab.settings,
+    ];
+    final current = tabs[navIndex];
+
     return Scaffold(
-      body: switch (navIndex) {
-        0 || 1 => IndexedStack(
-          index: navIndex,
-          children: const [_OrdersTab(), InventoryAvailabilityScreen()],
-        ),
-        2 => const ChatHubSection(),
-        3 => const RepListScreen(),
-        _ => _SettingsTab(
-          onLogout: () => context.read<AuthCubit>().signOut(),
-        ),
-      },
-      floatingActionButton: navIndex == 0
+      // The management screen, not the read-only availability one: a
+      // verifier owns everything that describes an item (add, edit, archive)
+      // and needs a deliberate place to undo an item they added by mistake.
+      // It is a superset of the availability screen -- same متوفر/منخفض/نفد
+      // filters -- and hides its own quantity and Excel actions for
+      // verifiers. Reps and managers keep the read-only screen.
+      body: LazyIndexedStack(
+        index: navIndex,
+        children: [
+          for (final tab in tabs)
+            switch (tab) {
+              _VerifierTab.orders => const _OrdersTab(),
+              _VerifierTab.inventory => const InventoryManagementScreen(),
+              _VerifierTab.chat => const ChatHubSection(),
+              _VerifierTab.receipts => const DeliveryReceiptsTab(),
+              _VerifierTab.settings => _SettingsTab(
+                onLogout: () => context.read<AuthCubit>().signOut(),
+              ),
+            },
+        ],
+      ),
+      floatingActionButton: current == _VerifierTab.orders
           ? FloatingActionButton.extended(
               onPressed: () => _openCreateOrder(context),
               icon: const Icon(Icons.add),
@@ -112,25 +152,26 @@ class _ScaffoldBody extends StatelessWidget {
             selectedIcon: Icon(Icons.inventory_2),
             label: 'المخزون',
           ),
-          NavigationDestination(
-            icon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble_outline),
+          if (kChatEnabled)
+            NavigationDestination(
+              icon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble_outline),
+                ),
               ),
-            ),
-            selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble),
+              selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble),
+                ),
               ),
+              label: 'المحادثات',
             ),
-            label: 'المحادثات',
-          ),
           const NavigationDestination(
-            icon: Icon(Icons.delivery_dining_outlined),
-            selectedIcon: Icon(Icons.delivery_dining),
-            label: 'المناديب',
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long),
+            label: 'السندات',
           ),
           const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
@@ -170,12 +211,24 @@ class _OrdersTab extends StatefulWidget {
 class _OrdersTabState extends State<_OrdersTab>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
+  // What's in the search box right now vs. what the lists filter by. Only
+  // the latter is debounced: filtering + sorting every order on each
+  // keystroke made typing lag, but the box must never lag behind the user.
+  String _searchText = '';
   String _searchQuery = '';
+  final _searchDebounce = Debouncer(const Duration(milliseconds: 250));
   bool _groupByEntity = false;
   bool _groupByRep = false;
   OrderSortMode _sortMode = OrderSortMode.mostRecent;
   OrderDirectionFilter _directionFilter = OrderDirectionFilter.all;
   OrderViewMode _viewMode = OrderViewMode.list;
+
+  void _onSearchChanged(String q) {
+    _searchText = q;
+    _searchDebounce.run(() {
+      if (mounted) setState(() => _searchQuery = q);
+    });
+  }
 
   @override
   void initState() {
@@ -186,6 +239,7 @@ class _OrdersTabState extends State<_OrdersTab>
 
   @override
   void dispose() {
+    _searchDebounce.cancel();
     _tabController.dispose();
     super.dispose();
   }
@@ -257,10 +311,7 @@ class _OrdersTabState extends State<_OrdersTab>
             );
           }
           if (state is OrdersLoaded) {
-            const doneStatuses = {
-              OrderStatus.delivered,
-              OrderStatus.deliveredToStorage,
-            };
+            const doneStatuses = {OrderStatus.delivered};
             final active = state.orders
                 .where((o) => !doneStatuses.contains(o.status))
                 .toList();
@@ -274,9 +325,10 @@ class _OrdersTabState extends State<_OrdersTab>
                   orders: active,
                   emptyMessage: 'لا توجد طلبات نشطة',
                   searchQuery: _searchQuery,
+                  searchText: _searchText,
                   sortMode: _sortMode,
                   groupByEntity: _groupByEntity,
-                  onSearchChanged: (q) => setState(() => _searchQuery = q),
+                  onSearchChanged: _onSearchChanged,
                   onSortModeChanged: (mode) => setState(() => _sortMode = mode),
                   directionFilter: _directionFilter,
                   onDirectionFilterChanged: (filter) =>
@@ -293,9 +345,10 @@ class _OrdersTabState extends State<_OrdersTab>
                   orders: completed,
                   emptyMessage: 'لا توجد طلبات مكتملة',
                   searchQuery: _searchQuery,
+                  searchText: _searchText,
                   sortMode: _sortMode,
                   groupByEntity: _groupByEntity,
-                  onSearchChanged: (q) => setState(() => _searchQuery = q),
+                  onSearchChanged: _onSearchChanged,
                   onSortModeChanged: (mode) => setState(() => _sortMode = mode),
                   directionFilter: _directionFilter,
                   onDirectionFilterChanged: (filter) =>
@@ -348,6 +401,8 @@ class _VerifierOrdersTabHeader extends StatelessWidget
 // ── Order list ────────────────────────────────────────────────────────────────
 
 class _OrderList extends StatelessWidget {
+  /// Live text for the search box; [searchQuery] is the debounced filter.
+  final String searchText;
   final List<Order> orders;
   final String emptyMessage;
   final String searchQuery;
@@ -377,6 +432,7 @@ class _OrderList extends StatelessWidget {
     required this.groupByRep,
     required this.onGroupByRepChanged,
     this.searchQuery = '',
+    this.searchText = '',
   });
 
   @override
@@ -415,7 +471,7 @@ class _OrderList extends StatelessWidget {
               slivers: [
                 SliverToBoxAdapter(
                   child: OrderSortFilterBar(
-                    searchQuery: searchQuery,
+                    searchQuery: searchText,
                     onSearchChanged: onSearchChanged,
                     sortMode: sortMode,
                     onSortModeChanged: onSortModeChanged,

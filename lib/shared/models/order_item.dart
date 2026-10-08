@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'profile.dart';
+import 'off_stock_label.dart';
 
 enum ItemCheckStatus { pending, checked, rejected }
 
@@ -19,6 +20,8 @@ class OrderItem extends Equatable {
   final DateTime? checkedAt;
   final Profile? checker;
   final bool wasUnavailableAtCreation;
+  final DateTime? purchasedAt;
+  final String? purchasedBy;
 
   const OrderItem({
     required this.id,
@@ -35,6 +38,8 @@ class OrderItem extends Equatable {
     this.checkedAt,
     this.checker,
     this.wasUnavailableAtCreation = false,
+    this.purchasedAt,
+    this.purchasedBy,
   });
 
   /// The quantity that should be used for inventory changes.
@@ -72,6 +77,10 @@ class OrderItem extends Equatable {
           : null,
       checker: checkerMap != null ? Profile.fromMap(checkerMap) : null,
       wasUnavailableAtCreation: map['was_unavailable_at_creation'] as bool? ?? false,
+      purchasedAt: map['purchased_at'] != null
+          ? DateTime.parse(map['purchased_at'] as String)
+          : null,
+      purchasedBy: map['purchased_by'] as String?,
     );
   }
 
@@ -88,10 +97,10 @@ class OrderItem extends Equatable {
   String get displayName {
     if (!isCustom) return inventoryName ?? inventoryId ?? '';
     final json = customItemJson;
-    if (json != null) return json['name'] as String? ?? 'صنف مخصص';
-    return customDescription ?? 'صنف مخصص';
+    if (json != null) return json['name'] as String? ?? offStockLabel;
+    return customDescription ?? offStockLabel;
   }
 
   @override
-  List<Object?> get props => [id, orderId, inventoryId, quantity, finalQuantity, isCustom, sourceInventoryId, checkStatus, wasUnavailableAtCreation];
+  List<Object?> get props => [id, orderId, inventoryId, quantity, finalQuantity, isCustom, sourceInventoryId, checkStatus, wasUnavailableAtCreation, purchasedAt, purchasedBy];
 }

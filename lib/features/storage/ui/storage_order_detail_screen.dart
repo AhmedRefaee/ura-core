@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
+import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/order.dart';
+import '../../../shared/models/off_stock_kind.dart';
 import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../../shared/widgets/location_link.dart';
+import '../../../shared/widgets/off_stock.dart';
 import '../../inventory/ui/inventory_form_screen.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
@@ -12,6 +17,7 @@ import '../../../shared/widgets/order_status_timeline.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
 import '../logic/storage_order_detail_cubit.dart';
+import '../../delivery_receipts/ui/delivery_receipts_section.dart';
 
 class StorageOrderDetailScreen extends StatelessWidget {
   const StorageOrderDetailScreen({super.key});
@@ -77,7 +83,9 @@ class StorageOrderDetailScreen extends StatelessWidget {
               ),
             ],
           ),
-          floatingActionButton: _ChatBridgeButton(order: order),
+          floatingActionButton: kChatEnabled
+              ? _ChatBridgeButton(order: order)
+              : null,
           body: ListView(
             padding: const EdgeInsets.all(16),
             children: [
@@ -88,6 +96,7 @@ class StorageOrderDetailScreen extends StatelessWidget {
               OrderStatusStepper(order: order),
               const SizedBox(height: 16),
               OrderStatusTimeline(order: order, auditLog: state.auditLog),
+              DeliveryReceiptsSection.forOrder(order.id),
               const SizedBox(height: 16),
               _ItemsSection(state: state),
               const SizedBox(height: 24),
@@ -273,14 +282,19 @@ class _ItemsSection extends StatelessWidget {
             state: state,
             showCheckControls: showCheckControls,
             showQtyEdit: storageTurn && item.inventoryId != null,
-            isFinished:
-                state.order.status == OrderStatus.delivered ||
-                state.order.status == OrderStatus.deliveredToStorage,
+            isFinished: state.order.status == OrderStatus.delivered,
           ),
         ),
       ],
     );
   }
+}
+
+String _fmtPurchased(DateTime dt) {
+  final l = dt.toLocal();
+  final h = l.hour.toString().padLeft(2, '0');
+  final m = l.minute.toString().padLeft(2, '0');
+  return '${l.day}/${l.month}/${l.year} $h:$m';
 }
 
 class _ItemTile extends StatelessWidget {
@@ -302,9 +316,7 @@ class _ItemTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final effectiveQty = state.effectiveQuantity(item);
     final effectiveStatus = state.effectiveStatus(item);
-    final showWarning = !item.isCustom &&
-        item.wasUnavailableAtCreation &&
-        state.order.direction == OrderDirection.outbound;
+    final kind = offStockKindOf(item, state.order.direction);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -316,10 +328,8 @@ class _ItemTile extends StatelessWidget {
             Row(
               children: [
                 Icon(
-                  item.isCustom
-                      ? Icons.shopping_bag_outlined
-                      : Icons.inventory_outlined,
-                  color: item.isCustom ? Colors.orange : Colors.teal,
+                  kind == null ? Icons.inventory_outlined : OffStock.iconFor(kind),
+                  color: kind == null ? Colors.teal : OffStock.color,
                 ),
                 const SizedBox(width: 8),
                 Expanded(
@@ -356,33 +366,68 @@ class _ItemTile extends StatelessWidget {
                 'الكمية: ${formatQty(effectiveQty)}',
                 style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
-            if (showWarning)
-              Chip(
-                avatar: const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  size: 16,
-                ),
-                label: const Text(
-                  'غير متوفر',
-                  style: TextStyle(fontSize: 11, color: Colors.orange),
-                ),
-                backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                side: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
-                visualDensity: VisualDensity.compact,
+            if (kind != null) ...[
+              Padding(
+                padding: const EdgeInsets.only(top: 2, bottom: 2),
+                child: OffStock.badge(kind),
               ),
+              if (state.order.direction == OrderDirection.outbound) ...[
+                Row(
+                  children: [
+                    Icon(
+                      item.purchasedAt != null
+                          ? Icons.check_circle
+                          : Icons.radio_button_unchecked,
+                      size: 14,
+                      color: item.purchasedAt != null ? Colors.green : Colors.grey,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      item.purchasedAt != null
+                          ? 'تم الشراء ${_fmtPurchased(item.purchasedAt!)}'
+                          : 'لم يُشترَ بعد',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: item.purchasedAt != null ? Colors.green : Colors.grey,
+                      ),
+                    ),
+                  ],
+                ),
+                if (item.purchasedAt != null)
+                  if (state.auditLog.forOffStockItem(item.id) case final entry?
+                    when entry.locationLat != null && entry.locationLng != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: LocationLink(lat: entry.locationLat!, lng: entry.locationLng!),
+                    ),
+              ],
+            ],
+            // "Add to storage" turns a خارج المخزون item into a real
+            // inventory row. Only offered for the genuinely new ones -- an
+            // out-of-stock item is already an inventory row, so there would
+            // be nothing to create and a duplicate to risk.
             if (item.isCustom)
               Align(
                 alignment: AlignmentDirectional.centerEnd,
-                child: TextButton.icon(
-                  icon: const Icon(Icons.add_box_outlined, size: 16),
-                  label: const Text('إضافة للمخزن'),
-                  style: TextButton.styleFrom(
-                    foregroundColor: Colors.teal,
-                    visualDensity: VisualDensity.compact,
-                    textStyle: const TextStyle(fontSize: 13),
-                  ),
-                  onPressed: () => _openAddToStorage(context, item),
+                child: PopupMenuButton<String>(
+                  icon: const Icon(Icons.more_vert, size: 20),
+                  tooltip: 'خيارات الصنف',
+                  onSelected: (value) {
+                    if (value == 'add_to_storage') {
+                      _openAddToStorage(context, item);
+                    }
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: 'add_to_storage',
+                      child: ListTile(
+                        dense: true,
+                        contentPadding: EdgeInsets.zero,
+                        leading: Icon(Icons.add_box_outlined, color: Colors.teal),
+                        title: Text('إضافة للمخزن'),
+                      ),
+                    ),
+                  ],
                 ),
               ),
           ],
@@ -397,12 +442,21 @@ class _ItemTile extends StatelessWidget {
       name: json != null
           ? (json['name'] as String? ?? item.customDescription ?? '')
           : (item.customDescription ?? ''),
-      quantity: item.effectiveQuantity,
+      // Deliberately NOT item.effectiveQuantity. How many were ordered says
+      // nothing about how many are on the shelf, and a wrong number that looks
+      // deliberate is worse than a blank one -- someone must enter a real count.
+      quantity: 0,
       unit: json?['unit'] as String? ?? 'قطعة',
       sku: json?['sku'] as String?,
       category: json?['category'] as String?,
       minQuantity: (json?['minQty'] as num?)?.toDouble() ?? 0,
       description: json?['description'] as String?,
+      // Filled in by the verifier while building the order, if they bothered.
+      // Absent is fine -- the inventory form leaves them blank and editable.
+      brand: json?['brand'] as String?,
+      variety: json?['variety'] as String?,
+      packagingSize: (json?['packagingSize'] as num?)?.toDouble(),
+      packagingSizeUnit: json?['packagingSizeUnit'] as String?,
     );
 
     final added = await Navigator.push<bool>(
@@ -785,9 +839,7 @@ class _DoneOrWaitingBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDone =
-        order.status == OrderStatus.delivered ||
-        order.status == OrderStatus.deliveredToStorage;
+    final isDone = order.status == OrderStatus.delivered;
 
     if (isDone) {
       return const Card(

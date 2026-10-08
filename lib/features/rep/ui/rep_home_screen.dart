@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:go_router/go_router.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/widgets/notification_dot.dart';
 import '../../../shared/models/order.dart';
@@ -13,11 +14,13 @@ import '../../chat/logic/chat_threads_cubit.dart';
 import '../../chat/ui/chat_hub_screen.dart';
 import '../../notifications/logic/chat_badge_cubit.dart';
 import '../../notifications/logic/notifications_badge_cubit.dart';
+import '../../delivery_receipts/ui/delivery_receipts_tab.dart';
 import '../../inventory/ui/inventory_availability_screen.dart';
 import '../../profile/ui/profile_screen.dart';
 import '../logic/rep_order_detail_cubit.dart';
 import '../logic/rep_orders_cubit.dart';
 import 'rep_order_detail_screen.dart';
+import '../../../shared/widgets/lazy_indexed_stack.dart';
 
 class RepHomeScreen extends StatelessWidget {
   const RepHomeScreen({super.key});
@@ -28,8 +31,12 @@ class RepHomeScreen extends StatelessWidget {
       providers: [
         BlocProvider(create: (_) => sl<RepOrdersCubit>()..loadOrders()),
         BlocProvider.value(value: sl<NotificationsBadgeCubit>()),
-        BlocProvider.value(value: sl<ChatBadgeCubit>()),
-        BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
+        // Chat off: these two subscribe to chat tables the server no longer
+        // grants us, so creating them would only produce a stream of
+        // permission errors behind a tab nobody can open.
+        if (kChatEnabled) BlocProvider.value(value: sl<ChatBadgeCubit>()),
+        if (kChatEnabled)
+          BlocProvider(create: (_) => sl<ChatThreadsCubit>()..loadThreads()),
       ],
       child: const _RepHomeView(),
     );
@@ -48,14 +55,19 @@ class _RepHomeViewState extends State<_RepHomeView> {
 
   @override
   Widget build(BuildContext context) {
+    // Tabs and destinations are built from the same `if (kChatEnabled)`, so the
+    // two lists cannot drift out of alignment when chat is toggled -- which is
+    // exactly what hardcoded switch-on-index would have risked.
+    final tabs = <Widget>[
+      _OrdersTab(onOpenDetail: (id) => _openDetail(context, id)),
+      const InventoryAvailabilityScreen(),
+      const DeliveryReceiptsTab(),
+      if (kChatEnabled) const ChatHubSection(),
+      _SettingsTab(onLogout: () => context.read<AuthCubit>().signOut()),
+    ];
+
     return Scaffold(
-      body: switch (_navIndex) {
-        0 => _OrdersTab(onOpenDetail: (id) => _openDetail(context, id)),
-        1 => const InventoryAvailabilityScreen(),
-        2 => const ChatHubSection(),
-        3 => _SettingsTab(onLogout: () => context.read<AuthCubit>().signOut()),
-        _ => const SizedBox.shrink(),
-      },
+      body: LazyIndexedStack(index: _navIndex, children: tabs),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _navIndex,
         onDestinationSelected: (i) => setState(() => _navIndex = i),
@@ -70,21 +82,27 @@ class _RepHomeViewState extends State<_RepHomeView> {
             selectedIcon: Icon(Icons.inventory_2),
             label: 'المخزون',
           ),
-          NavigationDestination(
-            icon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble_outline),
-              ),
-            ),
-            selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
-              builder: (context, count) => NotificationDot(
-                isVisible: count > 0,
-                child: const Icon(Icons.chat_bubble),
-              ),
-            ),
-            label: 'المحادثات',
+          const NavigationDestination(
+            icon: Icon(Icons.receipt_long_outlined),
+            selectedIcon: Icon(Icons.receipt_long),
+            label: 'السندات',
           ),
+          if (kChatEnabled)
+            NavigationDestination(
+              icon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble_outline),
+                ),
+              ),
+              selectedIcon: BlocBuilder<ChatBadgeCubit, int>(
+                builder: (context, count) => NotificationDot(
+                  isVisible: count > 0,
+                  child: const Icon(Icons.chat_bubble),
+                ),
+              ),
+              label: 'المحادثات',
+            ),
           const NavigationDestination(
             icon: Icon(Icons.settings_outlined),
             selectedIcon: Icon(Icons.settings),
@@ -214,10 +232,7 @@ class _OrdersTabState extends State<_OrdersTab>
             );
           }
           if (state is RepOrdersLoaded) {
-            const doneStatuses = {
-              OrderStatus.delivered,
-              OrderStatus.deliveredToStorage,
-            };
+            const doneStatuses = {OrderStatus.delivered};
             final active = state.orders
                 .where((o) => !doneStatuses.contains(o.status))
                 .toList();

@@ -45,9 +45,14 @@ class InventoryFormCubit extends Cubit<InventoryFormState>
     required double quantity,
     String? sku,
     String? category,
-    double minQuantity = 0,
+    double minQuantity = 3,
     String? description,
     String? notes,
+    String? brand,
+    String? variety,
+    double? packagingSize,
+    String? packagingSizeUnit,
+    List<String>? aliases,
   }) async {
     safeEmit(InventoryFormSaving());
 
@@ -63,6 +68,11 @@ class InventoryFormCubit extends Cubit<InventoryFormState>
         minQuantity: minQuantity,
         description: description,
         notes: notes,
+        brand: brand,
+        variety: variety,
+        packagingSize: packagingSize,
+        packagingSizeUnit: packagingSizeUnit,
+        aliases: aliases,
       );
     } else {
       result = await _repo.createItem(
@@ -74,6 +84,11 @@ class InventoryFormCubit extends Cubit<InventoryFormState>
         minQuantity: minQuantity,
         description: description,
         notes: notes,
+        brand: brand,
+        variety: variety,
+        packagingSize: packagingSize,
+        packagingSizeUnit: packagingSizeUnit,
+        aliases: aliases,
       );
     }
 

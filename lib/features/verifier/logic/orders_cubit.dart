@@ -6,10 +6,12 @@ import '../data/order_repository.dart';
 import 'orders_state.dart';
 
 import '../../../core/logic/safe_emit.dart';
+import '../../../core/logic/debouncer.dart';
 
 class OrdersCubit extends Cubit<OrdersState> with SafeEmit<OrdersState> {
   final OrderRepository _repo;
   RealtimeChannel? _channel;
+  final _realtimeDebounce = Debouncer();
 
   OrdersCubit(this._repo) : super(OrdersInitial());
 
@@ -30,7 +32,7 @@ class OrdersCubit extends Cubit<OrdersState> with SafeEmit<OrdersState> {
               event: PostgresChangeEvent.all,
               schema: 'public',
               table: 'orders',
-              callback: (_) => _fetchOrders(),
+              callback: (_) => _realtimeDebounce.run(_fetchOrders),
             )
             .subscribe();
       case AppFailure(:final error):
@@ -41,6 +43,7 @@ class OrdersCubit extends Cubit<OrdersState> with SafeEmit<OrdersState> {
 
   @override
   Future<void> close() async {
+    _realtimeDebounce.cancel();
     await _channel?.unsubscribe();
     return super.close();
   }

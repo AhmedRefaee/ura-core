@@ -15,6 +15,17 @@ class ErrorHandler {
       );
     }
     if (error is FunctionException) {
+      // An edge function marks a failure `retryable` when it gave up against a
+      // busy upstream rather than on anything wrong with the request. Saying so
+      // matters: "try again" is real advice here, where the generic message
+      // below tells someone to repeat whatever just broke.
+      final details = error.details;
+      if (details is Map && details['retryable'] == true) {
+        return const AppError(
+          message: 'الخدمة مزدحمة حالياً، يرجى المحاولة بعد لحظات',
+          type: AppErrorType.server,
+        );
+      }
       return const AppError(
         message: 'تعذر معالجة الطلب، يرجى المحاولة مجدداً',
         type: AppErrorType.server,
@@ -116,6 +127,14 @@ class ErrorHandler {
     // Standard Postgres error codes
     switch (error.code) {
       case '23505':
+        // A function that raises unique_violation with its own Arabic message
+        // is naming WHICH uniqueness rule was broken (see
+        // inventory_create_item, which lists name + brand + variety +
+        // packaging). That is strictly more useful than the generic line, so
+        // let it through; a bare index violation still falls back.
+        if (_containsArabic(error.message)) {
+          return AppError(message: error.message, type: AppErrorType.validation);
+        }
         return const AppError(
           message: 'هذا العنصر موجود مسبقاً',
           type: AppErrorType.validation,

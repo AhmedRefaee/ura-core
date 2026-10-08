@@ -1,7 +1,10 @@
 import 'package:equatable/equatable.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/logging/app_logger.dart';
+import '../../../core/location/location_capture.dart';
 import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/chat_message.dart';
 import '../../../shared/models/order.dart';
@@ -62,19 +65,31 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
     with SafeEmit<RepOrderDetailState> {
   final RepOrdersRepository _repo;
   final ChatRepository _chatRepo;
+  final LocationCapture _locationCapture;
   final String orderId;
+  RealtimeChannel? _channel;
 
-  RepOrderDetailCubit(this._repo, this.orderId, this._chatRepo)
+  RepOrderDetailCubit(this._repo, this.orderId, this._chatRepo, this._locationCapture)
     : super(RepOrderDetailInitial());
 
   Future<void> load() async {
     logger.d('RepOrderDetailCubit → load: $orderId');
     safeEmit(RepOrderDetailLoading());
+    await _fetchOrderDetail();
+  }
 
+  Future<void> _fetchOrderDetail() async {
     final results = await Future.wait([
       _repo.fetchOrderDetail(orderId),
       _repo.fetchAuditLog(orderId),
-      _chatRepo.getOrderCommunicationHistory(orderId),
+      // Chat off: skip the call rather than let it fail. Unlike the audit log
+      // above, a history failure is treated as fatal below -- so once the
+      // server stopped granting chat reads, this one call would have taken
+      // every rep's order screen down with it.
+      if (kChatEnabled)
+        _chatRepo.getOrderCommunicationHistory(orderId)
+      else
+        Future.value(const AppSuccess<List<ChatMessage>>(<ChatMessage>[])),
     ]);
 
     if (isClosed) return;
@@ -106,6 +121,32 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
             (results[2] as AppSuccess<List<ChatMessage>>).data,
       ),
     );
+
+    // Supabase isn't bootstrapped in unit tests that exercise this cubit in
+    // isolation -- the live app always initializes it before any cubit runs,
+    // so skipping the subscription here only ever happens off that path.
+    if (_channel == null) {
+      try {
+        _channel = Supabase.instance.client
+            .channel('rep-order-detail-$orderId-$hashCode')
+            .onPostgresChanges(
+              event: PostgresChangeEvent.all,
+              schema: 'public',
+              table: 'orders',
+              // Only this order: unfiltered, every change to any order in
+              // the organization refetched this screen's order + audit log.
+              filter: PostgresChangeFilter(
+                type: PostgresChangeFilterType.eq,
+                column: 'id',
+                value: orderId,
+              ),
+              callback: (_) => _fetchOrderDetail(),
+            )
+            .subscribe();
+      } catch (e) {
+        logger.d('RepOrderDetailCubit → skipping realtime subscription: $e');
+      }
+    }
   }
 
   Future<void> startMove({String? notes}) async {
@@ -113,7 +154,8 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
     if (s is! RepOrderDetailLoaded) return;
     logger.d('RepOrderDetailCubit → startMove');
     safeEmit(s.copyWith(isActing: true));
-    final result = await _repo.startMove(orderId, notes: notes);
+    final fix = await _locationCapture.capture();
+    final result = await _repo.startMove(orderId, notes: notes, lat: fix?.lat, lng: fix?.lng);
     switch (result) {
       case AppSuccess():
         await load();
@@ -128,7 +170,8 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
     if (s is! RepOrderDetailLoaded) return;
     logger.d('RepOrderDetailCubit → markPickedUp');
     safeEmit(s.copyWith(isActing: true));
-    final result = await _repo.markPickedUp(orderId, notes: notes);
+    final fix = await _locationCapture.capture();
+    final result = await _repo.markPickedUp(orderId, notes: notes, lat: fix?.lat, lng: fix?.lng);
     switch (result) {
       case AppSuccess():
         await load();
@@ -138,12 +181,35 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
     }
   }
 
+  Future<void> toggleOffStockPurchased(
+    String orderItemId,
+    bool purchased, {
+    String? notes,
+  }) async {
+    final s = state;
+    if (s is! RepOrderDetailLoaded) return;
+    logger.d('RepOrderDetailCubit → toggleOffStockPurchased: $orderItemId -> $purchased');
+    safeEmit(s.copyWith(isActing: true));
+    final fix = await _locationCapture.capture();
+    final result = await _repo.toggleOffStockPurchased(orderItemId, purchased, notes: notes, lat: fix?.lat, lng: fix?.lng);
+    switch (result) {
+      case AppSuccess():
+        await load();
+      case AppFailure(:final error):
+        logger.e(
+          'RepOrderDetailCubit → toggleOffStockPurchased failed: ${error.message}',
+        );
+        safeEmit(RepOrderDetailError(error.message));
+    }
+  }
+
   Future<void> markDelivered({String? notes}) async {
     final s = state;
     if (s is! RepOrderDetailLoaded) return;
     logger.d('RepOrderDetailCubit → markDelivered');
     safeEmit(s.copyWith(isActing: true));
-    final result = await _repo.markDelivered(orderId, notes: notes);
+    final fix = await _locationCapture.capture();
+    final result = await _repo.markDelivered(orderId, notes: notes, lat: fix?.lat, lng: fix?.lng);
     switch (result) {
       case AppSuccess():
         await load();
@@ -153,5 +219,11 @@ class RepOrderDetailCubit extends Cubit<RepOrderDetailState>
         );
         safeEmit(RepOrderDetailError(error.message));
     }
+  }
+
+  @override
+  Future<void> close() async {
+    await _channel?.unsubscribe();
+    return super.close();
   }
 }

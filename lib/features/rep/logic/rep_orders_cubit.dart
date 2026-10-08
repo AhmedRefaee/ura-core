@@ -7,6 +7,7 @@ import '../../../shared/models/order.dart';
 import '../data/rep_orders_repository.dart';
 
 import '../../../core/logic/safe_emit.dart';
+import '../../../core/logic/debouncer.dart';
 
 abstract class RepOrdersState extends Equatable {
   const RepOrdersState();
@@ -36,6 +37,7 @@ class RepOrdersCubit extends Cubit<RepOrdersState>
     with SafeEmit<RepOrdersState> {
   final RepOrdersRepository _repo;
   RealtimeChannel? _channel;
+  final _realtimeDebounce = Debouncer();
 
   RepOrdersCubit(this._repo) : super(RepOrdersInitial());
 
@@ -56,7 +58,7 @@ class RepOrdersCubit extends Cubit<RepOrdersState>
               event: PostgresChangeEvent.all,
               schema: 'public',
               table: 'orders',
-              callback: (_) => _fetchOrders(),
+              callback: (_) => _realtimeDebounce.run(_fetchOrders),
             )
             .subscribe();
       case AppFailure(:final error):
@@ -67,6 +69,7 @@ class RepOrdersCubit extends Cubit<RepOrdersState>
 
   @override
   Future<void> close() async {
+    _realtimeDebounce.cancel();
     await _channel?.unsubscribe();
     return super.close();
   }

@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:ura_core/shared/models/voice_match_result.dart';
+import 'package:ura_core/shared/models/item_match_result.dart';
 
 void main() {
-  group('VoiceItemMatch', () {
+  group('MatchedItem', () {
     test('fromMap parses all fields', () {
-      final match = VoiceItemMatch.fromMap({
+      final match = MatchedItem.fromMap({
         'item_id': 'item-1',
         'quantity': 3,
         'confidence': 0.92,
@@ -15,14 +15,14 @@ void main() {
     });
 
     test('missing confidence defaults to 0', () {
-      final match = VoiceItemMatch.fromMap({'item_id': 'item-1', 'quantity': 1});
+      final match = MatchedItem.fromMap({'item_id': 'item-1', 'quantity': 1});
       expect(match.confidence, 0);
     });
   });
 
-  group('VoiceUnmatchedItem', () {
+  group('UnmatchedItem', () {
     test('fromMap parses all fields', () {
-      final item = VoiceUnmatchedItem.fromMap({
+      final item = UnmatchedItem.fromMap({
         'text': 'صابون فاخر',
         'quantity': 2,
         'unit': 'علبة',
@@ -33,15 +33,15 @@ void main() {
     });
 
     test('missing quantity and unit are null', () {
-      final item = VoiceUnmatchedItem.fromMap({'text': 'شيء غامض'});
+      final item = UnmatchedItem.fromMap({'text': 'شيء غامض'});
       expect(item.quantity, isNull);
       expect(item.unit, isNull);
     });
   });
 
-  group('VoiceAmbiguousItem', () {
+  group('AmbiguousItem', () {
     test('fromMap parses all fields', () {
-      final item = VoiceAmbiguousItem.fromMap({
+      final item = AmbiguousItem.fromMap({
         'text': 'مياه نوفا',
         'quantity': 2,
         'unit': 'كرتونة',
@@ -54,14 +54,14 @@ void main() {
     });
 
     test('missing candidate_item_ids defaults to empty list', () {
-      final item = VoiceAmbiguousItem.fromMap({'text': 'مياه نوفا'});
+      final item = AmbiguousItem.fromMap({'text': 'مياه نوفا'});
       expect(item.candidateItemIds, isEmpty);
     });
   });
 
-  group('VoiceMatchResult', () {
+  group('ItemMatchResult', () {
     test('fromMap parses matches and unmatched lists', () {
-      final result = VoiceMatchResult.fromMap({
+      final result = ItemMatchResult.fromMap({
         'matches': [
           {'item_id': 'item-1', 'quantity': 3, 'confidence': 0.9},
         ],
@@ -76,7 +76,7 @@ void main() {
     });
 
     test('fromMap parses ambiguous list', () {
-      final result = VoiceMatchResult.fromMap({
+      final result = ItemMatchResult.fromMap({
         'matches': [],
         'unmatched': [],
         'ambiguous': [
@@ -93,24 +93,33 @@ void main() {
     });
 
     test('missing matches/unmatched/ambiguous default to empty lists', () {
-      final result = VoiceMatchResult.fromMap({});
+      final result = ItemMatchResult.fromMap({});
       expect(result.matches, isEmpty);
       expect(result.unmatched, isEmpty);
       expect(result.ambiguous, isEmpty);
     });
 
-    test('parses heard_summary when present', () {
-      final result = VoiceMatchResult.fromMap({
+    test('parses understood_summary when present', () {
+      final result = ItemMatchResult.fromMap({
+        'matches': [],
+        'unmatched': [],
+        'understood_summary': 'سمعت طلب ٣ كراتين مياه',
+      });
+      expect(result.understoodSummary, 'سمعت طلب ٣ كراتين مياه');
+    });
+
+    test('the old heard_summary key still parses, for an un-redeployed function', () {
+      final result = ItemMatchResult.fromMap({
         'matches': [],
         'unmatched': [],
         'heard_summary': 'سمعت طلب ٣ كراتين مياه',
       });
-      expect(result.heardSummary, 'سمعت طلب ٣ كراتين مياه');
+      expect(result.understoodSummary, 'سمعت طلب ٣ كراتين مياه');
     });
 
-    test('heard_summary is null when missing', () {
-      final result = VoiceMatchResult.fromMap({});
-      expect(result.heardSummary, isNull);
+    test('understood_summary is null when missing', () {
+      final result = ItemMatchResult.fromMap({});
+      expect(result.understoodSummary, isNull);
     });
   });
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:supabase_flutter/supabase_flutter.dart' hide AuthState;
 import '../../../core/cache/local_profile_source.dart';
+import '../../../core/config/feature_flags.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_error.dart';
 import '../../../core/errors/app_result.dart';
@@ -90,7 +91,11 @@ class AuthCubit extends Cubit<AuthState> with SafeEmit<AuthState> {
         safeEmit(AuthAuthenticated(data));
         await sl<NotificationService>().registerForUser(data.id);
         await sl<NotificationsBadgeCubit>().subscribe();
-        await sl<ChatBadgeCubit>().subscribe();
+        // Chat off: nothing produces chat notifications any more, so this would
+        // only poll for a count that can never change. The matching cancel() in
+        // signOut stays unguarded -- it is a no-op when nothing subscribed, and
+        // still tidies up for anyone who ran a build with chat switched on.
+        if (kChatEnabled) await sl<ChatBadgeCubit>().subscribe();
       case AppFailure(:final error):
         logger.e('AuthCubit → checkSession failed: ${error.message}');
         // If we already showed cached data, keep it rather than showing an error

@@ -12,7 +12,7 @@ class InventoryRepository {
       logger.d('InventoryRepository → fetchInventory');
       final data = await _supabase
           .from('inventory')
-          .select('id, item_name, sku, quantity, unit, category, min_quantity, description')
+          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, brand, variety, packaging_size, packaging_size_unit, aliases')
           .isFilter('archived_at', null)
           .order('item_name');
       final items = (data as List)
@@ -32,7 +32,7 @@ class InventoryRepository {
       logger.d('InventoryRepository → fetchItemsByIds: ${ids.length} ids');
       final data = await _supabase
           .from('inventory')
-          .select('id, item_name, sku, quantity, unit, category, min_quantity, description')
+          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, brand, variety, packaging_size, packaging_size_unit, aliases')
           .inFilter('id', ids);
       final map = {
         for (final row in (data as List))

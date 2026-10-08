@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import '../../features/inventory/ui/inventory_item_detail_screen.dart';
 import '../models/draft_order_item.dart';
 import '../models/inventory_item.dart';
+import '../models/off_stock_kind.dart';
 import '../models/order.dart';
 import '../utils/quantity_format.dart';
+import 'off_stock.dart';
 
 class DraftOrderItemsList extends StatelessWidget {
   final List<DraftOrderItem> items;
@@ -11,12 +13,19 @@ class DraftOrderItemsList extends StatelessWidget {
   final OrderDirection direction;
   final ValueChanged<int> onRemove;
 
+  /// Opens an off-stock item for editing so its brand, variety, packaging and
+  /// unit can be filled in before the order is submitted. Optional: the
+  /// template editor reuses this list but has no such flow, and passes null,
+  /// which simply hides the affordance.
+  final ValueChanged<int>? onEditCustom;
+
   const DraftOrderItemsList({
     super.key,
     required this.items,
     required this.inventory,
     required this.direction,
     required this.onRemove,
+    this.onEditCustom,
   });
 
   @override
@@ -30,20 +39,54 @@ class DraftOrderItemsList extends StatelessWidget {
         ),
       );
     }
+    // Split by index, not by value, so onRemove keeps pointing at the right
+    // slot in the original list once the two groups are rendered separately.
+    final stockIndices = <int>[];
+    final offStockIndices = <int>[];
+    for (var i = 0; i < items.length; i++) {
+      (_kindOf(items[i]) == null ? stockIndices : offStockIndices).add(i);
+    }
+
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (int i = 0; i < items.length; i++)
-          _buildItemTile(context, i, items[i]),
+        for (final i in stockIndices) _buildItemTile(context, i, items[i]),
+        if (offStockIndices.isNotEmpty)
+          OffStock.section(
+            count: offStockIndices.length,
+            child: Column(
+              children: [
+                for (final i in offStockIndices) _buildItemTile(context, i, items[i]),
+              ],
+            ),
+          ),
       ],
     );
   }
 
+  /// The inventory row behind a draft item, when there is one and it is
+  /// relevant. Null on an inbound order: the rep is bringing stock in, so
+  /// what is on the shelf right now says nothing about the request.
+  InventoryItem? _inventoryRowFor(DraftOrderItem item) =>
+      direction == OrderDirection.outbound && item.inventoryId != null
+          ? inventory.where((inv) => inv.id == item.inventoryId).firstOrNull
+          : null;
+
+  OffStockKind? _kindOf(DraftOrderItem item) => draftOffStockKind(
+        isCustom: item.isCustom,
+        sourceInventoryId: item.sourceInventoryId,
+        direction: direction,
+        inventoryQuantity: _inventoryRowFor(item)?.quantity,
+      );
+
   Widget _buildItemTile(BuildContext context, int index, DraftOrderItem item) {
-    final invItem =
-        direction == OrderDirection.outbound && item.inventoryId != null
-        ? inventory.where((inv) => inv.id == item.inventoryId).firstOrNull
-        : null;
-    final isOverStock = invItem != null && item.quantity > invItem.quantity;
+    final invItem = _inventoryRowFor(item);
+    final kind = _kindOf(item);
+    // "Only N available" is the partial case -- some on the shelf, not enough.
+    // At zero the purple badge already says it, and stacking an orange
+    // "المتوفر فقط: 0" on top would be two chips for one fact.
+    final isOverStock =
+        kind == null && invItem != null && item.quantity > invItem.quantity;
 
     return ListTile(
       dense: true,
@@ -53,12 +96,23 @@ class DraftOrderItemsList extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text('الكمية: ${formatQty(item.quantity)}'),
+          if (kind != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: OffStock.badge(kind),
+            ),
           if (isOverStock)
             GestureDetector(
               onTap: () => Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) => InventoryItemDetailScreen(item: invItem),
+                  builder: (_) => InventoryItemDetailScreen(
+                    item: invItem,
+                    // Reached by tapping an over-stock warning mid-draft. That
+                    // is a glance at the item, not a decision to archive it --
+                    // deleting belongs on a deliberate trip to المخزون.
+                    allowDelete: false,
+                  ),
                 ),
               ),
               child: Chip(
@@ -78,9 +132,23 @@ class DraftOrderItemsList extends StatelessWidget {
             ),
         ],
       ),
-      trailing: IconButton(
-        icon: const Icon(Icons.delete_outline, color: Colors.red),
-        onPressed: () => onRemove(index),
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (item.isCustom && onEditCustom != null)
+            IconButton(
+              icon: Icon(Icons.edit_outlined, color: OffStock.color),
+              tooltip: 'تعديل بيانات الصنف',
+              visualDensity: VisualDensity.compact,
+              onPressed: () => onEditCustom!(index),
+            ),
+          IconButton(
+            icon: const Icon(Icons.delete_outline, color: Colors.red),
+            tooltip: 'حذف',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => onRemove(index),
+          ),
+        ],
       ),
     );
   }

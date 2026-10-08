@@ -10,6 +10,10 @@ class InventoryManagementRepository {
   final SupabaseClient _supabase = Supabase.instance.client;
   final _inventoryCache = MemoryCache<String, List<InventoryItem>>(ttl: Duration(minutes: 2));
 
+  /// Realtime refetches must skip the 2-minute cache or they'd just re-read
+  /// the stale list the change was supposed to replace.
+  void invalidateInventoryCache() => _inventoryCache.clear();
+
   Future<AppResult<List<InventoryItem>>> fetchInventory({
     String? search,
     String? category,
@@ -24,7 +28,7 @@ class InventoryManagementRepository {
       
       var query = _supabase
           .from('inventory')
-          .select('id, item_name, sku, quantity, unit, category, min_quantity, description')
+          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, brand, variety, packaging_size, packaging_size_unit, aliases')
           .isFilter('archived_at', null);
       if (search != null && search.isNotEmpty) {
         query = query.ilike('item_name', '%$search%');
@@ -46,7 +50,7 @@ class InventoryManagementRepository {
     try {
       final data = await _supabase
           .from('inventory')
-          .select('id, item_name, sku, quantity, unit, category, min_quantity, description')
+          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, brand, variety, packaging_size, packaging_size_unit, aliases')
           .eq('id', itemId)
           .single();
       return AppSuccess(InventoryItem.fromMap(data));
@@ -62,7 +66,10 @@ class InventoryManagementRepository {
           .from('inventory_audit_log')
           .select('id, item_id, action, old_quantity, new_quantity, performed_by, notes, performed_at, performer:profiles!inventory_audit_log_performed_by_fkey(id, full_name, phone, role, is_approved, created_at)')
           .eq('item_id', itemId)
-          .order('performed_at', ascending: false);
+          .order('performed_at', ascending: false)
+          // The detail screen renders the log eagerly; an item's full history
+          // grows without bound, the latest 100 changes are what matter.
+          .limit(100);
       return AppSuccess(
         (data as List)
             .map((m) => InventoryAuditLogEntry.fromMap(m as Map<String, dynamic>))
@@ -80,9 +87,14 @@ class InventoryManagementRepository {
     required double quantity,
     String? sku,
     String? category,
-    double minQuantity = 0,
+    double minQuantity = 3,
     String? description,
     String? notes,
+    String? brand,
+    String? variety,
+    double? packagingSize,
+    String? packagingSizeUnit,
+    List<String>? aliases,
   }) async {
     try {
       final result = await _supabase.rpc('inventory_create_item', params: {
@@ -94,6 +106,11 @@ class InventoryManagementRepository {
         'p_min_quantity': minQuantity,
         'p_description': description,
         'p_notes': notes,
+        'p_brand': brand,
+        'p_variety': variety,
+        'p_packaging_size': packagingSize,
+        'p_packaging_size_unit': packagingSizeUnit,
+        'p_aliases': aliases,
       });
       if (result is Map && result['success'] == false) {
         return AppFailure(ErrorHandler.fromRpcResult(result));
@@ -114,9 +131,14 @@ class InventoryManagementRepository {
     required double quantity,
     String? sku,
     String? category,
-    double minQuantity = 0,
+    double minQuantity = 3,
     String? description,
     String? notes,
+    String? brand,
+    String? variety,
+    double? packagingSize,
+    String? packagingSizeUnit,
+    List<String>? aliases,
   }) async {
     try {
       final result = await _supabase.rpc('inventory_update_item', params: {
@@ -129,6 +151,11 @@ class InventoryManagementRepository {
         'p_min_quantity': minQuantity,
         'p_description': description,
         'p_notes': notes,
+        'p_brand': brand,
+        'p_variety': variety,
+        'p_packaging_size': packagingSize,
+        'p_packaging_size_unit': packagingSizeUnit,
+        'p_aliases': aliases,
       });
       if (result is Map && result['success'] == false) {
         return AppFailure(ErrorHandler.fromRpcResult(result));
@@ -202,7 +229,16 @@ class InventoryManagementRepository {
     List<Map<String, dynamic>> rows,
   ) async {
     try {
-      await _supabase.from('inventory').insert(rows);
+      // Through the RPC, never a raw insert: the table's INSERT policy lets any
+      // verifier write any quantity, so a direct insert here bypassed the
+      // storage-only-quantity rule and logged nothing to inventory_audit_log.
+      final result = await _supabase.rpc(
+        'inventory_bulk_create_items',
+        params: {'p_items': rows},
+      );
+      if (result is Map && result['success'] == false) {
+        return AppFailure(ErrorHandler.fromRpcResult(result));
+      }
       _inventoryCache.clear();
       logger.i('Bulk import: ${rows.length} items inserted');
       return const AppSuccess(null);
@@ -216,7 +252,7 @@ class InventoryManagementRepository {
     try {
       final data = await _supabase
           .from('inventory')
-          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, notes')
+          .select('id, item_name, sku, quantity, unit, category, min_quantity, description, notes, brand, variety, packaging_size, packaging_size_unit, aliases')
           .isFilter('archived_at', null)
           .order('item_name');
       final result = (data as List)
@@ -253,10 +289,15 @@ class InventoryManagementRepository {
     List<Map<String, dynamic>> rows,
   ) async {
     try {
-      for (final row in rows) {
-        final id = row['id'] as String;
-        final data = Map<String, dynamic>.from(row)..remove('id');
-        await _supabase.from('inventory').update(data).eq('id', id);
+      // One call, one transaction. This used to loop a raw table update per
+      // row, which skipped the storage-only-quantity rule, wrote no audit
+      // history, and left the catalogue half-updated if a row failed partway.
+      final result = await _supabase.rpc(
+        'inventory_bulk_update_items',
+        params: {'p_items': rows},
+      );
+      if (result is Map && result['success'] == false) {
+        return AppFailure(ErrorHandler.fromRpcResult(result));
       }
       _inventoryCache.clear();
       logger.i('Bulk update: ${rows.length} items updated');

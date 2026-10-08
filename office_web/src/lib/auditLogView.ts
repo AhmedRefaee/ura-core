@@ -17,15 +17,20 @@ export function effectiveStatus(entry: AuditLogEntry): OrderStatus | null {
 // transition at all (no effective status -- e.g. an item-level toggle),
 // since this list is specifically the order's status history.
 export function prepareAuditLogForDisplay(auditLog: AuditLogEntry[]): AuditLogEntry[] {
-  const seen = new Set<string>();
-  const result: AuditLogEntry[] = [];
+  const kept = new Map<string, AuditLogEntry>();
   for (const entry of auditLog) {
     const status = effectiveStatus(entry);
     if (status === null) continue;
     const key = `${entry.serverTimestamp}|${status}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    result.push(entry);
+    const existing = kept.get(key);
+    if (!existing) {
+      kept.set(key, entry);
+    } else if (existing.locationLat == null && entry.locationLat != null) {
+      // Only the RPC's own row records where the rep was; the trigger's generic
+      // `status_change` row never does. Whichever of the pair comes first, the
+      // surviving row must carry the location.
+      kept.set(key, { ...existing, locationLat: entry.locationLat, locationLng: entry.locationLng });
+    }
   }
-  return result;
+  return [...kept.values()];
 }

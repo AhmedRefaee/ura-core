@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:printing/printing.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/di/injection.dart';
@@ -21,6 +23,27 @@ Future<void> openReceiptPdf(BuildContext context, DeliveryReceipt r) async {
     return;
   }
   await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+}
+
+/// Downloads the سند's PDF and hands the bytes to the platform share sheet,
+/// so the recipient gets the file itself rather than a link that expires.
+Future<void> shareReceiptPdf(BuildContext context, DeliveryReceipt r) async {
+  final messenger = ScaffoldMessenger.of(context);
+  final box = context.findRenderObject() as RenderBox?;
+  final bounds = box == null ? null : box.localToGlobal(Offset.zero) & box.size;
+  final url = await SignedStorageUrl.resolve('delivery-receipts', r.pdfUrl);
+  if (url == null) {
+    messenger.showSnackBar(const SnackBar(content: Text('تعذر مشاركة ملف السند')));
+    return;
+  }
+  try {
+    final response = await http.get(Uri.parse(url));
+    if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
+    final name = (r.project?.name ?? 'سند').replaceAll(RegExp(r'[\\/:*?"<>|]'), '-');
+    await Printing.sharePdf(bytes: response.bodyBytes, filename: 'سند $name.pdf', bounds: bounds);
+  } catch (_) {
+    messenger.showSnackBar(const SnackBar(content: Text('تعذر مشاركة ملف السند')));
+  }
 }
 
 /// Opens the سند flow pre-filled from [r]; filing replaces it. True if saved.
@@ -61,9 +84,9 @@ Future<bool> deleteReceipt(BuildContext context, DeliveryReceipt r) async {
   }
 }
 
-enum ReceiptAction { open, edit, delete }
+enum ReceiptAction { open, share, edit, delete }
 
-/// ⋮ menu for a سند. Edit/delete appear only for its creator.
+/// ⋮ menu for a سند. Share and open need the PDF; edit/delete only the creator's.
 class ReceiptMenuButton extends StatelessWidget {
   final DeliveryReceipt receipt;
 
@@ -82,6 +105,8 @@ class ReceiptMenuButton extends StatelessWidget {
         switch (action) {
           case ReceiptAction.open:
             await openReceiptPdf(context, receipt);
+          case ReceiptAction.share:
+            await shareReceiptPdf(context, receipt);
           case ReceiptAction.edit:
             if (await editReceipt(context, receipt)) onChanged();
           case ReceiptAction.delete:
@@ -93,6 +118,11 @@ class ReceiptMenuButton extends StatelessWidget {
           const PopupMenuItem(
             value: ReceiptAction.open,
             child: ListTile(leading: Icon(Icons.picture_as_pdf_outlined), title: Text('فتح السند')),
+          ),
+        if (receipt.pdfUrl != null)
+          const PopupMenuItem(
+            value: ReceiptAction.share,
+            child: ListTile(leading: Icon(Icons.share_outlined), title: Text('مشاركة السند')),
           ),
         if (own) ...[
           const PopupMenuItem(

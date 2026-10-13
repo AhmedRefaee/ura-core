@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:printing/printing.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../../core/di/injection.dart';
@@ -39,8 +39,12 @@ Future<void> shareReceiptPdf(BuildContext context, DeliveryReceipt r) async {
   try {
     final response = await http.get(Uri.parse(url));
     if (response.statusCode != 200) throw Exception('HTTP ${response.statusCode}');
-    final name = (r.project?.name ?? 'سند').replaceAll(RegExp(r'[\\/:*?"<>|]'), '-');
-    await Printing.sharePdf(bytes: response.bodyBytes, filename: 'سند $name.pdf', bounds: bounds);
+    final project = (r.project?.name ?? '').replaceAll(RegExp(r'[\\/:*?"<>|]'), '-').trim();
+    final name = project.isEmpty ? 'سند.pdf' : 'سند $project.pdf';
+    final file = XFile.fromData(response.bodyBytes, mimeType: 'application/pdf', name: name);
+    await SharePlus.instance.share(
+      ShareParams(files: [file], fileNameOverrides: [name], sharePositionOrigin: bounds),
+    );
   } catch (_) {
     messenger.showSnackBar(const SnackBar(content: Text('تعذر مشاركة ملف السند')));
   }

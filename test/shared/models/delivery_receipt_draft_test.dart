@@ -15,6 +15,7 @@ void main() {
       dateMode: 'blank',
       customDate: null,
       splitByCategory: true,
+      fullDescription: true,
       savedAt: DateTime(2026, 5, 1, 14, 30),
     );
 

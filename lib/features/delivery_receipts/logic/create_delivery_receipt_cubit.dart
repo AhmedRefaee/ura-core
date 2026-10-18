@@ -246,6 +246,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       ),
       customDate: draft.customDate,
       splitByCategory: draft.splitByCategory,
+      fullDescription: draft.fullDescription,
     ));
   }
 
@@ -291,6 +292,10 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
   /// submit()'s own note on why a replace operation can't split.
   void setSplitByCategory(bool value) => emit(state.copyWith(splitByCategory: value));
 
+  /// Settings-menu toggle: the سند prints each item's whole contract
+  /// description rather than just its packaging.
+  void setFullDescription(bool value) => emit(state.copyWith(fullDescription: value));
+
   /// Free-text note for one item's line in the سند. Empty (after trimming)
   /// clears it rather than storing a blank entry.
   void setItemNote(String projectItemId, String note) {
@@ -326,6 +331,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       dateMode: state.dateMode.name,
       customDate: state.customDate,
       splitByCategory: state.splitByCategory,
+      fullDescription: state.fullDescription,
       savedAt: DateTime.now(),
     ));
   }
@@ -399,11 +405,12 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
         },
         clientLogoBytes: await _fetchLetterhead(project.letterheadImageUrl),
         notes: notes,
+        fullDescription: state.fullDescription,
         lines: [
           for (final i in items)
             ReceiptPdfLine(
               itemName: i.itemName,
-              description: packagingOf(i.description),
+              description: state.fullDescription ? i.description : packagingOf(i.description),
               unit: i.unit,
               quantity: state.quantities[i.id]!,
               note: state.itemNotes[i.id],

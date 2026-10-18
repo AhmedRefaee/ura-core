@@ -66,6 +66,9 @@ class DeliveryReceiptPdf {
     required List<ReceiptPdfLine> lines,
     Uint8List? clientLogoBytes,
     String? notes,
+    // Lines carry whole contract descriptions -- rows grow to fit them, so
+    // the fixed-height 20-rows-per-page chunking below can't apply.
+    bool fullDescription = false,
     @visibleForTesting pw.ThemeData? theme,
   }) async {
     // The PDF's built-in fonts have no Arabic glyphs. Noto Sans Arabic, not
@@ -117,6 +120,12 @@ class DeliveryReceiptPdf {
               ? '      /      /      '
               : '${date.day.toString().padLeft(2, '0')} / ${date.month.toString().padLeft(2, '0')} / ${date.year}'),
           pw.SizedBox(height: 6),
+          // Rows of unknown height can't be chunked by count. One table,
+          // handed to MultiPage directly (pw.Table ignores text direction,
+          // so it needs no _ltr wrapper), splits across pages by itself.
+          if (fullDescription)
+            _itemsTable(lines, 0, wrap: true)
+          else
           for (var start = 0; start < lines.length; start += _maxRowsPerPage) ...[
             // A hard break before every chunk but the first: two chunks
             // both fitting in the leftover space on one page would still
@@ -201,10 +210,15 @@ class DeliveryReceiptPdf {
   // height is fixed, so unlike the item name (a curated catalog string,
   // reliably short) a user-typed note has to be bounded or it would spill
   // past the row instead of wrapping into it.
-  static pw.Widget _cell(String text, {bool header = false, pw.TextAlign align = pw.TextAlign.center, bool singleLine = false}) =>
+  // [wrap]: the row grows with its text (min the fixed height) instead.
+  static pw.Widget _cell(String text,
+          {bool header = false, pw.TextAlign align = pw.TextAlign.center, bool singleLine = false, bool wrap = false}) =>
       pw.Container(
-        height: header ? 20 : 22,
-        padding: const pw.EdgeInsets.symmetric(horizontal: 4),
+        height: wrap ? null : (header ? 20 : 22),
+        constraints: wrap ? pw.BoxConstraints(minHeight: header ? 20 : 22) : null,
+        padding: wrap
+            ? const pw.EdgeInsets.symmetric(horizontal: 4, vertical: 3)
+            : const pw.EdgeInsets.symmetric(horizontal: 4),
         alignment: align == pw.TextAlign.right ? pw.Alignment.centerRight : pw.Alignment.center,
         color: header ? PdfColors.grey400 : null,
         child: _t(text,
@@ -218,44 +232,49 @@ class DeliveryReceiptPdf {
   /// One page's worth of rows (<=_maxRowsPerPage). [startIndex] is this
   /// chunk's offset into the full line list, so م keeps counting up across
   /// pages instead of restarting at 1 on each one.
-  static pw.Widget _itemsTable(List<ReceiptPdfLine> chunk, int startIndex) {
+  /// [wrap]: rows grow to fit full descriptions, and the table is returned
+  /// bare so MultiPage can split it across pages.
+  static pw.Widget _itemsTable(List<ReceiptPdfLine> chunk, int startIndex, {bool wrap = false}) {
     // Visual left-to-right: ملاحظات | الكمية | الوحدة | اسم الصنف ووصفه | م
-    return _ltr(
-      pw.Table(
-        border: const pw.TableBorder(
-          left: _border, right: _border, top: _border, bottom: _border,
-          horizontalInside: _border, verticalInside: _border,
-        ),
-        columnWidths: const {
-          0: pw.FlexColumnWidth(2.3),
-          1: pw.FlexColumnWidth(1),
-          2: pw.FlexColumnWidth(1),
-          3: pw.FlexColumnWidth(3.6),
-          4: pw.FixedColumnWidth(34),
-        },
-        children: [
-          pw.TableRow(children: [
-            _cell('ملاحظات', header: true),
-            _cell('الكمية', header: true),
-            _cell('الوحدة', header: true),
-            _cell('اسم الصنف ووصفه', header: true),
-            _cell('م', header: true),
-          ]),
-          for (var i = 0; i < chunk.length; i++)
-            pw.TableRow(children: [
-              _cell(chunk[i].note ?? '', singleLine: true),
-              _cell(formatQty(chunk[i].quantity)),
-              _cell(chunk[i].unit),
-              _cell(
-                [chunk[i].itemName, if (chunk[i].description?.trim().isNotEmpty ?? false) chunk[i].description!.trim()]
-                    .join(' - '),
-                align: pw.TextAlign.right,
-              ),
-              _cell('${startIndex + i + 1}'),
-            ]),
-        ],
+    final table = pw.Table(
+      // Only matters when [wrap] lets one cell outgrow the others.
+      defaultVerticalAlignment: pw.TableCellVerticalAlignment.middle,
+      border: const pw.TableBorder(
+        left: _border, right: _border, top: _border, bottom: _border,
+        horizontalInside: _border, verticalInside: _border,
       ),
+      // Full descriptions take some of ملاحظات' width -- notes stay one line.
+      columnWidths: {
+        0: pw.FlexColumnWidth(wrap ? 1.5 : 2.3),
+        1: const pw.FlexColumnWidth(1),
+        2: const pw.FlexColumnWidth(1),
+        3: pw.FlexColumnWidth(wrap ? 4.4 : 3.6),
+        4: const pw.FixedColumnWidth(34),
+      },
+      children: [
+        pw.TableRow(children: [
+          _cell('ملاحظات', header: true),
+          _cell('الكمية', header: true),
+          _cell('الوحدة', header: true),
+          _cell('اسم الصنف ووصفه', header: true),
+          _cell('م', header: true),
+        ]),
+        for (var i = 0; i < chunk.length; i++)
+          pw.TableRow(children: [
+            _cell(chunk[i].note ?? '', singleLine: true, wrap: wrap),
+            _cell(formatQty(chunk[i].quantity), wrap: wrap),
+            _cell(chunk[i].unit, wrap: wrap),
+            _cell(
+              [chunk[i].itemName, if (chunk[i].description?.trim().isNotEmpty ?? false) chunk[i].description!.trim()]
+                  .join(' - '),
+              align: pw.TextAlign.right,
+              wrap: wrap,
+            ),
+            _cell('${startIndex + i + 1}', wrap: wrap),
+          ]),
+      ],
     );
+    return wrap ? table : _ltr(table);
   }
 
   /// Both blocks are left blank for a handwritten name and signature at the

@@ -57,6 +57,10 @@ class CreateDeliveryReceiptState extends Equatable {
   /// the replacement into several has no sane meaning.
   final bool splitByCategory;
 
+  /// Settings-menu toggle: print each item's full description exactly as in
+  /// the contract instead of just its packaging (packagingOf()).
+  final bool fullDescription;
+
   /// سندات already created by the current submit() that haven't been shown
   /// yet -- only populated right after a split submit, drained one at a
   /// time by advanceToNextReceipt() as the rep dismisses each preview.
@@ -87,6 +91,7 @@ class CreateDeliveryReceiptState extends Equatable {
     this.pdfBytes,
     this.receiptId,
     this.splitByCategory = false,
+    this.fullDescription = false,
     this.remainingReceipts = const [],
     this.currentCategoryLabel,
     this.totalReceiptsThisSubmit = 1,
@@ -138,6 +143,7 @@ class CreateDeliveryReceiptState extends Equatable {
     // alone could never clear it once set.
     bool clearCustomDate = false,
     bool? splitByCategory,
+    bool? fullDescription,
     List<FiledReceipt>? remainingReceipts,
     String? currentCategoryLabel,
     int? totalReceiptsThisSubmit,
@@ -161,6 +167,7 @@ class CreateDeliveryReceiptState extends Equatable {
       dateMode: dateMode ?? this.dateMode,
       customDate: clearCustomDate ? null : (customDate ?? this.customDate),
       splitByCategory: splitByCategory ?? this.splitByCategory,
+      fullDescription: fullDescription ?? this.fullDescription,
       remainingReceipts: remainingReceipts ?? this.remainingReceipts,
       currentCategoryLabel: currentCategoryLabel ?? this.currentCategoryLabel,
       totalReceiptsThisSubmit: totalReceiptsThisSubmit ?? this.totalReceiptsThisSubmit,
@@ -186,6 +193,7 @@ class CreateDeliveryReceiptState extends Equatable {
         dateMode,
         customDate,
         splitByCategory,
+        fullDescription,
         remainingReceipts,
         currentCategoryLabel,
         totalReceiptsThisSubmit,

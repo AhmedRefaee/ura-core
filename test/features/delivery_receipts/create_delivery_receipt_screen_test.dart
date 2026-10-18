@@ -231,7 +231,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('سند منفصل لكل فئة'), findsOneWidget);
 
-    await tester.tap(find.byType(Switch));
+    await tester.tap(find.text('سند منفصل لكل فئة'));
     await tester.pumpAndSettle();
     expect(find.textContaining('سيتم إنشاء'), findsNothing, reason: 'nothing picked yet, so no preview count');
     expect(cubit.state.splitByCategory, isTrue);
@@ -249,7 +249,24 @@ void main() {
     expect(find.textContaining('سيتم إنشاء 2 سند منفصل'), findsOneWidget);
   });
 
-  testWidgets('the settings icon is hidden while editing an existing سند -- a replace can\'t split',
+  testWidgets('the settings menu toggles printing the full contract description', (tester) async {
+    tester.view.physicalSize = const Size(800, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(await buildScreen([lebna]));
+    await tester.pumpAndSettle();
+    expect(cubit.state.fullDescription, isFalse, reason: 'packaging only stays the default');
+
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('الوصف الكامل للبنود'));
+    await tester.pumpAndSettle();
+
+    expect(cubit.state.fullDescription, isTrue);
+  });
+
+  testWidgets('while editing, settings offer the full description but not splitting or drafts -- a replace can\'t split',
       (tester) async {
     tester.view.physicalSize = const Size(800, 4000);
     tester.view.devicePixelRatio = 1.0;
@@ -259,7 +276,12 @@ void main() {
     await tester.pumpWidget(await buildScreen([qishta], launch: DeliveryReceiptLaunch.edit(old)));
     await tester.pumpAndSettle();
 
-    expect(find.byIcon(Icons.tune), findsNothing);
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+
+    expect(find.text('الوصف الكامل للبنود'), findsOneWidget);
+    expect(find.text('سند منفصل لكل فئة'), findsNothing);
+    expect(find.text('حفظ كمسودة الآن'), findsNothing);
   });
 
   testWidgets('the paste-from-message button sits beside the search field', (tester) async {

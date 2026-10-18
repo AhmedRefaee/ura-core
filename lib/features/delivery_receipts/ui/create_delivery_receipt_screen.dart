@@ -126,14 +126,12 @@ class CreateDeliveryReceiptScreen extends StatelessWidget {
                     ? null
                     : () => _back(context, state),
               ),
-              // Splitting by category only makes sense while picking items,
-              // and never while editing -- see submit()'s note on why a
-              // replace operation can't split. Kept out of the items step's
-              // own toolbar on purpose: that screen is for search, typing
-              // quantities, and the calculator -- settings live here instead.
+              // Settings only make sense while picking items. Kept out of
+              // the items step's own toolbar on purpose: that screen is for
+              // search, typing quantities, and the calculator -- settings
+              // live here instead.
               actions: [
-                if (step == _Step.items && !context.read<CreateDeliveryReceiptCubit>().launch.isEdit)
-                  _SettingsMenuButton(state: state),
+                if (step == _Step.items) _SettingsMenuButton(state: state),
               ],
               bottom: PreferredSize(
                 preferredSize: const Size.fromHeight(4),
@@ -206,6 +204,9 @@ class _SendSettingsDialogState extends State<_SendSettingsDialog> {
       bloc: widget.cubit,
       builder: (context, state) {
         final count = state.chosenCategoryCount;
+        // Editing replaces exactly one سند (see submit()) so it can't split,
+        // and a draft of it would file a new سند instead of the replacement.
+        final isEdit = widget.cubit.launch.isEdit;
         return AlertDialog(
           title: const Text('إعدادات السند'),
           content: Column(
@@ -249,30 +250,40 @@ class _SendSettingsDialogState extends State<_SendSettingsDialog> {
               const Divider(height: 24),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: const Text('سند منفصل لكل فئة'),
-                subtitle: Text(
-                  state.splitByCategory && count > 0
-                      ? 'سيتم إنشاء $count سند منفصل حسب فئات البنود المختارة'
-                      : 'بدلاً من سند واحد يضم كل البنود المختارة، حسب فئات العقد',
+                title: const Text('الوصف الكامل للبنود'),
+                subtitle: const Text('يطبع وصف كل بند كما في العقد، بدلاً من التعبئة فقط'),
+                value: state.fullDescription,
+                onChanged: state.submitting ? null : widget.cubit.setFullDescription,
+              ),
+              if (!isEdit) ...[
+                const Divider(height: 24),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('سند منفصل لكل فئة'),
+                  subtitle: Text(
+                    state.splitByCategory && count > 0
+                        ? 'سيتم إنشاء $count سند منفصل حسب فئات البنود المختارة'
+                        : 'بدلاً من سند واحد يضم كل البنود المختارة، حسب فئات العقد',
+                  ),
+                  value: state.splitByCategory,
+                  onChanged: (v) => widget.cubit.setSplitByCategory(v),
                 ),
-                value: state.splitByCategory,
-                onChanged: (v) => widget.cubit.setSplitByCategory(v),
-              ),
-              const Divider(height: 24),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: const Icon(Icons.save_outlined),
-                title: const Text('حفظ كمسودة الآن'),
-                subtitle: const Text('يحفظ البنود والكميات المختارة هنا فقط، دون إنشاء السند'),
-                enabled: state.quantities.isNotEmpty,
-                onTap: () async {
-                  await widget.cubit.saveDraft();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context)
-                        .showSnackBar(const SnackBar(content: Text('تم حفظ المسودة')));
-                  }
-                },
-              ),
+                const Divider(height: 24),
+                ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: const Icon(Icons.save_outlined),
+                  title: const Text('حفظ كمسودة الآن'),
+                  subtitle: const Text('يحفظ البنود والكميات المختارة هنا فقط، دون إنشاء السند'),
+                  enabled: state.quantities.isNotEmpty,
+                  onTap: () async {
+                    await widget.cubit.saveDraft();
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context)
+                          .showSnackBar(const SnackBar(content: Text('تم حفظ المسودة')));
+                    }
+                  },
+                ),
+              ],
             ],
           ),
           actions: [

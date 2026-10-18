@@ -23,6 +23,7 @@ class DeliveryReceiptDraft extends Equatable {
   final String dateMode;
   final DateTime? customDate;
   final bool splitByCategory;
+  final bool fullDescription;
   final DateTime savedAt;
 
   const DeliveryReceiptDraft({
@@ -37,6 +38,7 @@ class DeliveryReceiptDraft extends Equatable {
     required this.dateMode,
     this.customDate,
     required this.splitByCategory,
+    this.fullDescription = false,
     required this.savedAt,
   });
 
@@ -54,6 +56,7 @@ class DeliveryReceiptDraft extends Equatable {
         'dateMode': dateMode,
         'customDate': customDate?.toIso8601String(),
         'splitByCategory': splitByCategory,
+        'fullDescription': fullDescription,
         'savedAt': savedAt.toIso8601String(),
       };
 
@@ -71,6 +74,7 @@ class DeliveryReceiptDraft extends Equatable {
         dateMode: json['dateMode'] as String,
         customDate: json['customDate'] == null ? null : DateTime.parse(json['customDate'] as String),
         splitByCategory: json['splitByCategory'] as bool? ?? false,
+        fullDescription: json['fullDescription'] as bool? ?? false,
         savedAt: DateTime.parse(json['savedAt'] as String),
       );
 
@@ -87,6 +91,7 @@ class DeliveryReceiptDraft extends Equatable {
         dateMode,
         customDate,
         splitByCategory,
+        fullDescription,
         savedAt,
       ];
 }

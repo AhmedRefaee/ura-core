@@ -11,6 +11,8 @@ import '../../../shared/models/entity.dart';
 import '../../../shared/models/project.dart';
 import '../../../shared/models/project_item.dart';
 import '../../../shared/utils/quantity_format.dart';
+import '../../project_share/data/project_share_repository.dart';
+import '../../project_share/models/shared_project.dart';
 import '../../projects/data/project_repository.dart';
 import '../../verifier/data/entity_repository.dart';
 import '../data/delivery_receipt_draft_repository.dart';
@@ -20,6 +22,24 @@ import 'delivery_receipt_pdf.dart';
 import '../../../core/storage/signed_storage_url.dart';
 
 part 'create_delivery_receipt_state.dart';
+
+/// An outside entity filing a سند through a share link instead of an
+/// account. Everything the flow shows comes from the link's [project]; what it
+/// files goes to the link's token, as a pending submission for staff to
+/// approve.
+class PortalLaunch {
+  final String token;
+  final SharedProject project;
+  final String submitterName;
+  final String? submitterPhone;
+
+  const PortalLaunch({
+    required this.token,
+    required this.project,
+    required this.submitterName,
+    this.submitterPhone,
+  });
+}
 
 /// Where the flow was opened from. Launched after an order's last step it
 /// arrives with the entity (and the project, if the order has one) already
@@ -40,14 +60,25 @@ class DeliveryReceiptLaunch {
   /// info -- see CreateDeliveryReceiptCubit.init()/_prefillFromDraft().
   final DeliveryReceiptDraft? draft;
 
-  const DeliveryReceiptLaunch({this.orderId, this.entity, this.projectId, this.replacing, this.draft});
+  /// Set when an outside entity files through a share link -- see [PortalLaunch].
+  final PortalLaunch? portal;
+
+  const DeliveryReceiptLaunch({this.orderId, this.entity, this.projectId, this.replacing, this.draft, this.portal});
+
+  const DeliveryReceiptLaunch.portal(PortalLaunch this.portal)
+      : orderId = null,
+        entity = null,
+        projectId = null,
+        replacing = null,
+        draft = null;
 
   DeliveryReceiptLaunch.edit(DeliveryReceipt receipt)
       : orderId = receipt.orderId,
         entity = receipt.entity,
         projectId = receipt.projectId,
         replacing = receipt,
-        draft = null;
+        draft = null,
+        portal = null;
 
   /// [replacing] is the سند an edit draft (DeliveryReceiptDraft.isEdit)
   /// replaces, looked up fresh by the caller; null files it as a new سند.
@@ -55,9 +86,11 @@ class DeliveryReceiptLaunch {
       : orderId = d.orderId,
         entity = null,
         projectId = null,
-        draft = d;
+        draft = d,
+        portal = null;
 
   bool get isEdit => replacing != null;
+  bool get isPortal => portal != null;
 }
 
 /// Groups [items] by category, in each category's first-appearance order --
@@ -79,6 +112,9 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
   final DeliveryReceiptDraftRepository _drafts;
   final DeliveryReceiptLaunch launch;
 
+  /// Only used in portal mode, to file the submission.
+  final ProjectShareRepository? _share;
+
   /// The draft this session resumed from, if any -- saveDraft() overwrites
   /// it instead of creating a duplicate, and a successful submit() deletes
   /// it rather than leaving a stale copy behind.
@@ -90,11 +126,26 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     this._receipts,
     this._storage,
     this._drafts,
-    this.launch,
-  )   : _draftId = launch.draft?.id,
+    this.launch, {
+    ProjectShareRepository? share,
+  })  : _share = share,
+        _draftId = launch.draft?.id,
         super(const CreateDeliveryReceiptState());
 
   Future<void> init() async {
+    final portal = launch.portal;
+    if (portal != null) {
+      // No entity / project steps and no server round-trips: the link already
+      // handed over the one project this person may file against.
+      final project = portal.project.asProject;
+      emit(CreateDeliveryReceiptState(
+        entity: portal.project.asEntity,
+        project: project,
+        projects: [project],
+        items: portal.project.asProjectItems,
+      ));
+      return;
+    }
     emit(state.copyWith(loading: true, clearError: true));
     final (entities, withProjects) = await (
       _entities.fetchEntities(),
@@ -425,6 +476,38 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
             ),
         ],
       );
+
+      final portal = launch.portal;
+      if (portal != null) {
+        // The submitter never uploads anything: the PDF stays on their device
+        // and staff regenerate it when they approve.
+        final submitted = await _share!.submitReceipt(
+          token: portal.token,
+          submitterName: portal.submitterName,
+          submitterPhone: portal.submitterPhone,
+          notes: (notes?.trim().isEmpty ?? true) ? null : notes!.trim(),
+          meta: {
+            'date_mode': state.dateMode.name,
+            if (state.dateMode == ReceiptDateMode.custom && state.customDate != null)
+              'custom_date': state.customDate!.toIso8601String().split('T').first,
+            'full_description': state.fullDescription,
+          },
+          items: [
+            for (final i in items)
+              {
+                'project_item_id': i.id,
+                'quantity_delivered': state.quantities[i.id],
+                if (state.itemNotes[i.id] != null) 'notes': state.itemNotes[i.id],
+              },
+          ],
+        );
+        switch (submitted) {
+          case AppSuccess(:final data):
+            return AppSuccess((receiptId: data, pdfBytes: pdf, categoryLabel: items.first.category));
+          case AppFailure(:final error):
+            return AppFailure(error);
+        }
+      }
 
       final upload = await _storage.uploadPdf(pdf);
       final String pdfUrl;

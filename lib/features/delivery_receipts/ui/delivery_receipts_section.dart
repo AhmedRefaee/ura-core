@@ -5,6 +5,7 @@ import '../../../shared/models/delivery_receipt.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../data/delivery_receipt_repository.dart';
 import 'receipt_actions.dart';
+import 'receipt_status_chip.dart';
 
 /// Read-only list of سندات attached to an order or a project. Shown inside
 /// the record a role already opens, never as its own top-level section.
@@ -114,19 +115,58 @@ class DeliveryReceiptTile extends StatelessWidget {
     final itemsSummary = receipt.items
         .map((i) => '${i.itemNameSnapshot} (${formatQty(i.quantityDelivered)} ${i.unitSnapshot})')
         .join('، ');
-    return ListTile(
-      leading: const Icon(Icons.picture_as_pdf_outlined),
-      title: Text([receipt.project?.name, receipt.entity?.name].whereType<String>().join(' · ')),
-      subtitle: Text(
-        [date, receipt.rep?.fullName, itemsSummary].whereType<String>().where((s) => s.isNotEmpty).join('\n'),
-        maxLines: 3,
-        overflow: TextOverflow.ellipsis,
+    // A سند an outside entity filed through a share link is set apart: it
+    // carries who sent it and, until approved, an amber tint and a
+    // pending badge, so it can't be mistaken for one of ours.
+    final portal = receipt.isPortalSubmission;
+    final pending = receipt.status == ReceiptStatus.pending;
+    final author = portal
+        ? 'من الجهة: ${[receipt.submitterName, receipt.submitterPhone].whereType<String>().where((s) => s.isNotEmpty).join(' · ')}'
+        : receipt.rep?.fullName;
+    final style = receiptStatusStyle(receipt.status);
+    return Container(
+      color: pending ? style.color.withValues(alpha: 0.08) : null,
+      child: ListTile(
+        leading: Icon(
+          pending ? Icons.hourglass_top_rounded : (portal ? Icons.business_outlined : Icons.picture_as_pdf_outlined),
+          color: pending ? style.color : (portal ? Theme.of(context).colorScheme.tertiary : null),
+        ),
+        title: Text([receipt.project?.name, receipt.entity?.name].whereType<String>().join(' · ')),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (portal)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 4),
+                child: Wrap(
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    Chip(
+                      avatar: const Icon(Icons.business_outlined, size: 14),
+                      label: const Text('من الجهة'),
+                      visualDensity: VisualDensity.compact,
+                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
+                    ReceiptStatusChip(receipt.status),
+                  ],
+                ),
+              ),
+            Text(
+              [date, author, itemsSummary].whereType<String>().where((s) => s.isNotEmpty).join('\n'),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+        isThreeLine: true,
+        trailing: onChanged != null && (isOwnReceipt(receipt) || pending)
+            ? ReceiptMenuButton(receipt: receipt, onChanged: onChanged!)
+            : (receipt.pdfUrl == null ? null : const Icon(Icons.open_in_new, size: 18)),
+        onTap: receipt.pdfUrl == null
+            ? (pending && onChanged != null ? () async { if (await approveReceipt(context, receipt)) onChanged!(); } : null)
+            : () => openReceiptPdf(context, receipt),
       ),
-      isThreeLine: true,
-      trailing: onChanged != null && isOwnReceipt(receipt)
-          ? ReceiptMenuButton(receipt: receipt, onChanged: onChanged!)
-          : (receipt.pdfUrl == null ? null : const Icon(Icons.open_in_new, size: 18)),
-      onTap: receipt.pdfUrl == null ? null : () => openReceiptPdf(context, receipt),
     );
   }
 }

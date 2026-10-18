@@ -42,6 +42,7 @@ class _ShareLinksSheetState extends State<ShareLinksSheet> {
   String? _error;
   bool _busy = false;
   _Expiry _expiry = _Expiry.never;
+  bool _canSubmit = false;
 
   @override
   void initState() {
@@ -69,6 +70,7 @@ class _ShareLinksSheetState extends State<ShareLinksSheet> {
     final result = await _repo.createLink(
       widget.project.id,
       expiresAt: d == null ? null : DateTime.now().add(d),
+      canSubmit: _canSubmit,
     );
     if (!mounted) return;
     setState(() => _busy = false);
@@ -169,7 +171,14 @@ class _ShareLinksSheetState extends State<ShareLinksSheet> {
                   ),
               ],
             ),
-            const SizedBox(height: 12),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('السماح بإنشاء سند'),
+              subtitle: const Text('تستطيع الجهة إنشاء سندات من الرابط، وتصلك للاعتماد قبل أن تصبح رسمية'),
+              value: _canSubmit,
+              onChanged: _busy ? null : (v) => setState(() => _canSubmit = v),
+            ),
+            const SizedBox(height: 4),
             FilledButton.icon(
               onPressed: _busy ? null : _create,
               icon: _busy
@@ -207,7 +216,10 @@ class _ShareLinksSheetState extends State<ShareLinksSheet> {
                         leading: const Icon(Icons.link),
                         title: Text('أُنشئ ${_date(link.createdAt)}'),
                         subtitle: Text(
-                          link.expiresAt == null ? 'بدون انتهاء' : 'ينتهي ${_date(link.expiresAt!)}',
+                          [
+                            link.expiresAt == null ? 'بدون انتهاء' : 'ينتهي ${_date(link.expiresAt!)}',
+                            if (link.canSubmit) 'يسمح بإنشاء سند',
+                          ].join(' · '),
                         ),
                         trailing: Wrap(
                           children: [

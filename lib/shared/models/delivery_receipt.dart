@@ -3,6 +3,10 @@ import 'entity.dart';
 import 'profile.dart';
 import 'project.dart';
 
+/// 'pending' / 'rejected' only ever apply to a سند an outside entity filed
+/// through a share link; everything a rep or verifier files is approved.
+enum ReceiptStatus { approved, pending, rejected }
+
 class DeliveryReceiptItem extends Equatable {
   final String id;
   final String deliveryReceiptId;
@@ -50,8 +54,14 @@ class DeliveryReceipt extends Equatable {
   final String projectId;
   final Project? project;
   final String? orderId;
-  final String repId;
+  /// Null for a submission from an outside entity (see [isPortalSubmission]).
+  final String? repId;
   final Profile? rep;
+  final ReceiptStatus status;
+  final String? sourceLinkId;
+  final String? submitterName;
+  final String? submitterPhone;
+  final Map<String, dynamic>? submissionMeta;
   final DateTime? deliveredAt;
   final String? pdfUrl;
   final String? letterheadImageUrlSnapshot;
@@ -66,8 +76,13 @@ class DeliveryReceipt extends Equatable {
     required this.projectId,
     this.project,
     this.orderId,
-    required this.repId,
+    this.repId,
     this.rep,
+    this.status = ReceiptStatus.approved,
+    this.sourceLinkId,
+    this.submitterName,
+    this.submitterPhone,
+    this.submissionMeta,
     this.deliveredAt,
     this.pdfUrl,
     this.letterheadImageUrlSnapshot,
@@ -89,8 +104,17 @@ class DeliveryReceipt extends Equatable {
       projectId: map['project_id'] as String,
       project: projectMap != null ? Project.fromMap(projectMap) : null,
       orderId: map['order_id'] as String?,
-      repId: map['rep_id'] as String,
+      repId: map['rep_id'] as String?,
       rep: repMap != null ? Profile.fromMap(repMap) : null,
+      status: switch (map['status']) {
+        'pending' => ReceiptStatus.pending,
+        'rejected' => ReceiptStatus.rejected,
+        _ => ReceiptStatus.approved,
+      },
+      sourceLinkId: map['source_link_id'] as String?,
+      submitterName: map['submitter_name'] as String?,
+      submitterPhone: map['submitter_phone'] as String?,
+      submissionMeta: (map['submission_meta'] as Map?)?.cast<String, dynamic>(),
       deliveredAt: map['delivered_at'] != null
           ? DateTime.parse(map['delivered_at'] as String)
           : null,
@@ -107,7 +131,10 @@ class DeliveryReceipt extends Equatable {
     );
   }
 
+  /// Filed by an outside entity through a share link rather than by staff.
+  bool get isPortalSubmission => sourceLinkId != null || (repId == null && submitterName != null);
+
   @override
   List<Object?> get props =>
-      [id, entityId, projectId, orderId, repId, deliveredAt, pdfUrl, notes];
+      [id, entityId, projectId, orderId, repId, status, deliveredAt, pdfUrl, notes];
 }

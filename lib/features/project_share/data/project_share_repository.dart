@@ -20,7 +20,7 @@ class ProjectShareRepository {
     try {
       final data = await _supabase
           .from('project_share_links')
-          .select('id, token, created_at, expires_at, revoked_at')
+          .select('id, token, created_at, expires_at, revoked_at, can_submit')
           .eq('project_id', projectId)
           .order('created_at', ascending: false);
       return AppSuccess([
@@ -33,12 +33,17 @@ class ProjectShareRepository {
   }
 
   /// Returns the new link's token.
-  Future<AppResult<String>> createLink(String projectId, {DateTime? expiresAt}) async {
+  Future<AppResult<String>> createLink(
+    String projectId, {
+    DateTime? expiresAt,
+    bool canSubmit = false,
+  }) async {
     try {
       logger.d('ProjectShareRepository → createLink: $projectId');
       final result = await _supabase.rpc('create_project_share_link', params: {
         'p_project_id': projectId,
         'p_expires_at': expiresAt?.toUtc().toIso8601String(),
+        'p_can_submit': canSubmit,
       });
       if (result['success'] as bool? ?? false) return AppSuccess(result['token'] as String);
       return AppFailure(ErrorHandler.fromRpcResult(result as Map));
@@ -56,6 +61,47 @@ class ProjectShareRepository {
       return AppFailure(ErrorHandler.fromRpcResult(result as Map));
     } catch (e, st) {
       logger.e('ProjectShareRepository → revokeLink failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  /// Files a سند for approval through the link. Returns the new receipt's id.
+  /// [items] is [{project_item_id, quantity_delivered, notes?}].
+  Future<AppResult<String>> submitReceipt({
+    required String token,
+    required String submitterName,
+    String? submitterPhone,
+    required List<Map<String, dynamic>> items,
+    String? notes,
+    required Map<String, dynamic> meta,
+  }) async {
+    try {
+      logger.d('ProjectShareRepository → submitReceipt | items: ${items.length}');
+      final result = await _supabase.rpc('submit_shared_receipt', params: {
+        'p_token': token,
+        'p_submitter_name': submitterName,
+        'p_submitter_phone': submitterPhone,
+        'p_items': items,
+        'p_notes': notes,
+        'p_meta': meta,
+      });
+      if (result['success'] as bool? ?? false) return AppSuccess(result['delivery_receipt_id'] as String);
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
+    } catch (e, st) {
+      logger.e('ProjectShareRepository → submitReceipt failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  /// The سندات filed through this link, newest first -- and only those.
+  Future<AppResult<List<SharedReceipt>>> fetchSharedReceipts(String token) async {
+    try {
+      final result = await _supabase.rpc('get_shared_receipts', params: {'p_token': token});
+      return AppSuccess([
+        for (final e in (result as List? ?? const [])) SharedReceipt.fromMap(e as Map<String, dynamic>),
+      ]);
+    } catch (e, st) {
+      logger.e('ProjectShareRepository → fetchSharedReceipts failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

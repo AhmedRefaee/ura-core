@@ -119,6 +119,33 @@ class DeliveryReceiptRepository {
     }
   }
 
+  /// Approves a pending submission from an outside entity, attaching the
+  /// PDF generated for it. Verifier / manager / admin only (server-enforced).
+  Future<AppResult<void>> approveDeliveryReceipt(String receiptId, String pdfUrl) async {
+    try {
+      final result = await _supabase.rpc('approve_delivery_receipt', params: {
+        'p_receipt_id': receiptId,
+        'p_pdf_url': pdfUrl,
+      });
+      if (result['success'] as bool? ?? false) return const AppSuccess(null);
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
+    } catch (e, st) {
+      logger.e('DeliveryReceiptRepository → approveDeliveryReceipt failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<void>> rejectDeliveryReceipt(String receiptId) async {
+    try {
+      final result = await _supabase.rpc('reject_delivery_receipt', params: {'p_receipt_id': receiptId});
+      if (result['success'] as bool? ?? false) return const AppSuccess(null);
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
+    } catch (e, st) {
+      logger.e('DeliveryReceiptRepository → rejectDeliveryReceipt failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
   /// Archives a سند (hidden everywhere, kept for audit). Only its creator
   /// or an admin may; the server enforces it.
   Future<AppResult<void>> deleteDeliveryReceipt(String receiptId) async {

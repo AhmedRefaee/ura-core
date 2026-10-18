@@ -16,9 +16,12 @@ final class SharedProjectLoading extends SharedProjectState {
 
 final class SharedProjectLoaded extends SharedProjectState {
   final SharedProject project;
-  const SharedProjectLoaded(this.project);
+
+  /// The سندات filed through this link (only when it allows filing).
+  final List<SharedReceipt> receipts;
+  const SharedProjectLoaded(this.project, {this.receipts = const []});
   @override
-  List<Object?> get props => [project];
+  List<Object?> get props => [project, receipts];
 }
 
 /// Unknown, revoked or expired -- the server doesn't say which, by design.
@@ -42,10 +45,26 @@ class SharedProjectCubit extends Cubit<SharedProjectState> {
   Future<void> load() async {
     emit(const SharedProjectLoading());
     final result = await _repo.fetchShared(token);
-    emit(switch (result) {
-      AppSuccess(data: final p?) => SharedProjectLoaded(p),
-      AppSuccess() => const SharedProjectInvalid(),
-      AppFailure(:final error) => SharedProjectError(error.message),
-    });
+    switch (result) {
+      case AppSuccess(data: final p?):
+        emit(SharedProjectLoaded(p, receipts: p.canSubmit ? await _fetchReceipts() : const []));
+      case AppSuccess():
+        emit(const SharedProjectInvalid());
+      case AppFailure(:final error):
+        emit(SharedProjectError(error.message));
+    }
   }
+
+  /// After filing a سند, or to pick up a decision made in the meantime.
+  Future<void> refreshReceipts() async {
+    final current = state;
+    if (current is! SharedProjectLoaded || !current.project.canSubmit) return;
+    final receipts = await _fetchReceipts();
+    if (!isClosed) emit(SharedProjectLoaded(current.project, receipts: receipts));
+  }
+
+  Future<List<SharedReceipt>> _fetchReceipts() async => switch (await _repo.fetchSharedReceipts(token)) {
+        AppSuccess(:final data) => data,
+        AppFailure() => const <SharedReceipt>[],
+      };
 }

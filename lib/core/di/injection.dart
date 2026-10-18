@@ -25,6 +25,7 @@ import '../../features/verifier/logic/ai_add_item_cubit.dart';
 import '../../features/templates/logic/template_editor_cubit.dart';
 import '../../features/templates/logic/template_management_cubit.dart';
 import '../../features/rep/data/rep_orders_repository.dart';
+import '../../features/project_share/data/project_share_repository.dart';
 import '../../features/rep/logic/rep_orders_cubit.dart';
 import '../../features/rep/logic/rep_order_detail_cubit.dart';
 import '../../features/storage/data/storage_repository.dart';
@@ -100,6 +101,7 @@ Future<void> setupDependencies() async {
   sl.registerLazySingleton<ChatRepository>(() => ChatRepository());
   sl.registerLazySingleton<ProjectRepository>(() => ProjectRepository());
   sl.registerLazySingleton<ProjectStorageService>(() => ProjectStorageService());
+  sl.registerLazySingleton<ProjectShareRepository>(() => ProjectShareRepository());
   sl.registerLazySingleton<DeliveryReceiptRepository>(() => DeliveryReceiptRepository());
   sl.registerLazySingleton<DeliveryReceiptStorageService>(() => DeliveryReceiptStorageService());
   // Matches locally first (instant, free, no quota) and only calls Gemini for

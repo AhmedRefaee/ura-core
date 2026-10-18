@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/storage/signed_storage_url.dart';
 import '../logic/shared_project_cubit.dart';
 import '../models/shared_project.dart';
+import 'portal_receipts.dart';
 
 /// The public page a share link opens: the project's بنود, read-only, for
 /// the outside entity. Reachable signed out -- the router never redirects
@@ -27,7 +28,7 @@ class SharedProjectScreen extends StatelessWidget {
                 text: 'تعذر تحميل البنود، حاول مرة أخرى',
                 onRetry: context.read<SharedProjectCubit>().load,
               ),
-            SharedProjectLoaded(:final project) => _ProjectView(project: project),
+            SharedProjectLoaded(:final project, :final receipts) => _ProjectView(project: project, receipts: receipts),
           },
         ),
       ),
@@ -37,7 +38,8 @@ class SharedProjectScreen extends StatelessWidget {
 
 class _ProjectView extends StatelessWidget {
   final SharedProject project;
-  const _ProjectView({required this.project});
+  final List<SharedReceipt> receipts;
+  const _ProjectView({required this.project, required this.receipts});
 
   @override
   Widget build(BuildContext context) {
@@ -60,9 +62,26 @@ class _ProjectView extends StatelessWidget {
                 padding: const EdgeInsets.only(top: 4),
                 child: Text(entity, style: theme.textTheme.titleMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
               ),
-            const SizedBox(height: 4),
-            Text('بنود العقد (${project.items.length})', style: theme.textTheme.bodySmall),
             const SizedBox(height: 16),
+            if (project.canSubmit) ...[
+              FilledButton.icon(
+                onPressed: project.items.isEmpty
+                    ? null
+                    : () => startPortalReceipt(context, context.read<SharedProjectCubit>().token, project),
+                icon: const Icon(Icons.post_add),
+                label: const Text('إنشاء سند'),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'يُرسل السند للمراجعة والاعتماد من الشركة.',
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.outline),
+              ),
+              const SizedBox(height: 16),
+              PortalReceiptsSection(project: project, receipts: receipts),
+            ],
+            Text('بنود العقد (${project.items.length})', style: theme.textTheme.titleMedium),
+            const SizedBox(height: 12),
             if (project.items.isEmpty)
               const Padding(
                 padding: EdgeInsets.symmetric(vertical: 32),

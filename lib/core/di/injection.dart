@@ -195,6 +195,7 @@ Future<void> setupDependencies() async {
       sl<DeliveryReceiptStorageService>(),
       sl<DeliveryReceiptDraftRepository>(),
       launch,
+      share: sl<ProjectShareRepository>(),
     ),
   );
   sl.registerFactoryParam<RepOrderDetailCubit, String, void>(

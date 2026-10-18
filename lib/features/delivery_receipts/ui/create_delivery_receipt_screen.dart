@@ -48,6 +48,14 @@ class CreateDeliveryReceiptScreen extends StatelessWidget {
 
   static Future<void> _back(BuildContext context, CreateDeliveryReceiptState s) async {
     final cubit = context.read<CreateDeliveryReceiptCubit>();
+    if (cubit.launch.isPortal) {
+      // A link holder is already on the only project they can file against;
+      // backing out leaves the flow (there are no drafts to save to).
+      if (s.quantities.isEmpty || await _confirmDiscard(context, s)) {
+        if (context.mounted) Navigator.of(context).pop(false);
+      }
+      return;
+    }
     switch (_stepOf(s)) {
       case _Step.entity:
         Navigator.of(context).pop(false);
@@ -60,6 +68,25 @@ class CreateDeliveryReceiptScreen extends StatelessWidget {
           s.projects.length <= 1 ? cubit.clearEntity() : cubit.clearProject();
         }
     }
+  }
+
+  static Future<bool> _confirmDiscard(BuildContext context, CreateDeliveryReceiptState s) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('إلغاء السند؟'),
+        content: Text('اخترت ${s.selectedCount} بند ولم يُرسل السند بعد. سيتم تجاهل ما أدخلته.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')),
+          FilledButton.tonal(
+            style: FilledButton.styleFrom(foregroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('تجاهل'),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
   }
 
   /// Stepping back from here would silently throw away any quantities
@@ -108,7 +135,7 @@ class CreateDeliveryReceiptScreen extends StatelessWidget {
         }
         final step = _stepOf(state);
         return PopScope(
-          canPop: step == _Step.entity,
+          canPop: step == _Step.entity && !context.read<CreateDeliveryReceiptCubit>().launch.isPortal,
           onPopInvokedWithResult: (didPop, _) {
             if (!didPop && !state.submitting) _back(context, state);
           },
@@ -267,6 +294,7 @@ class _SendSettingsDialogState extends State<_SendSettingsDialog> {
                 value: state.splitByCategory,
                 onChanged: state.submitting ? null : widget.cubit.setSplitByCategory,
               ),
+              if (!widget.cubit.launch.isPortal) ...[
               const Divider(height: 24),
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -286,6 +314,7 @@ class _SendSettingsDialogState extends State<_SendSettingsDialog> {
                   }
                 },
               ),
+              ],
             ],
           ),
           actions: [
@@ -311,10 +340,11 @@ class _Breadcrumb extends StatelessWidget {
   Widget build(BuildContext context) {
     final cubit = context.read<CreateDeliveryReceiptCubit>();
     final theme = Theme.of(context);
+    final fixed = cubit.launch.isPortal;
     Widget chip(IconData icon, String label, VoidCallback onTap) => ActionChip(
       avatar: Icon(icon, size: 18),
       label: Text(label, overflow: TextOverflow.ellipsis),
-      onPressed: state.submitting ? null : onTap,
+      onPressed: state.submitting || fixed ? null : onTap,
     );
     return Container(
       width: double.infinity,
@@ -928,11 +958,12 @@ class _ItemsStepState extends State<_ItemsStep> {
                             onChanged: (v) => setState(() => _query = v),
                           ),
                         ),
-                        IconButton(
-                          icon: const Icon(Icons.content_paste_go),
-                          tooltip: 'تحديد البنود من رسالة',
-                          onPressed: state.submitting ? null : _pasteFromMessage,
-                        ),
+                        if (!context.read<CreateDeliveryReceiptCubit>().launch.isPortal)
+                          IconButton(
+                            icon: const Icon(Icons.content_paste_go),
+                            tooltip: 'تحديد البنود من رسالة',
+                            onPressed: state.submitting ? null : _pasteFromMessage,
+                          ),
                       ],
                     ),
                   ),
@@ -1711,8 +1742,10 @@ class _SubmitBar extends StatelessWidget {
                             : const Icon(Icons.check_circle_outline),
                         label: Text(
                           state.submitting
-                              ? 'جارٍ الحفظ...'
-                              : (context.read<CreateDeliveryReceiptCubit>().launch.isEdit ? 'تأكيد التعديل' : 'تأكيد وإنشاء السند'),
+                              ? (context.read<CreateDeliveryReceiptCubit>().launch.isPortal ? 'جارٍ الإرسال...' : 'جارٍ الحفظ...')
+                              : (context.read<CreateDeliveryReceiptCubit>().launch.isPortal
+                                  ? 'إرسال للاعتماد'
+                                  : context.read<CreateDeliveryReceiptCubit>().launch.isEdit ? 'تأكيد التعديل' : 'تأكيد وإنشاء السند'),
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.w600,
@@ -1758,7 +1791,7 @@ class _FiledView extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: Text([
-            cubit.launch.isEdit ? 'تم تعديل السند' : 'تم إنشاء السند',
+            cubit.launch.isPortal ? 'أُرسل السند للاعتماد' : cubit.launch.isEdit ? 'تم تعديل السند' : 'تم إنشاء السند',
             if (total > 1) '($position من $total)',
             if (total > 1 && (category?.isNotEmpty ?? false)) '— $category',
           ].join(' ')),

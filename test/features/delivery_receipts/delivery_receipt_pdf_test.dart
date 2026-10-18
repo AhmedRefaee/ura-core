@@ -83,6 +83,36 @@ void main() {
     if (out != null) File(out).writeAsBytesSync(bytes);
   });
 
+  test('full contract descriptions grow their rows and still break across pages', () async {
+    final font = File('C:/Windows/Fonts/tahoma.ttf');
+    final bold = File('C:/Windows/Fonts/tahomabd.ttf');
+    if (!font.existsSync()) return;
+
+    // Long enough to wrap several lines -- 30 of them can't fit one page,
+    // and a fixed-height row would clip them.
+    const spec = 'جودة عالية مصنوعه من 100 % دسم الحليب الابقار، إنتاج حديث لا يتجاوز تاريخه '
+        'شهراً من تاريخ التوريد، مطابق للمواصفات القياسية السعودية، معبأ في عبوات محكمة '
+        'الإغلاق / كرتون 4*2.75كيلو جرام';
+    final bytes = await DeliveryReceiptPdf.build(
+      entityName: 'صندوق التنمية العقارية',
+      projectName: 'توريد مواد غذائية',
+      date: DateTime(2026, 10, 18),
+      fullDescription: true,
+      theme: pw.ThemeData.withFont(
+        base: pw.Font.ttf(font.readAsBytesSync().buffer.asByteData()),
+        bold: pw.Font.ttf((bold.existsSync() ? bold : font).readAsBytesSync().buffer.asByteData()),
+      ),
+      lines: [
+        for (var i = 1; i <= 30; i++)
+          ReceiptPdfLine(itemName: 'لبنة $i', description: spec, unit: 'كرتون', quantity: i.toDouble()),
+      ],
+    );
+
+    expect(bytes.length, greaterThan(1000));
+    final out = Platform.environment['RECEIPT_PDF_FULL_DESC_OUT'];
+    if (out != null) File(out).writeAsBytesSync(bytes);
+  });
+
   test('the سند shows only the packaging part of a description', () {
     expect(packagingOf('جودة عالية مصنوعه من 100 % دسم الحليب الابقار / كرتون 4*2.75كيلو جرام'), 'كرتون 4*2.75كيلو جرام');
     expect(packagingOf('طازج مبرد من حليب الأبقار الطبيعي بروتين لا يقل عن 6 ملغم/ 180مل'), '180مل');

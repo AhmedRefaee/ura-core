@@ -9,6 +9,7 @@ import '../../../shared/utils/quantity_format.dart';
 import '../../auth/logic/auth_cubit.dart';
 import '../../auth/logic/auth_state.dart';
 import '../../delivery_receipts/ui/delivery_receipts_section.dart';
+import '../../project_share/ui/share_links_sheet.dart';
 import '../logic/boq_excel.dart';
 import '../logic/boq_excel_cubit.dart';
 import '../logic/project_detail_cubit.dart';
@@ -64,6 +65,11 @@ class ProjectDetailScreen extends StatelessWidget {
               title: Text(state.project.name),
               actions: [
                 if (state.canEditItems) ...[
+                  IconButton(
+                    tooltip: 'مشاركة البنود مع الجهة',
+                    icon: const Icon(Icons.share_outlined),
+                    onPressed: () => showShareLinksSheet(context, state.project),
+                  ),
                   IconButton(
                     tooltip: 'تصدير Excel',
                     icon: const Icon(Icons.file_download_outlined),

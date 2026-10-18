@@ -35,6 +35,9 @@ import '../features/entities/ui/entities_screen.dart';
 import '../features/templates/logic/template_management_cubit.dart';
 import '../features/templates/ui/template_management_screen.dart';
 import '../features/settings/ui/settings_screen.dart';
+import '../features/project_share/data/project_share_repository.dart';
+import '../features/project_share/logic/shared_project_cubit.dart';
+import '../features/project_share/ui/shared_project_screen.dart';
 import '../shared/models/profile.dart';
 
 class AppRoutes {
@@ -57,6 +60,7 @@ class AppRoutes {
   static const String entities = '/entities';
   static const String templates = '/templates';
   static const String settings = '/settings';
+  static const String sharedProject = '/share/:token';
 }
 
 class GoRouterRefreshStream extends ChangeNotifier {
@@ -80,6 +84,10 @@ GoRouter createRouter(AuthCubit authCubit) {
     redirect: (context, state) {
       final authState = authCubit.state;
       final location = state.matchedLocation;
+
+      // A project share link is public: whoever opens it -- signed out,
+      // pending, or logged in as anyone -- stays on it.
+      if (location.startsWith('/share/')) return null;
 
       if (authState is AuthInitial || authState is AuthLoading) return null;
 
@@ -127,6 +135,16 @@ GoRouter createRouter(AuthCubit authCubit) {
       return null;
     },
     routes: [
+      GoRoute(
+        path: AppRoutes.sharedProject,
+        builder: (_, state) => BlocProvider(
+          create: (_) => SharedProjectCubit(
+            sl<ProjectShareRepository>(),
+            state.pathParameters['token']!,
+          )..load(),
+          child: const SharedProjectScreen(),
+        ),
+      ),
       GoRoute(
         path: AppRoutes.login,
         builder: (_, _) => const LoginScreen(),

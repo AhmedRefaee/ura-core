@@ -51,7 +51,29 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
   }
 
   Future<void> _resumeDraft(DeliveryReceiptDraft draft) async {
-    if (await openCreateDeliveryReceipt(context, launch: DeliveryReceiptLaunch.resumeDraft(draft))) {
+    final messenger = ScaffoldMessenger.of(context);
+    DeliveryReceipt? replacing;
+    final replacesId = draft.replacesReceiptId;
+    if (replacesId != null) {
+      // Looked up fresh: the سند may have been deleted or replaced since
+      // the draft was saved.
+      switch (await sl<DeliveryReceiptRepository>().fetchReceipt(replacesId)) {
+        case AppSuccess(:final data):
+          replacing = data;
+          if (data == null) {
+            messenger.showSnackBar(const SnackBar(
+              content: Text('السند الأصلي حُذف أو استُبدل — ستُنشئ هذه المسودة سنداً جديداً'),
+            ));
+          }
+        case AppFailure(:final error):
+          // Opening anyway would file it as a new سند next to the original.
+          messenger.showSnackBar(SnackBar(content: Text(error.message)));
+          return;
+      }
+    }
+    if (!mounted) return;
+    final launch = DeliveryReceiptLaunch.resumeDraft(draft, replacing: replacing);
+    if (await openCreateDeliveryReceipt(context, launch: launch)) {
       _refresh();
     }
     _reloadDrafts();
@@ -189,8 +211,12 @@ class _DraftTile extends StatelessWidget {
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 4),
       child: ListTile(
-        leading: const Icon(Icons.edit_note),
-        title: Text(draft.projectName, maxLines: 1, overflow: TextOverflow.ellipsis),
+        leading: Icon(draft.isEdit ? Icons.edit_outlined : Icons.edit_note),
+        title: Text(
+          draft.isEdit ? 'تعديل: ${draft.projectName}' : draft.projectName,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
         subtitle: Text(
           '${draft.entityName} · ${draft.itemCount == 1 ? 'بند واحد' : '${draft.itemCount} بنود'} · $when',
           maxLines: 1,

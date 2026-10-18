@@ -49,11 +49,12 @@ class DeliveryReceiptLaunch {
         replacing = receipt,
         draft = null;
 
-  DeliveryReceiptLaunch.resumeDraft(DeliveryReceiptDraft d)
+  /// [replacing] is the سند an edit draft (DeliveryReceiptDraft.isEdit)
+  /// replaces, looked up fresh by the caller; null files it as a new سند.
+  DeliveryReceiptLaunch.resumeDraft(DeliveryReceiptDraft d, {this.replacing})
       : orderId = d.orderId,
         entity = null,
         projectId = null,
-        replacing = null,
         draft = d;
 
   bool get isEdit => replacing != null;
@@ -198,9 +199,11 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
 
   /// Editing: carry the old سند's quantities and per-item notes over, once,
   /// onto the lines that still exist in the (possibly re-imported) quotation.
+  /// A resumed edit draft holds newer progress than the filed سند, so it
+  /// wins -- see _prefillFromDraft().
   void _prefillFromReplaced(Project project, List<ProjectItem> items) {
     final old = launch.replacing;
-    if (old == null || _prefilled || project.id != old.projectId) return;
+    if (old == null || launch.draft != null || _prefilled || project.id != old.projectId) return;
     _prefilled = true;
     final present = {for (final i in items) i.id};
     final quantities = <String, double>{
@@ -288,8 +291,8 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       emit(state.copyWith(dateMode: ReceiptDateMode.custom, customDate: date));
 
   /// Settings-menu toggle: submit() files one سند per category instead of
-  /// one covering every picked item. No effect while editing -- see
-  /// submit()'s own note on why a replace operation can't split.
+  /// one covering every picked item. While editing, the original is
+  /// replaced by the whole set -- see submit().
   void setSplitByCategory(bool value) => emit(state.copyWith(splitByCategory: value));
 
   /// Settings-menu toggle: the سند prints each item's whole contract
@@ -332,6 +335,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       customDate: state.customDate,
       splitByCategory: state.splitByCategory,
       fullDescription: state.fullDescription,
+      replacesReceiptId: launch.replacing?.id,
       savedAt: DateTime.now(),
     ));
   }
@@ -344,17 +348,20 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
 
     final chosen = state.items.where((i) => (state.quantities[i.id] ?? 0) > 0).toList();
 
-    // A replace operation has exactly one old سند to replace -- splitting
-    // the replacement into several, with no single one being "the"
-    // replacement, has no sane meaning. The settings toggle is hidden
-    // while editing for the same reason; this is the belt-and-braces
-    // backstop in case state ever disagrees with the UI.
-    final splitting = state.splitByCategory && launch.replacing == null;
-    final groups = splitting ? groupItemsByCategory(chosen) : [chosen];
+    final groups = state.splitByCategory ? groupItemsByCategory(chosen) : [chosen];
 
     final filed = <FiledReceipt>[];
-    for (final group in groups) {
-      final result = await _fileOne(entity: entity, project: project, items: group, notes: notes);
+    for (final (index, group) in groups.indexed) {
+      // Editing with a split: only the last سند replaces the original, so
+      // a failure partway leaves the original standing (and a retry can
+      // still replace it) rather than archived with half its lines missing.
+      final result = await _fileOne(
+        entity: entity,
+        project: project,
+        items: group,
+        notes: notes,
+        replaces: index == groups.length - 1 ? launch.replacing?.id : null,
+      );
       switch (result) {
         case AppSuccess(:final data):
           filed.add(data);
@@ -393,6 +400,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     required Project project,
     required List<ProjectItem> items,
     required String? notes,
+    required String? replaces,
   }) async {
     try {
       final pdf = await DeliveryReceiptPdf.build(
@@ -431,7 +439,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
         entityId: entity.id,
         projectId: project.id,
         orderId: launch.orderId,
-        replacesReceiptId: launch.replacing?.id,
+        replacesReceiptId: replaces,
         pdfUrl: pdfUrl,
         notes: (notes?.trim().isEmpty ?? true) ? null : notes!.trim(),
         items: [

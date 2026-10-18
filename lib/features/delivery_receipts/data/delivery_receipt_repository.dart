@@ -67,6 +67,23 @@ class DeliveryReceiptRepository {
     }
   }
 
+  /// One live سند by id; null once it's been deleted or replaced.
+  Future<AppResult<DeliveryReceipt?>> fetchReceipt(String receiptId) async {
+    try {
+      logger.d('DeliveryReceiptRepository → fetchReceipt: $receiptId');
+      final data = await _supabase
+          .from('delivery_receipts')
+          .select(_receiptSelect)
+          .eq('id', receiptId)
+          .isFilter('deleted_at', null)
+          .maybeSingle();
+      return AppSuccess(data == null ? null : DeliveryReceipt.fromMap(data));
+    } catch (e, st) {
+      logger.e('DeliveryReceiptRepository → fetchReceipt failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
   /// Create a delivery receipt via the server-side RPC for atomicity.
   /// [items] is a list of {"project_item_id": uuid, "quantity_delivered": num}
   Future<AppResult<String>> createDeliveryReceipt({

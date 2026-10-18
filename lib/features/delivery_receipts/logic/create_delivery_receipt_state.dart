@@ -52,9 +52,8 @@ class CreateDeliveryReceiptState extends Equatable {
   final String? receiptId;
 
   /// Settings-menu toggle: file one سند per category instead of a single
-  /// one covering every picked item. Forced off while editing (see submit())
-  /// -- a replace operation has exactly one old سند to replace, so splitting
-  /// the replacement into several has no sane meaning.
+  /// one covering every picked item. While editing, the set together
+  /// replaces the original (see submit()).
   final bool splitByCategory;
 
   /// Settings-menu toggle: print each item's full description exactly as in

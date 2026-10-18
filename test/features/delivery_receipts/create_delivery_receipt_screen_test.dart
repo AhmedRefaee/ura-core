@@ -266,8 +266,7 @@ void main() {
     expect(cubit.state.fullDescription, isTrue);
   });
 
-  testWidgets('while editing, settings offer the full description but not splitting or drafts -- a replace can\'t split',
-      (tester) async {
+  testWidgets('while editing, settings offer the same options as a new سند', (tester) async {
     tester.view.physicalSize = const Size(800, 4000);
     tester.view.devicePixelRatio = 1.0;
     addTearDown(tester.view.reset);
@@ -280,8 +279,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('الوصف الكامل للبنود'), findsOneWidget);
-    expect(find.text('سند منفصل لكل فئة'), findsNothing);
-    expect(find.text('حفظ كمسودة الآن'), findsNothing);
+    expect(find.text('سند منفصل لكل فئة'), findsOneWidget);
+    expect(find.text('حفظ كمسودة الآن'), findsOneWidget);
   });
 
   testWidgets('the paste-from-message button sits beside the search field', (tester) async {

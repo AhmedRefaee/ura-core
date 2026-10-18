@@ -24,6 +24,10 @@ class DeliveryReceiptDraft extends Equatable {
   final DateTime? customDate;
   final bool splitByCategory;
   final bool fullDescription;
+
+  /// Set when the draft was saved while editing: the filed سند it will
+  /// replace once it's submitted, rather than filing alongside it.
+  final String? replacesReceiptId;
   final DateTime savedAt;
 
   const DeliveryReceiptDraft({
@@ -39,10 +43,13 @@ class DeliveryReceiptDraft extends Equatable {
     this.customDate,
     required this.splitByCategory,
     this.fullDescription = false,
+    this.replacesReceiptId,
     required this.savedAt,
   });
 
   int get itemCount => quantities.length;
+
+  bool get isEdit => replacesReceiptId != null;
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -57,6 +64,7 @@ class DeliveryReceiptDraft extends Equatable {
         'customDate': customDate?.toIso8601String(),
         'splitByCategory': splitByCategory,
         'fullDescription': fullDescription,
+        'replacesReceiptId': replacesReceiptId,
         'savedAt': savedAt.toIso8601String(),
       };
 
@@ -75,6 +83,7 @@ class DeliveryReceiptDraft extends Equatable {
         customDate: json['customDate'] == null ? null : DateTime.parse(json['customDate'] as String),
         splitByCategory: json['splitByCategory'] as bool? ?? false,
         fullDescription: json['fullDescription'] as bool? ?? false,
+        replacesReceiptId: json['replacesReceiptId'] as String?,
         savedAt: DateTime.parse(json['savedAt'] as String),
       );
 
@@ -92,6 +101,7 @@ class DeliveryReceiptDraft extends Equatable {
         customDate,
         splitByCategory,
         fullDescription,
+        replacesReceiptId,
         savedAt,
       ];
 }

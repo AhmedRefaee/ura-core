@@ -320,6 +320,49 @@ void main() {
     expect(cubit.state.currentCategoryLabel, 'الفحم');
   });
 
+  test('editing with splitByCategory files one سند per category; only the last replaces the original',
+      () async {
+    const bread = ProjectItem(id: 'b1', projectId: 'p2', itemName: 'خبز', quantity: 5, unit: 'كيس', category: 'مخبوزات');
+    const coal = ProjectItem(id: 'c1', projectId: 'p2', itemName: 'فحم', quantity: 5, unit: 'كيس', category: 'الفحم');
+    when(() => projects.fetchProjectItems('p2')).thenAnswer((_) async => const AppSuccess([bread, coal]));
+
+    final receiptRepo = MockDeliveryReceiptRepository();
+    final storage = MockDeliveryReceiptStorageService();
+    when(() => storage.uploadPdf(any())).thenAnswer((_) async => const AppSuccess('https://example.com/r.pdf'));
+    final replaces = <String?>[];
+    when(() => receiptRepo.createDeliveryReceipt(
+          entityId: any(named: 'entityId'),
+          projectId: any(named: 'projectId'),
+          items: any(named: 'items'),
+          orderId: any(named: 'orderId'),
+          pdfUrl: any(named: 'pdfUrl'),
+          notes: any(named: 'notes'),
+          replacesReceiptId: any(named: 'replacesReceiptId'),
+        )).thenAnswer((inv) async {
+      replaces.add(inv.namedArguments[#replacesReceiptId] as String?);
+      return AppSuccess('receipt-${replaces.length}');
+    });
+
+    const old = DeliveryReceipt(id: 'r1', entityId: 'e1', entity: entity, projectId: 'p2', repId: 'u1');
+    final cubit = CreateDeliveryReceiptCubit(
+      entities,
+      projects,
+      receiptRepo,
+      storage,
+      drafts,
+      DeliveryReceiptLaunch.edit(old),
+    );
+    await cubit.init();
+    cubit.setQuantity('b1', 5);
+    cubit.setQuantity('c1', 5);
+    cubit.setSplitByCategory(true);
+
+    await cubit.submit();
+
+    expect(replaces, [null, 'r1']);
+    expect(cubit.state.totalReceiptsThisSubmit, 2);
+  });
+
   test('splitByCategory off (the default) still files everything as a single سند', () async {
     const bread = ProjectItem(id: 'b1', projectId: 'p2', itemName: 'خبز', quantity: 5, unit: 'كيس', category: 'مخبوزات');
     const coal = ProjectItem(id: 'c1', projectId: 'p2', itemName: 'فحم', quantity: 5, unit: 'كيس', category: 'الفحم');
@@ -420,6 +463,30 @@ void main() {
       expect(cubit.state.itemNotes, {'i1': 'ملاحظة محفوظة'});
       expect(cubit.state.dateMode, ReceiptDateMode.blank);
       expect(cubit.state.splitByCategory, isTrue);
+    });
+
+    test('a draft saved while editing remembers the سند it replaces, and resuming it keeps editing', () async {
+      const old = DeliveryReceipt(
+        id: 'r1',
+        entityId: 'e1',
+        entity: entity,
+        projectId: 'p2',
+        repId: 'u1',
+        items: [
+          DeliveryReceiptItem(id: 'x', deliveryReceiptId: 'r1', projectItemId: 'i1', itemNameSnapshot: 'كرسي', unitSnapshot: 'حبة', quantityDelivered: 4),
+        ],
+      );
+      final editing = build(DeliveryReceiptLaunch.edit(old));
+      await editing.init();
+      editing.setQuantity('i1', 9);
+      await editing.saveDraft();
+      final saved = verify(() => drafts.save(captureAny())).captured.single as DeliveryReceiptDraft;
+      expect(saved.replacesReceiptId, 'r1');
+
+      final resumed = build(DeliveryReceiptLaunch.resumeDraft(saved, replacing: old));
+      await resumed.init();
+      expect(resumed.launch.isEdit, isTrue);
+      expect(resumed.state.quantities, {'i1': 9.0}, reason: 'the draft is newer than the filed سند');
     });
 
     test('resuming a draft drops lines no longer in the quotation, same as editing does', () async {

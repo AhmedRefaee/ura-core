@@ -204,8 +204,6 @@ class _SendSettingsDialogState extends State<_SendSettingsDialog> {
       bloc: widget.cubit,
       builder: (context, state) {
         final count = state.chosenCategoryCount;
-        // Editing replaces exactly one سند (see submit()) so it can't split,
-        // and a draft of it would file a new سند instead of the replacement.
         final isEdit = widget.cubit.launch.isEdit;
         return AlertDialog(
           title: const Text('إعدادات السند'),
@@ -255,35 +253,39 @@ class _SendSettingsDialogState extends State<_SendSettingsDialog> {
                 value: state.fullDescription,
                 onChanged: state.submitting ? null : widget.cubit.setFullDescription,
               ),
-              if (!isEdit) ...[
-                const Divider(height: 24),
-                SwitchListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: const Text('سند منفصل لكل فئة'),
-                  subtitle: Text(
-                    state.splitByCategory && count > 0
-                        ? 'سيتم إنشاء $count سند منفصل حسب فئات البنود المختارة'
-                        : 'بدلاً من سند واحد يضم كل البنود المختارة، حسب فئات العقد',
-                  ),
-                  value: state.splitByCategory,
-                  onChanged: (v) => widget.cubit.setSplitByCategory(v),
+              const Divider(height: 24),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('سند منفصل لكل فئة'),
+                subtitle: Text(
+                  state.splitByCategory && count > 0
+                      ? (isEdit
+                          ? 'سيُستبدل السند الأصلي بـ $count سند منفصل حسب فئات البنود المختارة'
+                          : 'سيتم إنشاء $count سند منفصل حسب فئات البنود المختارة')
+                      : 'بدلاً من سند واحد يضم كل البنود المختارة، حسب فئات العقد',
                 ),
-                const Divider(height: 24),
-                ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.save_outlined),
-                  title: const Text('حفظ كمسودة الآن'),
-                  subtitle: const Text('يحفظ البنود والكميات المختارة هنا فقط، دون إنشاء السند'),
-                  enabled: state.quantities.isNotEmpty,
-                  onTap: () async {
-                    await widget.cubit.saveDraft();
-                    if (context.mounted) {
-                      ScaffoldMessenger.of(context)
-                          .showSnackBar(const SnackBar(content: Text('تم حفظ المسودة')));
-                    }
-                  },
+                value: state.splitByCategory,
+                onChanged: state.submitting ? null : widget.cubit.setSplitByCategory,
+              ),
+              const Divider(height: 24),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.save_outlined),
+                title: const Text('حفظ كمسودة الآن'),
+                subtitle: Text(
+                  isEdit
+                      ? 'يحفظ التعديلات هنا فقط، ويبقى السند الأصلي كما هو حتى تأكيد التعديل'
+                      : 'يحفظ البنود والكميات المختارة هنا فقط، دون إنشاء السند',
                 ),
-              ],
+                enabled: state.quantities.isNotEmpty && !state.submitting,
+                onTap: () async {
+                  await widget.cubit.saveDraft();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context)
+                        .showSnackBar(const SnackBar(content: Text('تم حفظ المسودة')));
+                  }
+                },
+              ),
             ],
           ),
           actions: [

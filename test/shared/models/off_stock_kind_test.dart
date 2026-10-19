@@ -105,21 +105,4 @@ void main() {
       }
     });
   });
-
-  group('draft items: the verifier knows nothing about stock', () {
-    test('a catalogue row is ordinary', () {
-      expect(draftOffStockKind(isCustom: false, sourceInventoryId: null), isNull);
-    });
-
-    test('a typed-in item is a new item', () {
-      expect(draftOffStockKind(isCustom: true, sourceInventoryId: null), OffStockKind.newItem);
-    });
-
-    test('an item carrying a catalogue link reads as out of stock', () {
-      expect(
-        draftOffStockKind(isCustom: true, sourceInventoryId: 'inv-1'),
-        OffStockKind.outOfStock,
-      );
-    });
-  });
 }

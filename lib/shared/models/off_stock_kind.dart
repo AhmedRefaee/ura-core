@@ -42,22 +42,3 @@ OffStockKind? offStockKindOf(OrderItem item, OrderDirection direction) {
   }
   return null;
 }
-
-/// The kind for one item of an order still being built.
-///
-/// Stock is not part of it any more: the verifier never sees what is on the
-/// shelf, so only a row they typed in as a new item is flagged.
-OffStockKind? draftOffStockKind({
-  required bool isCustom,
-  required String? sourceInventoryId,
-}) {
-  // The verifier does not know what is in stock -- storage decides that
-  // after the order is saved -- so a draft row is only ever a new item the
-  // verifier typed in themselves, never "out of stock".
-  if (isCustom) {
-    return sourceInventoryId == null
-        ? OffStockKind.newItem
-        : OffStockKind.outOfStock;
-  }
-  return null;
-}

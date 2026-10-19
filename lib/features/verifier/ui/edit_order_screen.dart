@@ -122,17 +122,13 @@ class EditOrderScreen extends StatelessWidget {
                         SizedBox(height: AppSpacing.verticalMedium),
                         const _SectionTitle('أصناف مضافة'),
                         ...ready.addedItems.map((draft) {
-                          final kind = draftOffStockKind(
-                            isCustom: draft.isCustom,
-                            sourceInventoryId: draft.sourceInventoryId,
-                          );
                           return ListTile(
                               dense: true,
                               leading: Icon(
-                                kind == null
-                                    ? Icons.inventory_2_outlined
-                                    : OffStock.iconFor(kind),
-                                color: kind == null ? Colors.teal : OffStock.color,
+                                draft.isCustom
+                                    ? Icons.edit_note
+                                    : Icons.inventory_2_outlined,
+                                color: draft.isCustom ? Colors.grey : Colors.teal,
                                 size: 20,
                               ),
                               title: Text(draft.displayName),
@@ -141,11 +137,6 @@ class EditOrderScreen extends StatelessWidget {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text('الكمية: ${formatQty(draft.quantity)}'),
-                                  if (kind != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: OffStock.badge(kind),
-                                    ),
                                 ],
                               ),
                               trailing: Container(

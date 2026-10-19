@@ -27,7 +27,7 @@ void main() {
     expect(find.text('شاي ليبتون'), findsOneWidget);
   });
 
-  testWidgets('the outside-inventory item is set apart with its own label',
+  testWidgets('a typed item is not labelled خارج المخزون: storage decides that now',
       (tester) async {
     await tester.pumpWidget(wrap(DraftOrderItemsList(
       items: const [
@@ -36,7 +36,8 @@ void main() {
       onRemove: (_) {},
     )));
 
-    expect(find.textContaining(OffStock.label), findsWidgets);
+    expect(find.textContaining(OffStock.label), findsNothing);
+    expect(find.byIcon(Icons.edit_note), findsOneWidget);
   });
 
   testWidgets('a stock item shows no outside-inventory label', (tester) async {
@@ -104,10 +105,12 @@ void main() {
 
     // Visually first is the stock row (index 1); visually last is the
     // outside-inventory row (index 0).
-    await tester.tap(find.byIcon(Icons.delete_outline).last);
+    // Rows render in the order they were added, so the first delete button
+    // is index 0 and the last is index 1.
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
     expect(removedIndex, 0);
 
-    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.tap(find.byIcon(Icons.delete_outline).last);
     expect(removedIndex, 1);
   });
 

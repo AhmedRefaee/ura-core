@@ -22,47 +22,42 @@ enum OffStockKind { newItem, outOfStock }
 
 /// The kind for one item of a saved order, or null when it is ordinary stock.
 ///
-/// [direction] is required and not optional: `wasUnavailableAtCreation` only
-/// carries this meaning on an outbound order. On an inbound one the rep is
-/// bringing stock *in*, so a zero on-hand count is the normal state of an item
-/// he is about to deliver — reading it as "go buy this" would be backwards.
+/// On an outbound order availability is storage's call: only a row storage
+/// marked ✗ ([ItemCheckStatus.rejected]) is something the rep has to source,
+/// and a row not yet reviewed is neither -- nobody knows yet, so it is not
+/// painted purple. [direction] is required because inbound orders keep the
+/// old reading: the rep is bringing stock *in*, nothing is "for purchase".
 OffStockKind? offStockKindOf(OrderItem item, OrderDirection direction) {
+  if (direction == OrderDirection.outbound) {
+    if (item.checkStatus != ItemCheckStatus.rejected) return null;
+    // A split-off shortfall (or a converted item) keeps a link back to the
+    // inventory row it came from; a genuinely new one has nothing to link to.
+    if (item.isCustom && item.sourceInventoryId == null) return OffStockKind.newItem;
+    return OffStockKind.outOfStock;
+  }
   if (item.isCustom) {
-    // A converted item keeps a link back to the row it came from; a genuinely
-    // new one has nothing to link to. That link is the only thing separating
-    // the two, since both are stored as is_custom.
     return item.sourceInventoryId == null
         ? OffStockKind.newItem
         : OffStockKind.outOfStock;
-  }
-  if (direction == OrderDirection.outbound && item.wasUnavailableAtCreation) {
-    return OffStockKind.outOfStock;
   }
   return null;
 }
 
 /// The kind for one item of an order still being built.
 ///
-/// A draft row has no `was_unavailable_at_creation` — the database sets that
-/// when the order is inserted. While the verifier is still typing, the live
-/// [inventoryQuantity] of the row he picked is the same fact, one moment
-/// earlier, so the draft list classifies off that instead. Pass null when the
-/// item is not an inventory row or the inventory has not loaded.
+/// Stock is not part of it any more: the verifier never sees what is on the
+/// shelf, so only a row they typed in as a new item is flagged.
 OffStockKind? draftOffStockKind({
   required bool isCustom,
   required String? sourceInventoryId,
-  required OrderDirection direction,
-  required double? inventoryQuantity,
 }) {
+  // The verifier does not know what is in stock -- storage decides that
+  // after the order is saved -- so a draft row is only ever a new item the
+  // verifier typed in themselves, never "out of stock".
   if (isCustom) {
     return sourceInventoryId == null
         ? OffStockKind.newItem
         : OffStockKind.outOfStock;
-  }
-  if (direction == OrderDirection.outbound &&
-      inventoryQuantity != null &&
-      inventoryQuantity <= 0) {
-    return OffStockKind.outOfStock;
   }
   return null;
 }

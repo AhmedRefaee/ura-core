@@ -159,8 +159,6 @@ class TemplateEditorScreen extends StatelessWidget {
                 ),
                 DraftOrderItemsList(
                   items: ready.items,
-                  inventory: ready.inventory,
-                  direction: ready.direction,
                   onRemove: cubit.removeItem,
                 ),
                 SizedBox(height: AppSpacing.verticalXLarge),

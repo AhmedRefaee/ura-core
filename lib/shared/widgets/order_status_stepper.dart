@@ -24,7 +24,7 @@ class OrderStatusStepper extends StatelessWidget {
           (status: OrderStatus.onTheMove, label: 'في الطريق'),
           (status: OrderStatus.delivered, label: 'استلام المخزن'),
         ];
-      case OrderDirection.outbound when order.involvesStorage:
+      case OrderDirection.outbound when !order.skipsStorageStep:
         return [
           (status: OrderStatus.assigned, label: 'معين'),
           (status: OrderStatus.pickedUp, label: 'أُرسل من المخزن'),

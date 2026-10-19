@@ -161,8 +161,6 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                       ),
                       DraftOrderItemsList(
                         items: ready.items,
-                        inventory: ready.inventory,
-                        direction: ready.direction,
                         onRemove: (i) =>
                             context.read<CreateOrderCubit>().removeItem(i),
                         onEditCustom: (i) =>

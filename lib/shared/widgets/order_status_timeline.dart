@@ -140,8 +140,8 @@ class OrderStatusTimeline extends StatelessWidget {
           reached: status == OrderStatus.delivered,
         ),
       ];
-    } else if (dir == OrderDirection.outbound && !order.involvesStorage) {
-      // Flow 2 -- pure خارج المخزون, nothing to pick up from storage, so
+    } else if (dir == OrderDirection.outbound && order.skipsStorageStep) {
+      // Storage reviewed it and has nothing to send, so
       // there is no pickedUp step in this flow at all (mirrors
       // order_status_stepper.dart's same split).
       steps = [
@@ -181,7 +181,7 @@ class OrderStatusTimeline extends StatelessWidget {
         ),
       ];
     } else {
-      // outbound Flow 1 -- involvesStorage
+      // outbound, storage sends (or has yet to decide)
       steps = [
         _TimelineStep(
           label: 'تم الإنشاء',

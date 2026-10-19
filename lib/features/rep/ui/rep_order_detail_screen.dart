@@ -594,11 +594,11 @@ class _ActionSectionState extends State<_ActionSection> {
     }
 
     if (dir == OrderDirection.outbound &&
-        order.involvesStorage &&
+        !order.storageReviewed &&
         status == OrderStatus.assigned) {
       return _WaitingCard(
         icon: Icons.warehouse_outlined,
-        message: 'في انتظار أمين المخزن لإصدار البضاعة',
+        message: 'بانتظار مراجعة المخزن للأصناف',
       );
     }
 
@@ -615,12 +615,11 @@ class _ActionSectionState extends State<_ActionSection> {
       );
     }
 
-    // Flow 2 -- pure خارج المخزون outbound order, nothing to pick up from
-    // storage. Go straight to "start moving": there is no meaningful
-    // "confirm receipt" step when nothing was received from anywhere.
+    // Storage reviewed the order and has nothing to send: the rep buys it
+    // all. Go straight to "start moving" -- there is nothing to receive.
     if (status == OrderStatus.assigned &&
         dir == OrderDirection.outbound &&
-        !order.involvesStorage) {
+        order.skipsStorageStep) {
       actionButton = _ActionButton(
         isActing: isActing,
         canAct: canProceed,

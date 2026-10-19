@@ -49,6 +49,10 @@ class Order extends Equatable {
   final DateTime? pickedUpAt;
   final DateTime? moveStartedAt;
   final DateTime? deliveredAt;
+
+  /// When storage finished marking every outbound item available (✓) or not
+  /// (✗). Null until then. See `storage_confirm_pickup`.
+  final DateTime? storageReviewedAt;
   final List<OrderItem> items;
 
   const Order({
@@ -70,12 +74,24 @@ class Order extends Equatable {
     this.pickedUpAt,
     this.moveStartedAt,
     this.deliveredAt,
+    this.storageReviewedAt,
     this.items = const [],
   });
 
-  /// True when the order includes items that come from / go to physical storage.
-  /// Distinguishes outbound-storage (Flow 1) from outbound-external (Flow 2).
-  bool get involvesStorage => items.any((i) => i.inventoryId != null);
+  /// True once storage has decided every outbound item (see [storageReviewedAt]).
+  bool get storageReviewed => storageReviewedAt != null;
+
+  /// True when storage is actually sending something out of the warehouse:
+  /// at least one item is marked available (✓). Replaces the old guess from
+  /// "has an inventory row" -- availability is storage's call now, not the
+  /// verifier's. False before the review and for an all-✗ order.
+  bool get storageSendsItems =>
+      items.any((i) => i.checkStatus == ItemCheckStatus.checked);
+
+  /// Storage has looked at the order and has nothing to send: the whole
+  /// order is the rep's to buy, so there is no warehouse step in its journey
+  /// (the old "Flow 2"). False until the review is done.
+  bool get skipsStorageStep => storageReviewed && !storageSendsItems;
 
   /// Every item the rep has to source himself, in list order.
   ///
@@ -153,6 +169,9 @@ class Order extends Equatable {
       deliveredAt: map['delivered_at'] != null
           ? DateTime.parse(map['delivered_at'] as String)
           : null,
+      storageReviewedAt: map['storage_reviewed_at'] != null
+          ? DateTime.parse(map['storage_reviewed_at'] as String)
+          : null,
       items: itemsList
               ?.map((i) => OrderItem.fromMap(i as Map<String, dynamic>))
               .toList() ??
@@ -183,5 +202,5 @@ class Order extends Equatable {
       };
 
   @override
-  List<Object?> get props => [id, referenceCode, direction, entityId, repId, storageActorId, status, createdAt];
+  List<Object?> get props => [id, referenceCode, direction, entityId, repId, storageActorId, status, createdAt, storageReviewedAt];
 }

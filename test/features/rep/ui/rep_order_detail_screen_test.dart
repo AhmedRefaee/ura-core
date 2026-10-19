@@ -52,7 +52,7 @@ void main() {
         inventoryName: 'مياه',
         quantity: 5,
         isCustom: false,
-        checkStatus: ItemCheckStatus.pending,
+        checkStatus: ItemCheckStatus.checked,
       );
 
   OrderItem offStockItem({DateTime? purchasedAt}) => OrderItem(
@@ -61,14 +61,12 @@ void main() {
         quantity: 2,
         isCustom: true,
         customDescription: 'صنف خارج المخزون',
-        checkStatus: ItemCheckStatus.pending,
+        checkStatus: ItemCheckStatus.rejected,
         purchasedAt: purchasedAt,
       );
 
-  /// A catalogue item that happened to have a zero balance when the order was
-  /// written. The rep has to go and buy it exactly like a خارج المخزون item,
-  /// which is the whole point -- before this it showed an orange warning and
-  /// no checkbox.
+  /// A catalogue item storage marked unavailable (✗). The rep has to go and
+  /// buy it exactly like a خارج المخزون item.
   OrderItem unavailableItem({DateTime? purchasedAt}) => OrderItem(
         id: 'item-empty',
         orderId: orderId,
@@ -76,8 +74,7 @@ void main() {
         inventoryName: 'شاي ليبتون',
         quantity: 4,
         isCustom: false,
-        checkStatus: ItemCheckStatus.pending,
-        wasUnavailableAtCreation: true,
+        checkStatus: ItemCheckStatus.rejected,
         purchasedAt: purchasedAt,
       );
 
@@ -85,6 +82,7 @@ void main() {
     required List<OrderItem> items,
     OrderDirection direction = OrderDirection.outbound,
     OrderStatus status = OrderStatus.assigned,
+    bool reviewed = true,
   }) =>
       Order(
         id: orderId,
@@ -93,6 +91,7 @@ void main() {
         repId: 'rep-1',
         status: status,
         createdBy: 'verifier-1',
+        storageReviewedAt: reviewed ? DateTime(2026, 8, 28) : null,
         items: items,
       );
 
@@ -137,6 +136,45 @@ void main() {
 
       verify(() => repo.startMove(orderId, notes: any(named: 'notes'))).called(1);
       verifyNever(() => repo.markPickedUp(any(), notes: any(named: 'notes')));
+    },
+  );
+
+  testWidgets(
+    'outbound order storage has not reviewed yet: waits, nothing to tap, nothing purple',
+    (tester) async {
+      final cubit = await loadedCubit(buildOrder(
+        items: [
+          const OrderItem(
+            id: 'p1', orderId: orderId, inventoryId: 'inv-1', inventoryName: 'مياه',
+            quantity: 5, isCustom: false, checkStatus: ItemCheckStatus.pending,
+          ),
+          const OrderItem(
+            id: 'p2', orderId: orderId, quantity: 2, isCustom: true,
+            customDescription: 'صنف جديد', checkStatus: ItemCheckStatus.pending,
+          ),
+        ],
+        reviewed: false,
+      ));
+      await pumpTall(tester, wrap(cubit));
+      await tester.pumpAndSettle();
+
+      expect(find.text('بانتظار مراجعة المخزن للأصناف'), findsOneWidget);
+      expect(find.byType(FilledButton), findsNothing);
+      expect(find.byType(CheckboxListTile), findsNothing);
+      expect(find.textContaining(OffStock.label), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'outbound order reviewed with some items sent: rep waits for the pickup, no direct start',
+    (tester) async {
+      // Storage sends something, so the order will move to picked_up; while it
+      // is still 'assigned' there is no start-move shortcut.
+      final cubit = await loadedCubit(buildOrder(items: [realItem(), offStockItem()]));
+      await pumpTall(tester, wrap(cubit));
+      await tester.pumpAndSettle();
+
+      expect(find.widgetWithText(FilledButton, 'ابدأ التنقل'), findsNothing);
     },
   );
 

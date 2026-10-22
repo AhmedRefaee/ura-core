@@ -160,7 +160,7 @@ class DeliveryReceiptTile extends StatelessWidget {
           ],
         ),
         isThreeLine: true,
-        trailing: onChanged != null && (isOwnReceipt(receipt) || pending)
+        trailing: onChanged != null && (canManageReceipt(context, receipt) || pending)
             ? ReceiptMenuButton(receipt: receipt, onChanged: onChanged!)
             : (receipt.pdfUrl == null ? null : const Icon(Icons.open_in_new, size: 18)),
         onTap: receipt.pdfUrl == null

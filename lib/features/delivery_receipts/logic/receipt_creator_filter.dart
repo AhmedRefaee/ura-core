@@ -43,6 +43,45 @@ List<({String id, String name})> receiptCreators(List<DeliveryReceipt> receipts,
   return [for (final e in byId.entries) (id: e.key, name: e.value)]..sort((a, b) => a.name.compareTo(b.name));
 }
 
+/// The entities in [receipts], once each, by name -- what the entity
+/// filter offers.
+List<({String id, String name})> receiptEntities(List<DeliveryReceipt> receipts) {
+  final byId = <String, String>{};
+  for (final r in receipts) {
+    byId[r.entityId] = r.entity?.name ?? 'جهة';
+  }
+  return [for (final e in byId.entries) (id: e.key, name: e.value)]..sort((a, b) => a.name.compareTo(b.name));
+}
+
+/// The day a سند is listed under: delivery if known, else filing.
+DateTime? receiptDay(DeliveryReceipt r) {
+  final when = (r.deliveredAt ?? r.createdAt)?.toLocal();
+  return when == null ? null : DateTime(when.year, when.month, when.day);
+}
+
+/// [entityId] null = every entity. [from]/[to] are whole days, inclusive;
+/// either may be null for an open end. A سند with no date only passes when
+/// no date range is set.
+List<DeliveryReceipt> filterReceiptsByEntityAndDate(
+  List<DeliveryReceipt> receipts, {
+  String? entityId,
+  DateTime? from,
+  DateTime? to,
+}) {
+  final start = from == null ? null : DateTime(from.year, from.month, from.day);
+  final end = to == null ? null : DateTime(to.year, to.month, to.day);
+  return [
+    for (final r in receipts)
+      if ((entityId == null || r.entityId == entityId) &&
+          (start == null && end == null ||
+              switch (receiptDay(r)) {
+                null => false,
+                final d => (start == null || !d.isBefore(start)) && (end == null || !d.isAfter(end)),
+              }))
+        r,
+  ];
+}
+
 List<DeliveryReceipt> filterReceiptsByCreator(
   List<DeliveryReceipt> receipts,
   ReceiptCreatorFilter filter,

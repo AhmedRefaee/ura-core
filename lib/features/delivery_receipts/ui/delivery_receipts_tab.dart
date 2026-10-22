@@ -29,6 +29,8 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
   late Future<AppResult<List<DeliveryReceipt>>> _future = _load();
   List<DeliveryReceiptDraft> _drafts = sl<DeliveryReceiptDraftRepository>().list();
   ReceiptCreatorFilter _filter = const MineFilter();
+  String? _entityId;
+  DateTimeRange? _dates;
   final String? _myId = Supabase.instance.client.auth.currentUser?.id;
 
   // The empty state has its own big "سند جديد"; don't show two.
@@ -107,41 +109,116 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
     }
   }
 
-  /// The verifier's view: who filed it, then the list for that choice.
+  Future<void> _pickDates() async {
+    final now = DateTime.now();
+    final range = _dates;
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2024),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      initialDateRange: range,
+      helpText: 'تاريخ السندات',
+      saveText: 'تطبيق',
+    );
+    if (picked != null) setState(() => _dates = picked);
+  }
+
+  static String _dateLabel(DateTimeRange r) {
+    final thisYear = DateTime.now().year;
+    String d(DateTime x) => x.year == thisYear ? '${x.day}/${x.month}' : '${x.day}/${x.month}/${x.year}';
+    return DateUtils.isSameDay(r.start, r.end) ? d(r.start) : '${d(r.start)} – ${d(r.end)}';
+  }
+
+  void _clearFilters() => setState(() {
+        _entityId = null;
+        _dates = null;
+        if (_managesAll) _filter = const EveryoneFilter();
+      });
+
+  /// Filters over the list: who filed it (verifiers/admins only), which
+  /// entity, which days -- then the list for that choice.
   Widget _filteredList(List<DeliveryReceipt> all) {
     final creators = receiptCreators(all, _myId);
+    final entities = receiptEntities(all);
     final hasLinks = all.any((r) => r.isPortalSubmission);
-    // A person can drop out of the list (their last سند deleted elsewhere).
+    // A choice can drop out of the list (its last سند deleted elsewhere).
     final filter = switch (_filter) {
       PersonFilter(:final userId) when !creators.any((c) => c.id == userId) => const MineFilter(),
       ShareLinkFilter() when !hasLinks => const MineFilter(),
       final f => f,
     };
-    final shown = filterReceiptsByCreator(all, filter, _myId);
+    final entityId = entities.any((e) => e.id == _entityId) ? _entityId : null;
+    final dates = _dates;
+    final shown = filterReceiptsByEntityAndDate(
+      _managesAll ? filterReceiptsByCreator(all, filter, _myId) : all,
+      entityId: entityId,
+      from: dates?.start,
+      to: dates?.end,
+    );
+    const dense = InputDecoration(border: OutlineInputBorder(), isDense: true);
+
     return Column(
       children: [
         Padding(
           padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
-          child: DropdownButtonFormField<ReceiptCreatorFilter>(
-            // initialValue only seeds the field; the key makes a filter
-            // changed from outside (fallback, "عرض الجميع") show up.
-            key: ValueKey(filter),
-            initialValue: filter,
-            isExpanded: true,
-            decoration: const InputDecoration(
-              labelText: 'المنشئ',
-              prefixIcon: Icon(Icons.person_search_outlined),
-              border: OutlineInputBorder(),
-              isDense: true,
-            ),
-            items: [
-              const DropdownMenuItem(value: MineFilter(), child: Text('سنداتي')),
-              const DropdownMenuItem(value: EveryoneFilter(), child: Text('الجميع')),
-              for (final c in creators)
-                DropdownMenuItem(value: PersonFilter(c.id), child: Text(c.name, overflow: TextOverflow.ellipsis)),
-              if (hasLinks) const DropdownMenuItem(value: ShareLinkFilter(), child: Text('عبر رابط الجهة')),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_managesAll) ...[
+                DropdownButtonFormField<ReceiptCreatorFilter>(
+                  // initialValue only seeds the field; the key makes a filter
+                  // changed from outside (fallback, "مسح") show up.
+                  key: ValueKey(filter),
+                  initialValue: filter,
+                  isExpanded: true,
+                  decoration: dense.copyWith(labelText: 'المنشئ', prefixIcon: const Icon(Icons.person_search_outlined)),
+                  items: [
+                    const DropdownMenuItem(value: MineFilter(), child: Text('سنداتي')),
+                    const DropdownMenuItem(value: EveryoneFilter(), child: Text('الجميع')),
+                    for (final c in creators)
+                      DropdownMenuItem(value: PersonFilter(c.id), child: Text(c.name, overflow: TextOverflow.ellipsis)),
+                    if (hasLinks) const DropdownMenuItem(value: ShareLinkFilter(), child: Text('عبر رابط الجهة')),
+                  ],
+                  onChanged: (f) => setState(() => _filter = f ?? const MineFilter()),
+                ),
+                const SizedBox(height: 8),
+              ],
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String?>(
+                      key: ValueKey('entity:$entityId'),
+                      initialValue: entityId,
+                      isExpanded: true,
+                      decoration: dense.copyWith(labelText: 'الجهة', prefixIcon: const Icon(Icons.business_outlined)),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('كل الجهات')),
+                        for (final e in entities)
+                          DropdownMenuItem(value: e.id, child: Text(e.name, overflow: TextOverflow.ellipsis)),
+                      ],
+                      onChanged: (id) => setState(() => _entityId = id),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: dates == null
+                        ? OutlinedButton.icon(
+                            onPressed: _pickDates,
+                            icon: const Icon(Icons.date_range_outlined),
+                            label: const Text('كل التواريخ'),
+                          )
+                        : InputChip(
+                            avatar: const Icon(Icons.date_range, size: 18),
+                            // Scaled down, never cut off: a date must stay whole.
+                            label: FittedBox(fit: BoxFit.scaleDown, child: Text(_dateLabel(dates))),
+                            onPressed: _pickDates,
+                            onDeleted: () => setState(() => _dates = null),
+                            deleteButtonTooltipMessage: 'إلغاء تصفية التاريخ',
+                          ),
+                  ),
+                ],
+              ),
             ],
-            onChanged: (f) => setState(() => _filter = f ?? const MineFilter()),
           ),
         ),
         Expanded(
@@ -150,14 +227,11 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
                   child: _Message(
                     icon: Icons.filter_alt_off_outlined,
                     title: 'لا توجد سندات لهذا الاختيار',
-                    subtitle: 'اختر "الجميع" لعرض سندات كل المستخدمين',
-                    action: OutlinedButton(
-                      onPressed: () => setState(() => _filter = const EveryoneFilter()),
-                      child: const Text('عرض الجميع'),
-                    ),
+                    subtitle: _managesAll ? 'غيّر عوامل التصفية أو اعرض سندات الجميع' : 'غيّر الجهة أو التاريخ',
+                    action: OutlinedButton(onPressed: _clearFilters, child: const Text('مسح التصفية')),
                   ),
                 )
-              : _ReceiptList(receipts: shown, onChanged: _refresh, showAuthor: filter is! MineFilter),
+              : _ReceiptList(receipts: shown, onChanged: _refresh, showAuthor: _managesAll && filter is! MineFilter),
         ),
       ],
     );
@@ -211,7 +285,6 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
                           ),
                         ),
                       ),
-                    AppSuccess(:final data) when !_managesAll => _ReceiptList(receipts: data, onChanged: _refresh),
                     AppSuccess(:final data) => _filteredList(data),
                   },
                 ),

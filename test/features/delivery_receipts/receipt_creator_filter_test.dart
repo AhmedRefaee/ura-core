@@ -41,4 +41,49 @@ void main() {
   test('no session means no "mine"', () {
     expect(filterReceiptsByCreator(all, const MineFilter(), null), isEmpty);
   });
+
+  group('entity and date', () {
+    DeliveryReceipt on(String id, String entityId, DateTime? created, {DateTime? delivered}) => DeliveryReceipt(
+          id: id,
+          entityId: entityId,
+          projectId: 'p1',
+          repId: 'me',
+          createdAt: created,
+          deliveredAt: delivered,
+        );
+
+    final oct1 = on('a', 'e1', DateTime(2026, 10, 1, 9));
+    final oct5Late = on('b', 'e2', DateTime(2026, 10, 5, 23, 30));
+    final deliveredOct10 = on('c', 'e1', DateTime(2026, 10, 3), delivered: DateTime(2026, 10, 10, 8));
+    final undated = on('d', 'e2', null);
+    final list = [oct1, oct5Late, deliveredOct10, undated];
+
+    test('no filter keeps everything, undated included', () {
+      expect(filterReceiptsByEntityAndDate(list), list);
+    });
+
+    test('entity alone', () {
+      expect(filterReceiptsByEntityAndDate(list, entityId: 'e2'), [oct5Late, undated]);
+    });
+
+    test('a range is whole days, both ends inclusive, by delivery date when known', () {
+      expect(
+        filterReceiptsByEntityAndDate(list, from: DateTime(2026, 10, 1), to: DateTime(2026, 10, 5)),
+        [oct1, oct5Late],
+        reason: '23:30 on the last day still counts; delivered-on-the-10th is outside',
+      );
+      expect(filterReceiptsByEntityAndDate(list, from: DateTime(2026, 10, 6)), [deliveredOct10]);
+    });
+
+    test('entity and dates together', () {
+      expect(
+        filterReceiptsByEntityAndDate(list, entityId: 'e1', to: DateTime(2026, 10, 31)),
+        [oct1, deliveredOct10],
+      );
+    });
+
+    test('entities offered once each', () {
+      expect(receiptEntities(list).map((e) => e.id).toSet(), {'e1', 'e2'});
+    });
+  });
 }

@@ -103,7 +103,7 @@ Uint8List buildBoqWorkbook({
     put(r, 0, item == null ? null : TextCellValue(item.category), style(right: true));
     put(r, 1, item == null ? null : TextCellValue(item.itemName), style(right: true));
     put(r, 2, item == null ? null : TextCellValue(item.description ?? ''), style(right: true));
-    put(r, 3, item == null ? null : DoubleCellValue(item.quantity), style(money: true));
+    put(r, 3, item == null || item.quantity == 0 ? null : DoubleCellValue(item.quantity), style(money: true));
     put(r, 4, item == null ? null : TextCellValue(item.unit), style());
     put(r, 5, item?.unitPrice == null ? null : DoubleCellValue(item!.unitPrice!), style(money: true));
     // Derived columns are formulas, so editing a quantity or price in Excel
@@ -184,7 +184,7 @@ BoqParseResult parseBoqWorkbook(Uint8List bytes, {String projectId = ''}) {
         continue;
       }
 
-      if (folded.any((f) => f == 'البند' || f.startsWith('اسم الصنف'))) {
+      if (folded.any(_isNameHeader)) {
         columns = _mapHeader(folded);
         sawHeader = true;
         continue;
@@ -219,13 +219,13 @@ BoqParseResult parseBoqWorkbook(Uint8List bytes, {String projectId = ''}) {
         continue;
       }
 
+      // Only the name and unit are required. A list without quantities is a
+      // valid quotation; a missing quantity is stored as 0 and shown blank.
       final rowErrors = <String>[];
       if (name.isEmpty) rowErrors.add('اسم البند مفقود');
       if (unit.isEmpty) rowErrors.add('الوحدة مفقودة');
-      final qty = _number(qtyRaw);
-      if (_text(qtyRaw).isEmpty) {
-        rowErrors.add('الكمية مفقودة');
-      } else if (qty == null) {
+      final qty = _text(qtyRaw).isEmpty ? 0.0 : _number(qtyRaw);
+      if (qty == null) {
         rowErrors.add('الكمية ليست رقماً: ${_text(qtyRaw)}');
       } else if (qty < 0) {
         rowErrors.add('الكمية سالبة');
@@ -255,7 +255,7 @@ BoqParseResult parseBoqWorkbook(Uint8List bytes, {String projectId = ''}) {
       // the pre-VAT one wasn't given.
       unitPrice ??= unitPriceVat == null ? null : round2(unitPriceVat / (1 + kVatRate));
       total ??= totalVat == null ? null : round2(totalVat / (1 + kVatRate));
-      total ??= unitPrice == null ? null : round2(qty! * unitPrice);
+      total ??= unitPrice == null || qty == 0 ? null : round2(qty! * unitPrice);
 
       items.add(ProjectItem(
         id: '',
@@ -275,24 +275,34 @@ BoqParseResult parseBoqWorkbook(Uint8List bytes, {String projectId = ''}) {
   return BoqParseResult(items: items, errors: errors, noHeaderFound: !sawHeader);
 }
 
+/// Header text (folded) that names the item column -- what marks a row as
+/// the table's header.
+const _nameHeaders = {
+  'البند', 'اسم البند', 'الصنف', 'الاصناف', 'البيان', 'الماده', 'اسم الماده', //
+  'item', 'items', 'item name', 'name', 'product',
+};
+
+bool _isNameHeader(String f) => _nameHeaders.contains(f) || f.startsWith('اسم الصنف');
+
 Map<_Col, int> _mapHeader(List<String> folded) {
   final map = <_Col, int>{};
   for (var c = 0; c < folded.length; c++) {
     final f = folded[c];
     if (f.isEmpty) continue;
-    final vatIncluded = f.contains('شامل') || f.contains('ضريبه');
+    final vatIncluded = f.contains('شامل') || f.contains('ضريبه') || f.contains('vat');
     final col = switch (f) {
-      'م' => _Col.number,
-      'البند' => _Col.name,
-      _ when f.contains('اسم الصنف') => _Col.name,
-      _ when f.contains('حزمه') || f.contains('الفيه') || f == 'فيه' || f.contains('تصنيف') => _Col.category,
-      _ when f.contains('وصف') => _Col.description,
-      _ when f.contains('كميه') => _Col.quantity,
-      _ when vatIncluded && f.contains('اجمالي') => _Col.totalVat,
+      'م' || 'no' || '#' => _Col.number,
+      _ when _isNameHeader(f) => _Col.name,
+      _ when f.contains('حزمه') || f.contains('الفيه') || f == 'فيه' || f.contains('تصنيف') || f == 'category' =>
+        _Col.category,
+      _ when f.contains('وصف') || f == 'description' => _Col.description,
+      _ when f.contains('كميه') || f == 'qty' || f == 'quantity' => _Col.quantity,
+      _ when vatIncluded && (f.contains('اجمالي') || f.contains('total')) => _Col.totalVat,
       _ when vatIncluded => _Col.unitPriceVat,
-      _ when f.contains('اجمالي') => _Col.total,
-      _ when f.contains('افرادي') || (f.contains('سعر') && f.contains('وحده')) => _Col.unitPrice,
-      _ when f.contains('وحده') => _Col.unit,
+      _ when f.contains('اجمالي') || f.contains('total') => _Col.total,
+      _ when f.contains('افرادي') || (f.contains('سعر') && f.contains('وحده')) || f.contains('price') =>
+        _Col.unitPrice,
+      _ when f.contains('وحده') || f == 'unit' || f == 'uom' => _Col.unit,
       _ => null,
     };
     if (col != null) map.putIfAbsent(col, () => c);

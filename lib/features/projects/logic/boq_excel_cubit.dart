@@ -95,7 +95,8 @@ class BoqExcelCubit extends Cubit<BoqExcelState> with SafeEmit<BoqExcelState> {
     try {
       final result = parseBoqWorkbook(bytes, projectId: projectId);
       if (result.noHeaderFound) {
-        safeEmit(const BoqExcelError('لم يتم العثور على جدول بنود (عمود "البند") في الملف'));
+        safeEmit(const BoqExcelError(
+            'لم يتم العثور على عمود اسم البند في الملف. سمِّ العمود "البند" أو "الصنف" أو "اسم الصنف"، وعمود الوحدة "الوحدة"'));
         return;
       }
       safeEmit(BoqExcelParsed(result, file.name));

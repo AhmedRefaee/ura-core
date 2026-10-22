@@ -16,6 +16,7 @@ import '../logic/project_detail_cubit.dart';
 import 'boq_import_preview_screen.dart';
 import 'boq_table.dart';
 import 'letterhead_picker.dart';
+import 'receipt_assignees_sheet.dart';
 import '../../../core/logic/debouncer.dart';
 import '../../../core/storage/signed_storage_url.dart';
 
@@ -69,6 +70,11 @@ class ProjectDetailScreen extends StatelessWidget {
                     tooltip: 'مشاركة البنود مع الجهة',
                     icon: const Icon(Icons.share_outlined),
                     onPressed: () => showShareLinksSheet(context, state.project),
+                  ),
+                  IconButton(
+                    tooltip: 'إسناد السندات للمناديب',
+                    icon: const Icon(Icons.assignment_ind_outlined),
+                    onPressed: () => showReceiptAssigneesSheet(context, state.project),
                   ),
                   IconButton(
                     tooltip: 'تصدير Excel',
@@ -552,7 +558,9 @@ class _ItemFormState extends State<_ItemForm> {
   late final _name = TextEditingController(text: widget.item?.itemName);
   late final _desc = TextEditingController(text: widget.item?.description);
   late final _qty = TextEditingController(
-    text: widget.item == null ? '' : formatQty(widget.item!.quantity),
+    text: widget.item == null || widget.item!.quantity == 0
+        ? ''
+        : formatQty(widget.item!.quantity),
   );
   late final _unit = TextEditingController(text: widget.item?.unit);
   late final _price = TextEditingController(
@@ -579,10 +587,17 @@ class _ItemFormState extends State<_ItemForm> {
   }
 
   Future<void> _save() async {
-    final qty = parseLocalizedNumber(_qty.text);
+    // Quantity is optional: blank is stored as 0, as on Excel import.
+    final qty = _qty.text.trim().isEmpty
+        ? 0.0
+        : parseLocalizedNumber(_qty.text);
     final price = parseLocalizedNumber(_price.text);
-    if (_name.text.trim().isEmpty || _unit.text.trim().isEmpty || qty == null) {
-      setState(() => _error = 'الاسم والكمية والوحدة مطلوبة، والكمية رقم');
+    if (_name.text.trim().isEmpty || _unit.text.trim().isEmpty) {
+      setState(() => _error = 'الاسم والوحدة مطلوبان');
+      return;
+    }
+    if (qty == null) {
+      setState(() => _error = 'الكمية ليست رقماً');
       return;
     }
     if (_price.text.trim().isNotEmpty && price == null) {

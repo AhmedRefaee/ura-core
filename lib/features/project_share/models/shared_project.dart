@@ -202,6 +202,9 @@ class SharedReceipt extends Equatable {
   final String dateMode;
   final DateTime? customDate;
   final bool fullDescription;
+
+  /// Set when the submitter split by category; the PDF's heading.
+  final String? category;
   final List<SharedReceiptLine> lines;
 
   const SharedReceipt({
@@ -213,6 +216,7 @@ class SharedReceipt extends Equatable {
     this.dateMode = 'today',
     this.customDate,
     this.fullDescription = false,
+    this.category,
     this.lines = const [],
   });
 
@@ -234,6 +238,7 @@ class SharedReceipt extends Equatable {
         _ => null,
       },
       fullDescription: meta['full_description'] as bool? ?? false,
+      category: meta['category'] as String?,
       lines: [
         for (final e in (map['items'] as List? ?? const []))
           SharedReceiptLine.fromMap(e as Map<String, dynamic>),
@@ -243,5 +248,5 @@ class SharedReceipt extends Equatable {
 
   @override
   List<Object?> get props =>
-      [id, status, createdAt, submitterName, notes, dateMode, customDate, fullDescription, lines];
+      [id, status, createdAt, submitterName, notes, dateMode, customDate, fullDescription, category, lines];
 }

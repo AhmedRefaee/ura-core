@@ -602,9 +602,9 @@ class _EntityStepState extends State<_EntityStep> {
     if (all.isEmpty) {
       return _EmptyHint(
         icon: Icons.work_off_outlined,
-        title: state.error ?? 'لا توجد جهات لديها مشاريع بعد',
+        title: state.error ?? 'لا توجد مشاريع متاحة لك لإنشاء سند',
         subtitle: state.error == null
-            ? 'يضيف المشرف أو المدير المشاريع من شاشة إدارة الجهات'
+            ? 'يسند المشرف المشروع للمندوب من صفحة المشروع، زر "إسناد السندات"'
             : null,
       );
     }
@@ -1244,10 +1244,11 @@ class _ItemCardState extends State<_ItemCard> {
                   style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
                 ),
               ),
+              if (item.quantity > 0)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
                 child: Text(
-                  'الكمية الإجمالية في العرض: ${formatQty(item.quantity)} ${item.unit}',
+                  'الكمية الإجمالية في العرض:${formatQty(item.quantity)} ${item.unit}',
                   style: theme.textTheme.bodySmall?.copyWith(color: scheme.outline),
                 ),
               ),

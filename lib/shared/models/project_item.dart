@@ -58,7 +58,9 @@ class ProjectItem extends Equatable {
       sortOrder: (map['sort_order'] as num?)?.toInt() ?? 0,
       itemName: map['item_name'] as String,
       description: map['description'] as String?,
-      quantity: (map['quantity'] as num).toDouble(),
+      // Null for roles that may not see the contract quantity (same rule as
+      // prices); 0 is already what the UI shows as "no quantity".
+      quantity: (map['quantity'] as num?)?.toDouble() ?? 0,
       unit: map['unit'] as String,
       unitPrice: (map['unit_price'] as num?)?.toDouble(),
       totalPrice: (map['total_price'] as num?)?.toDouble(),

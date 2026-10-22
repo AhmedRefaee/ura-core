@@ -26,13 +26,57 @@ class ProjectRepository {
   }
 
   /// Which entities have at least one project -- a سند needs a project, so
-  /// the rep's entity step lists only these. One narrow column, one query.
-  Future<AppResult<Set<String>>> fetchEntityIdsWithProjects() async {
+  /// the rep's entity step lists only these. [onlyProjectIds] narrows it to
+  /// projects the user may file for. Two narrow columns, one query.
+  Future<AppResult<Set<String>>> fetchEntityIdsWithProjects({Set<String>? onlyProjectIds}) async {
     try {
-      final data = await _supabase.from('projects').select('entity_id');
-      return AppSuccess({for (final r in data as List) r['entity_id'] as String});
+      final data = await _supabase.from('projects').select('id, entity_id');
+      return AppSuccess({
+        for (final r in data as List)
+          if (onlyProjectIds == null || onlyProjectIds.contains(r['id'])) r['entity_id'] as String,
+      });
     } catch (e, st) {
       logger.e('ProjectRepository → fetchEntityIdsWithProjects failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  /// Projects the signed-in user may file a سند for: every project for a
+  /// verifier/admin, only assigned ones for a rep. The server's
+  /// `can_file_receipt_for_project()` decides, so the picker matches what
+  /// create_delivery_receipt will accept.
+  Future<AppResult<Set<String>>> fetchReceiptProjectIds() async {
+    try {
+      final data = await _supabase.rpc('get_receipt_project_ids');
+      return AppSuccess({for (final id in data as List) id as String});
+    } catch (e, st) {
+      logger.e('ProjectRepository → fetchReceiptProjectIds failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  /// The reps assigned to file سندات for [projectId].
+  Future<AppResult<Set<String>>> fetchReceiptAssignees(String projectId) async {
+    try {
+      final data = await _supabase.from('project_receipt_assignees').select('user_id').eq('project_id', projectId);
+      return AppSuccess({for (final r in data as List) r['user_id'] as String});
+    } catch (e, st) {
+      logger.e('ProjectRepository → fetchReceiptAssignees failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  Future<AppResult<void>> setReceiptAssignee(String projectId, String userId, {required bool assigned}) async {
+    try {
+      logger.d('ProjectRepository → setReceiptAssignee | $projectId $userId $assigned');
+      final result = await _supabase.rpc(
+        assigned ? 'assign_project_receipt_user' : 'unassign_project_receipt_user',
+        params: {'p_project_id': projectId, 'p_user_id': userId},
+      );
+      if (result['success'] as bool? ?? false) return const AppSuccess(null);
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
+    } catch (e, st) {
+      logger.e('ProjectRepository → setReceiptAssignee failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

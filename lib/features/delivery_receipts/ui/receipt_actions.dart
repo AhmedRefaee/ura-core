@@ -140,6 +140,7 @@ Future<bool> approveReceipt(BuildContext context, DeliveryReceipt r) async {
         _ => null,
       },
       fullDescription: meta['full_description'] as bool? ?? false,
+      categoryTitle: meta['category'] as String?,
       notes: r.notes,
       lines: [
         for (final i in r.items)

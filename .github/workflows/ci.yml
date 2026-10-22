@@ -45,6 +45,11 @@ jobs:
     needs: analyze-and-test
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # One deploy at a time. Two merges seconds apart once deployed out of
+    # order: the older commit's run finished last and put the site back.
+    concurrency:
+      group: deploy-web
+      cancel-in-progress: false
 
     steps:
       - uses: actions/checkout@v5
@@ -64,7 +69,19 @@ jobs:
       # Serves build/web to ura-core-9981c.web.app, per the hosting block in
       # firebase.json. Until v1.1.0 this was a manual step and the site sat two
       # months behind the APK.
+      # Checked right before deploying, after the slow build: if main has
+      # moved on, a newer run will deploy it -- this one must not overwrite it.
+      - name: Skip if main has moved on
+        id: tip
+        run: |
+          tip=$(git ls-remote "https://github.com/${{ github.repository }}" refs/heads/main | cut -f1)
+          if [ "$tip" != "${{ github.sha }}" ]; then
+            echo "main is at $tip, this run is ${{ github.sha }} -- not deploying a stale build."
+            echo "stale=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Deploy to Firebase Hosting
+        if: steps.tip.outputs.stale != 'true'
         uses: FirebaseExtended/action-hosting-deploy@v0
         with:
           firebaseServiceAccount: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}

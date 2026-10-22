@@ -60,6 +60,10 @@ class CreateDeliveryReceiptState extends Equatable {
   /// the contract instead of just its packaging (packagingOf()).
   final bool fullDescription;
 
+  /// Settings-menu toggle: the سند names only the entity, with no المشروع
+  /// line under it.
+  final bool hideProjectName;
+
   /// سندات already created by the current submit() that haven't been shown
   /// yet -- only populated right after a split submit, drained one at a
   /// time by advanceToNextReceipt() as the rep dismisses each preview.
@@ -91,6 +95,7 @@ class CreateDeliveryReceiptState extends Equatable {
     this.receiptId,
     this.splitByCategory = false,
     this.fullDescription = false,
+    this.hideProjectName = false,
     this.remainingReceipts = const [],
     this.currentCategoryLabel,
     this.totalReceiptsThisSubmit = 1,
@@ -143,6 +148,7 @@ class CreateDeliveryReceiptState extends Equatable {
     bool clearCustomDate = false,
     bool? splitByCategory,
     bool? fullDescription,
+    bool? hideProjectName,
     List<FiledReceipt>? remainingReceipts,
     String? currentCategoryLabel,
     int? totalReceiptsThisSubmit,
@@ -167,6 +173,7 @@ class CreateDeliveryReceiptState extends Equatable {
       customDate: clearCustomDate ? null : (customDate ?? this.customDate),
       splitByCategory: splitByCategory ?? this.splitByCategory,
       fullDescription: fullDescription ?? this.fullDescription,
+      hideProjectName: hideProjectName ?? this.hideProjectName,
       remainingReceipts: remainingReceipts ?? this.remainingReceipts,
       currentCategoryLabel: currentCategoryLabel ?? this.currentCategoryLabel,
       totalReceiptsThisSubmit: totalReceiptsThisSubmit ?? this.totalReceiptsThisSubmit,
@@ -193,6 +200,7 @@ class CreateDeliveryReceiptState extends Equatable {
         customDate,
         splitByCategory,
         fullDescription,
+        hideProjectName,
         remainingReceipts,
         currentCategoryLabel,
         totalReceiptsThisSubmit,

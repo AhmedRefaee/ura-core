@@ -310,6 +310,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       customDate: draft.customDate,
       splitByCategory: draft.splitByCategory,
       fullDescription: draft.fullDescription,
+      hideProjectName: draft.hideProjectName,
     ));
   }
 
@@ -359,6 +360,10 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
   /// description rather than just its packaging.
   void setFullDescription(bool value) => emit(state.copyWith(fullDescription: value));
 
+  /// Settings-menu toggle: the سند prints the entity name only, without the
+  /// project's.
+  void setHideProjectName(bool value) => emit(state.copyWith(hideProjectName: value));
+
   /// Free-text note for one item's line in the سند. Empty (after trimming)
   /// clears it rather than storing a blank entry.
   void setItemNote(String projectItemId, String note) {
@@ -395,6 +400,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       customDate: state.customDate,
       splitByCategory: state.splitByCategory,
       fullDescription: state.fullDescription,
+      hideProjectName: state.hideProjectName,
       replacesReceiptId: launch.replacing?.id,
       savedAt: DateTime.now(),
     ));
@@ -469,7 +475,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     try {
       final pdf = await DeliveryReceiptPdf.build(
         entityName: entity.name,
-        projectName: project.name,
+        projectName: state.hideProjectName ? null : project.name,
         categoryTitle: categoryTitle,
         date: switch (state.dateMode) {
           ReceiptDateMode.today => DateTime.now(),

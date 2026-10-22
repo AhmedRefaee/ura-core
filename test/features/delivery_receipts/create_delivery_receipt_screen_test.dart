@@ -268,6 +268,23 @@ void main() {
     expect(cubit.state.fullDescription, isTrue);
   });
 
+  testWidgets('the settings menu toggles leaving the project name off the سند', (tester) async {
+    tester.view.physicalSize = const Size(800, 4000);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(await buildScreen([lebna]));
+    await tester.pumpAndSettle();
+    expect(cubit.state.hideProjectName, isFalse, reason: 'the project line prints by default');
+
+    await tester.tap(find.byIcon(Icons.tune));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('إخفاء اسم المشروع'));
+    await tester.pumpAndSettle();
+
+    expect(cubit.state.hideProjectName, isTrue);
+  });
+
   testWidgets('while editing, settings offer the same options as a new سند', (tester) async {
     tester.view.physicalSize = const Size(800, 4000);
     tester.view.devicePixelRatio = 1.0;

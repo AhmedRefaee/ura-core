@@ -16,6 +16,7 @@ void main() {
       customDate: null,
       splitByCategory: true,
       fullDescription: true,
+      hideProjectName: true,
       savedAt: DateTime(2026, 5, 1, 14, 30),
     );
 

@@ -280,6 +280,18 @@ class _SendSettingsDialogState extends State<_SendSettingsDialog> {
                 value: state.fullDescription,
                 onChanged: state.submitting ? null : widget.cubit.setFullDescription,
               ),
+              // Staff only: a portal submission is re-printed from its stored
+              // meta on approval, and the portal RPC doesn't carry this flag.
+              if (!widget.cubit.launch.isPortal) ...[
+                const Divider(height: 24),
+                SwitchListTile(
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('إخفاء اسم المشروع'),
+                  subtitle: const Text('يطبع اسم الجهة المستفيدة فقط، دون سطر المشروع'),
+                  value: state.hideProjectName,
+                  onChanged: state.submitting ? null : widget.cubit.setHideProjectName,
+                ),
+              ],
               const Divider(height: 24),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,

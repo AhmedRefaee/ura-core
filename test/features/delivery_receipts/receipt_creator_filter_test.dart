@@ -86,4 +86,44 @@ void main() {
       expect(receiptEntities(list).map((e) => e.id).toSet(), {'e1', 'e2'});
     });
   });
+
+  group('sort', () {
+    DeliveryReceipt r(String id, DateTime created, int items) => DeliveryReceipt(
+          id: id,
+          entityId: 'e1',
+          projectId: 'p1',
+          createdAt: created,
+          items: [
+            for (var i = 0; i < items; i++)
+              DeliveryReceiptItem(
+                id: '$id$i',
+                deliveryReceiptId: id,
+                itemNameSnapshot: 'بند',
+                unitSnapshot: 'حبة',
+                quantityDelivered: 1,
+              ),
+          ],
+        );
+
+    final early = r('early', DateTime(2026, 10, 1), 2);
+    final mid = r('mid', DateTime(2026, 10, 5), 7);
+    final late = r('late', DateTime(2026, 10, 9), 2);
+    final list = [mid, early, late];
+
+    List<String> ids(ReceiptSort s) => sortReceipts(list, s).map((x) => x.id).toList();
+
+    test('newest and oldest', () {
+      expect(ids(ReceiptSort.newest), ['late', 'mid', 'early']);
+      expect(ids(ReceiptSort.oldest), ['early', 'mid', 'late']);
+    });
+
+    test('most items first; equal counts fall back to newest first', () {
+      expect(ids(ReceiptSort.mostItems), ['mid', 'late', 'early']);
+    });
+
+    test('only date orders group by day', () {
+      expect(ReceiptSort.mostItems.groupsByDay, isFalse);
+      expect(ReceiptSort.newest.groupsByDay, isTrue);
+    });
+  });
 }

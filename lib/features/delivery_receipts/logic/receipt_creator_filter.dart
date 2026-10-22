@@ -53,6 +53,38 @@ List<({String id, String name})> receiptEntities(List<DeliveryReceipt> receipts)
   return [for (final e in byId.entries) (id: e.key, name: e.value)]..sort((a, b) => a.name.compareTo(b.name));
 }
 
+enum ReceiptSort {
+  newest('الأحدث أولاً'),
+  oldest('الأقدم أولاً'),
+  mostItems('الأكثر بنوداً');
+
+  final String label;
+  const ReceiptSort(this.label);
+
+  /// Date orders group the list under day headers; an item-count order
+  /// doesn't, so each card shows its own date instead.
+  bool get groupsByDay => this != mostItems;
+}
+
+/// A sorted copy. Ties (and undated سندات) keep a stable, newest-first order.
+List<DeliveryReceipt> sortReceipts(List<DeliveryReceipt> receipts, ReceiptSort sort) {
+  DateTime when(DeliveryReceipt r) => (r.deliveredAt ?? r.createdAt) ?? DateTime(0);
+  int newestFirst(DeliveryReceipt a, DeliveryReceipt b) => when(b).compareTo(when(a));
+  final indexed = [...receipts.indexed];
+  indexed.sort((x, y) {
+    final (a, b) = (x.$2, y.$2);
+    final c = switch (sort) {
+      ReceiptSort.newest => newestFirst(a, b),
+      ReceiptSort.oldest => -newestFirst(a, b),
+      ReceiptSort.mostItems => b.items.length.compareTo(a.items.length),
+    };
+    if (c != 0) return c;
+    final t = newestFirst(a, b);
+    return t != 0 ? t : x.$1.compareTo(y.$1);
+  });
+  return [for (final (_, r) in indexed) r];
+}
+
 /// The day a سند is listed under: delivery if known, else filing.
 DateTime? receiptDay(DeliveryReceipt r) {
   final when = (r.deliveredAt ?? r.createdAt)?.toLocal();

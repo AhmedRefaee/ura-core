@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../shared/models/delivery_receipt.dart';
@@ -7,13 +8,15 @@ import '../../../shared/utils/quantity_format.dart';
 import '../data/delivery_receipt_draft_repository.dart';
 import '../data/delivery_receipt_repository.dart';
 import '../logic/create_delivery_receipt_cubit.dart' show DeliveryReceiptLaunch;
+import '../logic/receipt_creator_filter.dart';
 import 'create_delivery_receipt_screen.dart';
 import 'receipt_actions.dart';
 
-/// The current user's own سندات: file one later in the day, detached from
-/// any order, and find the ones already filed -- grouped by day, newest
-/// first. Shared by reps and verifiers, who can both file and manage their
-/// own سندات; "mine" is whoever is signed in, not a hardcoded role.
+/// The current user's سندات: file one later in the day, detached from any
+/// order, and find the ones already filed -- grouped by day, newest first.
+/// Shared by reps and verifiers; "mine" is whoever is signed in, not a
+/// hardcoded role. Verifiers (and admins) can also switch to everyone's, or
+/// one person's, and edit/delete any of them -- see managesAllReceipts().
 class DeliveryReceiptsTab extends StatefulWidget {
   const DeliveryReceiptsTab({super.key});
 
@@ -22,14 +25,20 @@ class DeliveryReceiptsTab extends StatefulWidget {
 }
 
 class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
+  late final bool _managesAll = managesAllReceipts(context);
   late Future<AppResult<List<DeliveryReceipt>>> _future = _load();
   List<DeliveryReceiptDraft> _drafts = sl<DeliveryReceiptDraftRepository>().list();
+  ReceiptCreatorFilter _filter = const MineFilter();
+  String? _entityId;
+  DateTimeRange? _dates;
+  final String? _myId = Supabase.instance.client.auth.currentUser?.id;
 
   // The empty state has its own big "سند جديد"; don't show two.
   bool _hasReceipts = false;
 
   Future<AppResult<List<DeliveryReceipt>>> _load() async {
-    final result = await sl<DeliveryReceiptRepository>().fetchMyReceipts();
+    final repo = sl<DeliveryReceiptRepository>();
+    final result = await (_managesAll ? repo.fetchVisibleReceipts() : repo.fetchMyReceipts());
     final has = result is AppSuccess<List<DeliveryReceipt>> && result.data.isNotEmpty;
     if (mounted && has != _hasReceipts) setState(() => _hasReceipts = has);
     return result;
@@ -100,6 +109,134 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
     }
   }
 
+  Future<void> _pickDates() async {
+    final now = DateTime.now();
+    final range = _dates;
+    final picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2024),
+      lastDate: DateTime(now.year + 1, 12, 31),
+      initialDateRange: range,
+      helpText: 'تاريخ السندات',
+      saveText: 'تطبيق',
+    );
+    if (picked != null) setState(() => _dates = picked);
+  }
+
+  static String _dateLabel(DateTimeRange r) {
+    final thisYear = DateTime.now().year;
+    String d(DateTime x) => x.year == thisYear ? '${x.day}/${x.month}' : '${x.day}/${x.month}/${x.year}';
+    return DateUtils.isSameDay(r.start, r.end) ? d(r.start) : '${d(r.start)} – ${d(r.end)}';
+  }
+
+  void _clearFilters() => setState(() {
+        _entityId = null;
+        _dates = null;
+        if (_managesAll) _filter = const EveryoneFilter();
+      });
+
+  /// Filters over the list: who filed it (verifiers/admins only), which
+  /// entity, which days -- then the list for that choice.
+  Widget _filteredList(List<DeliveryReceipt> all) {
+    final creators = receiptCreators(all, _myId);
+    final entities = receiptEntities(all);
+    final hasLinks = all.any((r) => r.isPortalSubmission);
+    // A choice can drop out of the list (its last سند deleted elsewhere).
+    final filter = switch (_filter) {
+      PersonFilter(:final userId) when !creators.any((c) => c.id == userId) => const MineFilter(),
+      ShareLinkFilter() when !hasLinks => const MineFilter(),
+      final f => f,
+    };
+    final entityId = entities.any((e) => e.id == _entityId) ? _entityId : null;
+    final dates = _dates;
+    final shown = filterReceiptsByEntityAndDate(
+      _managesAll ? filterReceiptsByCreator(all, filter, _myId) : all,
+      entityId: entityId,
+      from: dates?.start,
+      to: dates?.end,
+    );
+    const dense = InputDecoration(border: OutlineInputBorder(), isDense: true);
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (_managesAll) ...[
+                DropdownButtonFormField<ReceiptCreatorFilter>(
+                  // initialValue only seeds the field; the key makes a filter
+                  // changed from outside (fallback, "مسح") show up.
+                  key: ValueKey(filter),
+                  initialValue: filter,
+                  isExpanded: true,
+                  decoration: dense.copyWith(labelText: 'المنشئ', prefixIcon: const Icon(Icons.person_search_outlined)),
+                  items: [
+                    const DropdownMenuItem(value: MineFilter(), child: Text('سنداتي')),
+                    const DropdownMenuItem(value: EveryoneFilter(), child: Text('الجميع')),
+                    for (final c in creators)
+                      DropdownMenuItem(value: PersonFilter(c.id), child: Text(c.name, overflow: TextOverflow.ellipsis)),
+                    if (hasLinks) const DropdownMenuItem(value: ShareLinkFilter(), child: Text('عبر رابط الجهة')),
+                  ],
+                  onChanged: (f) => setState(() => _filter = f ?? const MineFilter()),
+                ),
+                const SizedBox(height: 8),
+              ],
+              Row(
+                children: [
+                  Expanded(
+                    child: DropdownButtonFormField<String?>(
+                      key: ValueKey('entity:$entityId'),
+                      initialValue: entityId,
+                      isExpanded: true,
+                      decoration: dense.copyWith(labelText: 'الجهة', prefixIcon: const Icon(Icons.business_outlined)),
+                      items: [
+                        const DropdownMenuItem(value: null, child: Text('كل الجهات')),
+                        for (final e in entities)
+                          DropdownMenuItem(value: e.id, child: Text(e.name, overflow: TextOverflow.ellipsis)),
+                      ],
+                      onChanged: (id) => setState(() => _entityId = id),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: dates == null
+                        ? OutlinedButton.icon(
+                            onPressed: _pickDates,
+                            icon: const Icon(Icons.date_range_outlined),
+                            label: const Text('كل التواريخ'),
+                          )
+                        : InputChip(
+                            avatar: const Icon(Icons.date_range, size: 18),
+                            // Scaled down, never cut off: a date must stay whole.
+                            label: FittedBox(fit: BoxFit.scaleDown, child: Text(_dateLabel(dates))),
+                            onPressed: _pickDates,
+                            onDeleted: () => setState(() => _dates = null),
+                            deleteButtonTooltipMessage: 'إلغاء تصفية التاريخ',
+                          ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: shown.isEmpty
+              ? _Scrollable(
+                  child: _Message(
+                    icon: Icons.filter_alt_off_outlined,
+                    title: 'لا توجد سندات لهذا الاختيار',
+                    subtitle: _managesAll ? 'غيّر عوامل التصفية أو اعرض سندات الجميع' : 'غيّر الجهة أو التاريخ',
+                    action: OutlinedButton(onPressed: _clearFilters, child: const Text('مسح التصفية')),
+                  ),
+                )
+              : _ReceiptList(receipts: shown, onChanged: _refresh, showAuthor: _managesAll && filter is! MineFilter),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -148,7 +285,7 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
                           ),
                         ),
                       ),
-                    AppSuccess(:final data) => _ReceiptList(receipts: data, onChanged: _refresh),
+                    AppSuccess(:final data) => _filteredList(data),
                   },
                 ),
               ],
@@ -288,7 +425,10 @@ class _Message extends StatelessWidget {
 class _ReceiptList extends StatelessWidget {
   final List<DeliveryReceipt> receipts;
   final VoidCallback onChanged;
-  const _ReceiptList({required this.receipts, required this.onChanged});
+
+  /// Name who filed each سند -- when the list isn't just the user's own.
+  final bool showAuthor;
+  const _ReceiptList({required this.receipts, required this.onChanged, this.showAuthor = false});
 
   static const _weekdays = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
 
@@ -329,7 +469,7 @@ class _ReceiptList extends StatelessWidget {
             child: Text(row, style: Theme.of(context).textTheme.titleSmall),
           );
         }
-        return _ReceiptCard(receipt: row as DeliveryReceipt, onChanged: onChanged);
+        return _ReceiptCard(receipt: row as DeliveryReceipt, onChanged: onChanged, showAuthor: showAuthor);
       },
     );
   }
@@ -338,7 +478,8 @@ class _ReceiptList extends StatelessWidget {
 class _ReceiptCard extends StatefulWidget {
   final DeliveryReceipt receipt;
   final VoidCallback onChanged;
-  const _ReceiptCard({required this.receipt, required this.onChanged});
+  final bool showAuthor;
+  const _ReceiptCard({required this.receipt, required this.onChanged, this.showAuthor = false});
 
   @override
   State<_ReceiptCard> createState() => _ReceiptCardState();
@@ -398,6 +539,11 @@ class _ReceiptCardState extends State<_ReceiptCard> {
                         style: theme.textTheme.bodySmall, maxLines: 1, overflow: TextOverflow.ellipsis),
                     const SizedBox(height: 8),
                     Wrap(spacing: 6, runSpacing: 4, children: [
+                      if (widget.showAuthor)
+                        r.isPortalSubmission
+                            ? pill(Icons.link, r.submitterName ?? 'رابط الجهة')
+                            : pill(Icons.person_outline, isOwnReceipt(r) ? 'أنا' : (r.rep?.fullName ?? 'مستخدم')),
+                      if (r.status == ReceiptStatus.pending) pill(Icons.hourglass_top, 'بانتظار الاعتماد'),
                       if (time.isNotEmpty) pill(Icons.schedule, time),
                       pill(Icons.inventory_2_outlined, r.items.length == 1 ? 'بند واحد' : '${r.items.length} بنود'),
                       if (r.orderId != null) pill(Icons.link, 'من طلب'),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:http/http.dart' as http;
 import 'package:share_plus/share_plus.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -7,6 +8,9 @@ import '../../../core/di/injection.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/storage/signed_storage_url.dart';
 import '../../../shared/models/delivery_receipt.dart';
+import '../../../shared/models/profile.dart';
+import '../../auth/logic/auth_cubit.dart';
+import '../../auth/logic/auth_state.dart';
 import '../../../shared/models/project_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../projects/data/project_repository.dart';
@@ -16,10 +20,22 @@ import '../logic/create_delivery_receipt_cubit.dart';
 import '../logic/receipt_pdf_builder.dart';
 import 'create_delivery_receipt_screen.dart';
 
-/// Whether the signed-in user filed this سند (the server also allows admins;
-/// the menu is only offered to the creator).
+/// Whether the signed-in user filed this سند.
 bool isOwnReceipt(DeliveryReceipt r) =>
     r.repId != null && r.repId == Supabase.instance.client.auth.currentUser?.id;
+
+/// Verifiers and admins manage every سند of their org; anyone else only
+/// their own. Mirrors delete_delivery_receipt / create_delivery_receipt.
+bool managesAllReceipts(BuildContext context) {
+  final auth = context.read<AuthCubit>().state;
+  final role = auth is AuthAuthenticated ? auth.profile.role : null;
+  return role == UserRole.verifier || role == UserRole.admin;
+}
+
+/// Edit/delete are offered on approved سندات the user may manage; a pending
+/// submission is approved or rejected instead.
+bool canManageReceipt(BuildContext context, DeliveryReceipt r) =>
+    r.status == ReceiptStatus.approved && (isOwnReceipt(r) || managesAllReceipts(context));
 
 Future<void> openReceiptPdf(BuildContext context, DeliveryReceipt r) async {
   final messenger = ScaffoldMessenger.of(context);
@@ -221,7 +237,7 @@ class ReceiptMenuButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final own = isOwnReceipt(receipt);
+    final manage = canManageReceipt(context, receipt);
     final error = Theme.of(context).colorScheme.error;
     return PopupMenuButton<ReceiptAction>(
       tooltip: 'خيارات السند',
@@ -265,7 +281,7 @@ class ReceiptMenuButton extends StatelessWidget {
             value: ReceiptAction.share,
             child: ListTile(leading: Icon(Icons.share_outlined), title: Text('مشاركة السند')),
           ),
-        if (own) ...[
+        if (manage) ...[
           const PopupMenuItem(
             value: ReceiptAction.edit,
             child: ListTile(leading: Icon(Icons.edit_outlined), title: Text('تعديل')),

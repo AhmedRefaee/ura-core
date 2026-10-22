@@ -67,6 +67,23 @@ class DeliveryReceiptRepository {
     }
   }
 
+  /// Every live سند the user may see -- for a verifier, the whole org's,
+  /// pending portal submissions included (RLS decides).
+  Future<AppResult<List<DeliveryReceipt>>> fetchVisibleReceipts() async {
+    try {
+      logger.d('DeliveryReceiptRepository → fetchVisibleReceipts');
+      final data = await _supabase
+          .from('delivery_receipts')
+          .select(_receiptSelect)
+          .order('created_at', ascending: false);
+      final receipts = (data as List).map((e) => DeliveryReceipt.fromMap(e as Map<String, dynamic>)).toList();
+      return AppSuccess(receipts);
+    } catch (e, st) {
+      logger.e('DeliveryReceiptRepository → fetchVisibleReceipts failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
   /// One live سند by id; null once it's been deleted or replaced.
   Future<AppResult<DeliveryReceipt?>> fetchReceipt(String receiptId) async {
     try {

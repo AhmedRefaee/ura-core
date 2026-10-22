@@ -1,4 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/errors/app_error.dart';
 import '../../../core/errors/app_result.dart';
 import '../../../core/errors/error_handler.dart';
 import '../../../core/logging/app_logger.dart';
@@ -127,6 +128,34 @@ class ProjectRepository {
       return AppSuccess(Project.fromMap(data));
     } catch (e, st) {
       logger.e('ProjectRepository → updateProject failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
+  /// Deletes a project along with its بنود, share links and rep assignments
+  /// (all ON DELETE CASCADE). A project any سند or order points at can't be
+  /// deleted -- those foreign keys have no cascade on purpose.
+  Future<AppResult<void>> deleteProject(String id) async {
+    try {
+      logger.d('ProjectRepository → deleteProject | id: $id');
+      // RLS turns a forbidden delete into "0 rows", not an error.
+      final deleted = await _supabase.from('projects').delete().eq('id', id).select('id');
+      if ((deleted as List).isEmpty) {
+        return const AppFailure(AppError(message: 'غير مصرح بحذف هذا المشروع', type: AppErrorType.permission));
+      }
+      logger.i('ProjectRepository → project deleted: $id');
+      return const AppSuccess(null);
+    } on PostgrestException catch (e, st) {
+      if (e.code == '23503') {
+        return const AppFailure(AppError(
+          message: 'لا يمكن حذف المشروع لأن عليه سندات أو طلبات',
+          type: AppErrorType.validation,
+        ));
+      }
+      logger.e('ProjectRepository → deleteProject failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    } catch (e, st) {
+      logger.e('ProjectRepository → deleteProject failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

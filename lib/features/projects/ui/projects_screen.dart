@@ -3,6 +3,7 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/di/injection.dart';
 import '../../../shared/models/entity.dart';
 import '../../../shared/models/profile.dart';
+import '../../../shared/models/project.dart';
 import '../../auth/logic/auth_cubit.dart';
 import '../../auth/logic/auth_state.dart';
 import '../logic/projects_cubit.dart';
@@ -58,7 +59,21 @@ class ProjectsScreen extends StatelessWidget {
                       leading: const Icon(Icons.work_outline),
                       title: Text(p.name),
                       subtitle: Text(p.letterheadImageUrl == null ? 'بدون نموذج سند' : 'بنموذج سند'),
-                      trailing: const Icon(Icons.chevron_left),
+                      trailing: canCreate
+                          ? PopupMenuButton<void>(
+                              tooltip: 'خيارات',
+                              itemBuilder: (_) => [
+                                PopupMenuItem(
+                                  onTap: () => _confirmDelete(context, p),
+                                  child: ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+                                    title: const Text('حذف المشروع'),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : const Icon(Icons.chevron_left),
                       onTap: () => openProjectDetail(context, p, entity),
                     ),
                   );
@@ -82,6 +97,32 @@ class ProjectsScreen extends StatelessWidget {
         },
       ),
     );
+  }
+
+  Future<void> _confirmDelete(BuildContext context, Project project) async {
+    final cubit = context.read<ProjectsCubit>();
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('حذف مشروع "${project.name}"؟'),
+        content: const Text(
+          'سيُحذف المشروع مع جميع بنوده وروابط المشاركة وإسناد المناديب، ولا يمكن التراجع.\n'
+          'لا يمكن حذف مشروع عليه سندات أو طلبات.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('تراجع')),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Theme.of(ctx).colorScheme.error),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('حذف'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    final error = await cubit.deleteProject(project);
+    messenger.showSnackBar(SnackBar(content: Text(error ?? 'تم حذف المشروع')));
   }
 
   Future<void> _showCreateDialog(BuildContext context) async {

@@ -32,6 +32,20 @@ class ProjectsCubit extends Cubit<ProjectsState> {
     }
   }
 
+  /// Returns an error message, or null on success (the project leaves the list).
+  Future<String?> deleteProject(Project project) async {
+    final result = await _repo.deleteProject(project.id);
+    switch (result) {
+      case AppSuccess():
+        if (state case ProjectsLoaded(:final projects)) {
+          emit(ProjectsLoaded([for (final p in projects) if (p.id != project.id) p]));
+        }
+        return null;
+      case AppFailure(:final error):
+        return error.message;
+    }
+  }
+
   /// Returns an error message, or null on success. The letterhead is uploaded
   /// after the row exists because its storage path is keyed by project id.
   Future<String?> createProject({

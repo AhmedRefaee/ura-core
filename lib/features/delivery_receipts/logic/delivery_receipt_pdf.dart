@@ -58,7 +58,9 @@ class DeliveryReceiptPdf {
 
   static Future<Uint8List> build({
     required String entityName,
-    required String projectName,
+    // Null leaves the المشروع line off entirely -- the سند names only the
+    // entity (the settings dialog's إخفاء اسم المشروع).
+    String? projectName,
     // Null when the rep/verifier chose to leave the date for the receiving
     // side to fill in by hand at the moment of delivery, rather than
     // stamping it with whatever day the سند happened to be filed/printed.
@@ -143,7 +145,7 @@ class DeliveryReceiptPdf {
           ),
           pw.SizedBox(height: 10),
           _infoLine('الجهة المستفيدة', entityName),
-          _infoLine('المشروع', projectName),
+          if (projectName != null) _infoLine('المشروع', projectName),
           _infoLine('التاريخ', dateText),
           pw.SizedBox(height: 6),
           if (category.isNotEmpty) categoryHeading(),

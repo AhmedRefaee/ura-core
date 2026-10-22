@@ -24,6 +24,7 @@ class DeliveryReceiptDraft extends Equatable {
   final DateTime? customDate;
   final bool splitByCategory;
   final bool fullDescription;
+  final bool hideProjectName;
 
   /// Set when the draft was saved while editing: the filed سند it will
   /// replace once it's submitted, rather than filing alongside it.
@@ -43,6 +44,7 @@ class DeliveryReceiptDraft extends Equatable {
     this.customDate,
     required this.splitByCategory,
     this.fullDescription = false,
+    this.hideProjectName = false,
     this.replacesReceiptId,
     required this.savedAt,
   });
@@ -64,6 +66,7 @@ class DeliveryReceiptDraft extends Equatable {
         'customDate': customDate?.toIso8601String(),
         'splitByCategory': splitByCategory,
         'fullDescription': fullDescription,
+        'hideProjectName': hideProjectName,
         'replacesReceiptId': replacesReceiptId,
         'savedAt': savedAt.toIso8601String(),
       };
@@ -83,6 +86,7 @@ class DeliveryReceiptDraft extends Equatable {
         customDate: json['customDate'] == null ? null : DateTime.parse(json['customDate'] as String),
         splitByCategory: json['splitByCategory'] as bool? ?? false,
         fullDescription: json['fullDescription'] as bool? ?? false,
+        hideProjectName: json['hideProjectName'] as bool? ?? false,
         replacesReceiptId: json['replacesReceiptId'] as String?,
         savedAt: DateTime.parse(json['savedAt'] as String),
       );
@@ -101,6 +105,7 @@ class DeliveryReceiptDraft extends Equatable {
         customDate,
         splitByCategory,
         fullDescription,
+        hideProjectName,
         replacesReceiptId,
         savedAt,
       ];

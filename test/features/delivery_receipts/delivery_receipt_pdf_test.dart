@@ -36,6 +36,22 @@ void main() {
     if (out != null) File(out).writeAsBytesSync(bytes);
   });
 
+  test('a null projectName builds -- the سند names only the entity', () async {
+    final font = File('C:/Windows/Fonts/tahoma.ttf');
+    if (!font.existsSync()) return;
+
+    final bytes = await DeliveryReceiptPdf.build(
+      entityName: 'صندوق التنمية العقارية',
+      date: DateTime(2026, 9, 26),
+      theme: pw.ThemeData.withFont(base: pw.Font.ttf(font.readAsBytesSync().buffer.asByteData())),
+      lines: const [
+        ReceiptPdfLine(itemName: 'كرسي مكتب', unit: 'حبة', quantity: 12),
+      ],
+    );
+
+    expect(bytes.length, greaterThan(1000));
+  });
+
   test('a null date still builds -- the date line is left blank for handwriting', () async {
     final font = File('C:/Windows/Fonts/tahoma.ttf');
     final bold = File('C:/Windows/Fonts/tahomabd.ttf');

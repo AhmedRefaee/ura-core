@@ -147,10 +147,13 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
       return;
     }
     emit(state.copyWith(loading: true, clearError: true));
-    final (entities, withProjects) = await (
+    final (entities, fileable) = await (
       _entities.fetchEntities(),
-      _projects.fetchEntityIdsWithProjects(),
+      _projects.fetchReceiptProjectIds(),
     ).wait;
+    // On failure, don't filter: the server still refuses what isn't allowed.
+    _fileableProjectIds = fileable is AppSuccess<Set<String>> ? fileable.data : null;
+    final withProjects = await _projects.fetchEntityIdsWithProjects(onlyProjectIds: _fileableProjectIds);
     switch (entities) {
       case AppSuccess(:final data):
         emit(state.copyWith(
@@ -193,6 +196,10 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     ));
   }
 
+  /// Projects this user may file a سند for (a rep: only assigned ones); null
+  /// = unknown, show everything.
+  Set<String>? _fileableProjectIds;
+
   // Picking A then quickly B must not let A's slower response land on top of
   // B. Each pick takes a new token; responses for an older token are dropped.
   int _entityToken = 0;
@@ -210,7 +217,9 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     final result = await _projects.fetchProjectsForEntity(entity.id);
     if (token != _entityToken) return;
     switch (result) {
-      case AppSuccess(:final data):
+      case AppSuccess(data: final all):
+        final fileable = _fileableProjectIds;
+        final data = fileable == null ? all : all.where((p) => fileable.contains(p.id)).toList();
         emit(state.copyWith(loading: false, projects: data));
         final match = data.where((p) => p.id == preselectProjectId).firstOrNull;
         if (match != null) {
@@ -453,10 +462,15 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
     required String? notes,
     required String? replaces,
   }) async {
+    // A split سند is all one category (groupItemsByCategory); the
+    // uncategorized group gets no heading.
+    final categoryTitle =
+        state.splitByCategory && items.first.category.trim().isNotEmpty ? items.first.category.trim() : null;
     try {
       final pdf = await DeliveryReceiptPdf.build(
         entityName: entity.name,
         projectName: project.name,
+        categoryTitle: categoryTitle,
         date: switch (state.dateMode) {
           ReceiptDateMode.today => DateTime.now(),
           ReceiptDateMode.blank => null,
@@ -491,6 +505,7 @@ class CreateDeliveryReceiptCubit extends Cubit<CreateDeliveryReceiptState> {
             if (state.dateMode == ReceiptDateMode.custom && state.customDate != null)
               'custom_date': state.customDate!.toIso8601String().split('T').first,
             'full_description': state.fullDescription,
+            'category': ?categoryTitle,
           },
           items: [
             for (final i in items)

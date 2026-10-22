@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:equatable/equatable.dart';
 import 'off_stock_label.dart';
 
@@ -18,8 +19,20 @@ class DraftOrderItem extends Equatable {
     this.sourceInventoryId,
   });
 
-  String get displayName =>
-      isCustom ? (customDescription ?? offStockLabel) : (inventoryName ?? '');
+  String get displayName {
+    if (!isCustom) return inventoryName ?? '';
+    final desc = customDescription;
+    if (desc == null) return offStockLabel;
+    // Custom items carry a JSON payload ({"name": ..., "unit": ...}); older
+    // and test drafts carry plain text.
+    if (desc.startsWith('{')) {
+      try {
+        final name = (jsonDecode(desc) as Map<String, dynamic>)['name'] as String?;
+        if (name != null && name.isNotEmpty) return name;
+      } catch (_) {}
+    }
+    return desc;
+  }
 
   Map<String, dynamic> toInsertMap() => {
         if (inventoryId != null) 'inventory_id': inventoryId,

@@ -194,6 +194,7 @@ class _PortalReceiptPdfScreen extends StatelessWidget {
           filedAt: receipt.createdAt,
           customDate: receipt.customDate,
           fullDescription: receipt.fullDescription,
+          categoryTitle: receipt.category,
           notes: receipt.notes,
           lines: [
             for (final l in receipt.lines)

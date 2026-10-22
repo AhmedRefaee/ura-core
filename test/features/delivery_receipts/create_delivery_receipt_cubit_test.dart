@@ -73,7 +73,9 @@ void main() {
     when(() => projects.fetchProjectsForEntity('e1'))
         .thenAnswer((_) async => const AppSuccess([projectA, projectB]));
     when(() => projects.fetchProjectItems(any())).thenAnswer((_) async => const AppSuccess([item]));
-    when(() => projects.fetchEntityIdsWithProjects()).thenAnswer((_) async => const AppSuccess({'e1'}));
+    when(() => projects.fetchReceiptProjectIds()).thenAnswer((_) async => const AppSuccess({'p1', 'p2'}));
+    when(() => projects.fetchEntityIdsWithProjects(onlyProjectIds: any(named: 'onlyProjectIds')))
+        .thenAnswer((_) async => const AppSuccess({'e1'}));
   });
 
   test('launched from an order, entity and the order\'s project are pre-filled', () async {
@@ -92,6 +94,16 @@ void main() {
     expect(cubit.state.entity, entity);
     expect(cubit.state.project, isNull);
     expect(cubit.state.projects, [projectA, projectB]);
+  });
+
+  test('a rep only sees the projects they are assigned to file for', () async {
+    when(() => projects.fetchReceiptProjectIds()).thenAnswer((_) async => const AppSuccess({'p2'}));
+    final cubit = build(const DeliveryReceiptLaunch(orderId: 'o1', entity: entity));
+    await cubit.init();
+
+    expect(cubit.state.projects, [projectB]);
+    expect(cubit.state.project, projectB, reason: 'the single assigned project is picked for them');
+    verify(() => projects.fetchEntityIdsWithProjects(onlyProjectIds: {'p2'})).called(1);
   });
 
   test('standalone launch starts with nothing chosen', () async {

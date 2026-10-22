@@ -122,26 +122,13 @@ class EditOrderScreen extends StatelessWidget {
                         SizedBox(height: AppSpacing.verticalMedium),
                         const _SectionTitle('أصناف مضافة'),
                         ...ready.addedItems.map((draft) {
-                          // Not yet inserted, so there is no
-                          // was_unavailable_at_creation to read -- the live
-                          // balance of the row the verifier picked is the
-                          // same fact, one step earlier.
-                          final kind = draftOffStockKind(
-                            isCustom: draft.isCustom,
-                            sourceInventoryId: draft.sourceInventoryId,
-                            direction: ready.originalOrder.direction,
-                            inventoryQuantity: ready.inventory
-                                .where((i) => i.id == draft.inventoryId)
-                                .firstOrNull
-                                ?.quantity,
-                          );
                           return ListTile(
                               dense: true,
                               leading: Icon(
-                                kind == null
-                                    ? Icons.inventory_2_outlined
-                                    : OffStock.iconFor(kind),
-                                color: kind == null ? Colors.teal : OffStock.color,
+                                draft.isCustom
+                                    ? Icons.edit_note
+                                    : Icons.inventory_2_outlined,
+                                color: draft.isCustom ? Colors.grey : Colors.teal,
                                 size: 20,
                               ),
                               title: Text(draft.displayName),
@@ -150,11 +137,6 @@ class EditOrderScreen extends StatelessWidget {
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
                                   Text('الكمية: ${formatQty(draft.quantity)}'),
-                                  if (kind != null)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 2),
-                                      child: OffStock.badge(kind),
-                                    ),
                                 ],
                               ),
                               trailing: Container(
@@ -369,7 +351,9 @@ class _EditableItemTile extends StatelessWidget {
                     padding: const EdgeInsets.only(top: 2),
                     child: OffStock.badge(kind),
                   ),
-                if (invItem != null)
+                // Stock is storage's call on outbound orders; only a restock
+                // (inbound) shows what is on the shelf.
+                if (invItem != null && direction != OrderDirection.outbound)
                   Text(
                     'المتوفر: ${formatQty(invItem.quantity)}',
                     style: TextStyle(

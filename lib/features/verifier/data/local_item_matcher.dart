@@ -51,6 +51,25 @@ class RequestLine {
   ScoredItem? get best => candidates.isEmpty ? null : candidates.first;
 }
 
+/// One line of a pasted request, split into the three columns the verifier
+/// fills by hand: what, in which unit, how many. No catalog involved.
+class ParsedRequestLine {
+  /// What is left of the line once the count and the unit are taken out.
+  final String name;
+
+  /// The packaging word as the sender wrote it ("كرتون", "بكت"), or null when
+  /// the line names none.
+  final String? unit;
+
+  /// Defaults to 1, same as [RequestLine.quantity].
+  final double quantity;
+
+  const ParsedRequestLine({required this.name, this.unit, required this.quantity});
+
+  @override
+  String toString() => '$name | ${unit ?? '-'} | $quantity';
+}
+
 /// Matches a written request against the inventory, on-device and offline.
 ///
 /// The catalog is 194 rows. That is small enough to search directly, which is
@@ -198,6 +217,49 @@ class LocalItemMatcher {
       }
     }
     return lines;
+  }
+
+  /// Splits [message] into item / unit / quantity rows without touching the
+  /// catalog -- the same line splitting, list-marker stripping, noise
+  /// filtering and count reading [match] uses, so a paste is read the same way
+  /// whether or not anything is matched afterwards.
+  static List<ParsedRequestLine> parseRequest(String message) {
+    final rows = <ParsedRequestLine>[];
+    for (final rawLine in message.split('\n')) {
+      for (final raw in rawLine.split(_inlineSeparators)) {
+        final text = raw.replaceFirst(_listMarker, '').trim();
+        if (text.isEmpty) continue;
+        final tokens = ArabicText.tokenize(text);
+        if (_headerLine.hasMatch(text) || _isNoise(tokens)) continue;
+
+        final quantity = _quantityIn(tokens);
+        // A count only exists when one was written; the default 1 has no
+        // word to take out of the name.
+        final hasCount = tokens.any((t) => _quantityToken.hasMatch(t));
+        final words = text.split(RegExp(r'\s+'));
+        String? unit;
+        var countTaken = !hasCount;
+        final nameWords = <String>[];
+        for (final word in words) {
+          final folded = ArabicText.normalize(word);
+          if (unit == null && _packaging.contains(folded)) {
+            unit = word;
+            continue;
+          }
+          if (!countTaken &&
+              _quantityToken.hasMatch(folded) &&
+              double.tryParse(folded.replaceAll(',', '.')) == quantity) {
+            countTaken = true;
+            continue;
+          }
+          nameWords.add(word);
+        }
+        final name = nameWords.join(' ').replaceAll(RegExp(r'^[\s\-–:*•·]+|[\s\-–:*•·]+$'), '');
+        if (name.isEmpty) continue;
+        rows.add(ParsedRequestLine(name: name, unit: unit, quantity: quantity));
+      }
+    }
+    return rows;
   }
 
   /// Words that only ever appear in the wrapping around an order: greetings,

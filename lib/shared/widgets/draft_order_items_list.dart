@@ -1,16 +1,9 @@
 import 'package:flutter/material.dart';
-import '../../features/inventory/ui/inventory_item_detail_screen.dart';
 import '../models/draft_order_item.dart';
-import '../models/inventory_item.dart';
-import '../models/off_stock_kind.dart';
-import '../models/order.dart';
 import '../utils/quantity_format.dart';
-import 'off_stock.dart';
 
 class DraftOrderItemsList extends StatelessWidget {
   final List<DraftOrderItem> items;
-  final List<InventoryItem> inventory;
-  final OrderDirection direction;
   final ValueChanged<int> onRemove;
 
   /// Opens an off-stock item for editing so its brand, variety, packaging and
@@ -22,8 +15,6 @@ class DraftOrderItemsList extends StatelessWidget {
   const DraftOrderItemsList({
     super.key,
     required this.items,
-    required this.inventory,
-    required this.direction,
     required this.onRemove,
     this.onEditCustom,
   });
@@ -39,97 +30,32 @@ class DraftOrderItemsList extends StatelessWidget {
         ),
       );
     }
-    // Split by index, not by value, so onRemove keeps pointing at the right
-    // slot in the original list once the two groups are rendered separately.
-    final stockIndices = <int>[];
-    final offStockIndices = <int>[];
-    for (var i = 0; i < items.length; i++) {
-      (_kindOf(items[i]) == null ? stockIndices : offStockIndices).add(i);
-    }
-
+    // One list, in the order the verifier added things. Whether an item is
+    // in stock is storage's call now, so nothing here is grouped or painted
+    // as "خارج المخزون" -- the only distinction left is a catalog row the
+    // verifier matched versus a line they typed.
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        for (final i in stockIndices) _buildItemTile(context, i, items[i]),
-        if (offStockIndices.isNotEmpty)
-          OffStock.section(
-            count: offStockIndices.length,
-            child: Column(
-              children: [
-                for (final i in offStockIndices) _buildItemTile(context, i, items[i]),
-              ],
-            ),
-          ),
+        for (var i = 0; i < items.length; i++) _buildItemTile(context, i, items[i]),
       ],
     );
   }
 
-  /// The inventory row behind a draft item, when there is one and it is
-  /// relevant. Null on an inbound order: the rep is bringing stock in, so
-  /// what is on the shelf right now says nothing about the request.
-  InventoryItem? _inventoryRowFor(DraftOrderItem item) =>
-      direction == OrderDirection.outbound && item.inventoryId != null
-          ? inventory.where((inv) => inv.id == item.inventoryId).firstOrNull
-          : null;
-
-  OffStockKind? _kindOf(DraftOrderItem item) => draftOffStockKind(
-        isCustom: item.isCustom,
-        sourceInventoryId: item.sourceInventoryId,
-        direction: direction,
-        inventoryQuantity: _inventoryRowFor(item)?.quantity,
-      );
-
   Widget _buildItemTile(BuildContext context, int index, DraftOrderItem item) {
-    final invItem = _inventoryRowFor(item);
-    final kind = _kindOf(item);
-    // "Only N available" is the partial case -- some on the shelf, not enough.
-    // At zero the purple badge already says it, and stacking an orange
-    // "المتوفر فقط: 0" on top would be two chips for one fact.
-    final isOverStock =
-        kind == null && invItem != null && item.quantity > invItem.quantity;
-
     return ListTile(
       dense: true,
+      leading: Icon(
+        item.isCustom ? Icons.edit_note : Icons.inventory_2_outlined,
+        color: item.isCustom ? Colors.grey : Colors.teal,
+        size: 20,
+      ),
       title: Text(item.displayName),
       subtitle: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
           Text('الكمية: ${formatQty(item.quantity)}'),
-          if (kind != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: OffStock.badge(kind),
-            ),
-          if (isOverStock)
-            GestureDetector(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => InventoryItemDetailScreen(
-                    item: invItem,
-                    // Reached by tapping an over-stock warning mid-draft. That
-                    // is a glance at the item, not a decision to archive it --
-                    // deleting belongs on a deliberate trip to المخزون.
-                    allowDelete: false,
-                  ),
-                ),
-              ),
-              child: Chip(
-                avatar: const Icon(
-                  Icons.warning_amber_rounded,
-                  color: Colors.orange,
-                  size: 16,
-                ),
-                label: Text(
-                  'المتوفر فقط: ${formatQty(invItem.quantity)}',
-                  style: const TextStyle(fontSize: 11, color: Colors.orange),
-                ),
-                backgroundColor: Colors.orange.withValues(alpha: 0.1),
-                side: BorderSide(color: Colors.orange.withValues(alpha: 0.4)),
-                visualDensity: VisualDensity.compact,
-              ),
-            ),
         ],
       ),
       trailing: Row(
@@ -137,7 +63,7 @@ class DraftOrderItemsList extends StatelessWidget {
         children: [
           if (item.isCustom && onEditCustom != null)
             IconButton(
-              icon: Icon(Icons.edit_outlined, color: OffStock.color),
+              icon: const Icon(Icons.edit_outlined),
               tooltip: 'تعديل بيانات الصنف',
               visualDensity: VisualDensity.compact,
               onPressed: () => onEditCustom!(index),

@@ -253,6 +253,36 @@ void main() {
     expect(result.canImport, isFalse);
   });
 
+  test('a list with only item name and unit imports; quantity is 0, no total', () {
+    for (final header in [
+      ['الصنف', 'الوحدة'],
+      ['اسم الصنف', 'الوحدة'],
+      ['البند', 'الوحدة'],
+      ['Item', 'Unit'],
+    ]) {
+      final excel = Excel.createExcel();
+      final sheet = excel['Sheet1'];
+      void row(int r, List<String> cells) {
+        for (var c = 0; c < cells.length; c++) {
+          sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value = TextCellValue(cells[c]);
+        }
+      }
+
+      row(0, header);
+      row(1, ['أرز بسمتي', 'كيس']);
+      row(2, ['زيت دوار الشمس', 'كرتون']);
+
+      final result = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
+      expect(result.noHeaderFound, isFalse, reason: '$header');
+      expect(result.errors, isEmpty, reason: '$header');
+      expect(result.canImport, isTrue);
+      expect(result.items.map((i) => i.itemName).toList(), ['أرز بسمتي', 'زيت دوار الشمس']);
+      expect(result.items.map((i) => i.unit).toList(), ['كيس', 'كرتون']);
+      expect(result.items.first.quantity, 0);
+      expect(result.items.first.totalPrice, isNull);
+    }
+  });
+
   test('a sheet with no البند header is flagged as not a quotation', () {
     final excel = Excel.createExcel();
     excel['Sheet1'].cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value = TextCellValue('اسم');

@@ -174,7 +174,11 @@ class _BoqTableState extends State<BoqTable> {
                   0 => _cell(item.category, body),
                   1 => _cell(item.itemName, body),
                   2 => _cell(item.description ?? '', body),
-                  3 => _cell(formatQty(item.quantity), body, center: true),
+                  3 => _cell(
+                    item.quantity == 0 ? '' : formatQty(item.quantity),
+                    body,
+                    center: true,
+                  ),
                   4 => _cell(item.unit, body, center: true),
                   5 => _cell(_money(item.unitPrice), body, center: true),
                   6 => _cell(

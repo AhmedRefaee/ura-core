@@ -69,6 +69,9 @@ class DeliveryReceiptPdf {
     // Lines carry whole contract descriptions -- rows grow to fit them, so
     // the fixed-height 20-rows-per-page chunking below can't apply.
     bool fullDescription = false,
+    // Set when the سند was split per category: printed as a heading right
+    // above the items so each سند says which category it covers.
+    String? categoryTitle,
     @visibleForTesting pw.ThemeData? theme,
   }) async {
     // The PDF's built-in fonts have no Arabic glyphs. Noto Sans Arabic, not
@@ -87,13 +90,40 @@ class DeliveryReceiptPdf {
     );
     final uraLogo = (await rootBundle.load('assets/branding/ura_logo.png')).buffer.asUint8List();
 
+    final dateText = date == null
+        // Same day/month/year shape as a real date, blank segments -- not
+        // dots -- for the receiving side to fill in by hand.
+        ? '      /      /      '
+        : '${date.day.toString().padLeft(2, '0')} / ${date.month.toString().padLeft(2, '0')} / ${date.year}';
+    final category = categoryTitle?.trim() ?? '';
+    pw.Widget categoryHeading() => pw.Padding(
+          padding: const pw.EdgeInsets.only(bottom: 4),
+          child: pw.Align(
+            alignment: pw.Alignment.centerRight,
+            child: _t('الفئة : $category', style: pw.TextStyle(fontSize: 12, fontWeight: pw.FontWeight.bold)),
+          ),
+        );
+
     final doc = pw.Document(theme: theme);
     doc.addPage(
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4,
         textDirection: pw.TextDirection.rtl,
         margin: const pw.EdgeInsets.fromLTRB(28, 24, 28, 24),
-        header: (_) => _header(uraLogo, clientLogoBytes),
+        // Pages after the first are only items; they repeat the date (and
+        // the category, on a split سند) so a loose page still says which
+        // سند it belongs to.
+        header: (ctx) => ctx.pageNumber == 1
+            ? _header(uraLogo, clientLogoBytes)
+            : pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+                children: [
+                  _header(uraLogo, clientLogoBytes),
+                  _infoLine('التاريخ', dateText),
+                  pw.SizedBox(height: 4),
+                  if (category.isNotEmpty) categoryHeading(),
+                ],
+              ),
         footer: (ctx) => ctx.pagesCount < 2
             ? pw.SizedBox()
             : pw.Center(
@@ -114,12 +144,9 @@ class DeliveryReceiptPdf {
           pw.SizedBox(height: 10),
           _infoLine('الجهة المستفيدة', entityName),
           _infoLine('المشروع', projectName),
-          _infoLine('التاريخ', date == null
-              // Same day/month/year shape as a real date, blank segments --
-              // not dots -- for the receiving side to fill in by hand.
-              ? '      /      /      '
-              : '${date.day.toString().padLeft(2, '0')} / ${date.month.toString().padLeft(2, '0')} / ${date.year}'),
+          _infoLine('التاريخ', dateText),
           pw.SizedBox(height: 6),
+          if (category.isNotEmpty) categoryHeading(),
           // Rows of unknown height can't be chunked by count. One table,
           // handed to MultiPage directly (pw.Table ignores text direction,
           // so it needs no _ltr wrapper), splits across pages by itself.

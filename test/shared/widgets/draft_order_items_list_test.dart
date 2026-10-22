@@ -6,20 +6,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:ura_core/shared/models/draft_order_item.dart';
-import 'package:ura_core/shared/models/inventory_item.dart';
-import 'package:ura_core/shared/models/off_stock_kind.dart';
-import 'package:ura_core/shared/models/order.dart';
 import 'package:ura_core/shared/widgets/draft_order_items_list.dart';
 import 'package:ura_core/shared/widgets/off_stock.dart';
 
 void main() {
-  const water = InventoryItem(
-    id: 'water',
-    itemName: 'مياه نوفا 330 مل',
-    quantity: 50,
-    unit: 'كرتونة',
-  );
-
   Widget wrap(Widget child) =>
       MaterialApp(home: Scaffold(body: SingleChildScrollView(child: child)));
 
@@ -30,8 +20,6 @@ void main() {
         DraftOrderItem(inventoryId: 'water', inventoryName: 'مياه نوفا 330 مل', quantity: 3, isCustom: false),
         DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
       ],
-      inventory: const [water],
-      direction: OrderDirection.outbound,
       onRemove: (_) {},
     )));
 
@@ -39,18 +27,17 @@ void main() {
     expect(find.text('شاي ليبتون'), findsOneWidget);
   });
 
-  testWidgets('the outside-inventory item is set apart with its own label',
+  testWidgets('a typed item is not labelled خارج المخزون: storage decides that now',
       (tester) async {
     await tester.pumpWidget(wrap(DraftOrderItemsList(
       items: const [
         DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
       ],
-      inventory: const [water],
-      direction: OrderDirection.outbound,
       onRemove: (_) {},
     )));
 
-    expect(find.textContaining(OffStock.label), findsWidgets);
+    expect(find.textContaining(OffStock.label), findsNothing);
+    expect(find.byIcon(Icons.edit_note), findsOneWidget);
   });
 
   testWidgets('a stock item shows no outside-inventory label', (tester) async {
@@ -58,8 +45,6 @@ void main() {
       items: const [
         DraftOrderItem(inventoryId: 'water', inventoryName: 'مياه نوفا 330 مل', quantity: 3, isCustom: false),
       ],
-      inventory: const [water],
-      direction: OrderDirection.outbound,
       onRemove: (_) {},
     )));
 
@@ -79,8 +64,6 @@ void main() {
         DraftOrderItem(inventoryId: 'water', inventoryName: 'مياه نوفا 330 مل', quantity: 3, isCustom: false),
         DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
       ],
-      inventory: const [water],
-      direction: OrderDirection.outbound,
       onRemove: (i) => removedIndex = i,
     )));
 
@@ -98,8 +81,6 @@ void main() {
         DraftOrderItem(inventoryId: 'water', inventoryName: 'مياه نوفا 330 مل', quantity: 3, isCustom: false),
         DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
       ],
-      inventory: const [water],
-      direction: OrderDirection.outbound,
       onRemove: (i) => removedIndex = i,
     )));
 
@@ -119,17 +100,17 @@ void main() {
         DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
         DraftOrderItem(inventoryId: 'water', inventoryName: 'مياه نوفا 330 مل', quantity: 3, isCustom: false),
       ],
-      inventory: const [water],
-      direction: OrderDirection.outbound,
       onRemove: (i) => removedIndex = i,
     )));
 
     // Visually first is the stock row (index 1); visually last is the
     // outside-inventory row (index 0).
-    await tester.tap(find.byIcon(Icons.delete_outline).last);
+    // Rows render in the order they were added, so the first delete button
+    // is index 0 and the last is index 1.
+    await tester.tap(find.byIcon(Icons.delete_outline).first);
     expect(removedIndex, 0);
 
-    await tester.tap(find.byIcon(Icons.delete_outline).first);
+    await tester.tap(find.byIcon(Icons.delete_outline).last);
     expect(removedIndex, 1);
   });
 
@@ -139,8 +120,6 @@ void main() {
       items: const [
         DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
       ],
-      inventory: const [],
-      direction: OrderDirection.outbound,
       onRemove: (_) {},
     )));
 
@@ -150,8 +129,6 @@ void main() {
   testWidgets('an empty list still shows the empty-state message', (tester) async {
     await tester.pumpWidget(wrap(DraftOrderItemsList(
       items: const [],
-      inventory: const [water],
-      direction: OrderDirection.outbound,
       onRemove: (_) {},
     )));
 
@@ -165,8 +142,6 @@ void main() {
           DraftOrderItem(inventoryId: 'water', inventoryName: 'مياه نوفا 330 مل', quantity: 3, isCustom: false),
           DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
         ],
-        inventory: const [water],
-        direction: OrderDirection.outbound,
         onRemove: (_) {},
         onEditCustom: (_) {},
       )));
@@ -184,8 +159,6 @@ void main() {
         items: const [
           DraftOrderItem(customDescription: 'شاي ليبتون', quantity: 2, isCustom: true),
         ],
-        inventory: const [],
-        direction: OrderDirection.outbound,
         onRemove: (_) {},
       )));
 
@@ -205,8 +178,6 @@ void main() {
           DraftOrderItem(inventoryId: 'water', inventoryName: 'مياه نوفا 330 مل', quantity: 3, isCustom: false),
           DraftOrderItem(customDescription: 'سكر', quantity: 1, isCustom: true),
         ],
-        inventory: const [water],
-        direction: OrderDirection.outbound,
         onRemove: (_) {},
         onEditCustom: (i) => editedIndex = i,
       )));
@@ -221,83 +192,16 @@ void main() {
     });
   });
 
-  group('a catalogue row with nothing on the shelf', () {
-    // The draft list has no was_unavailable_at_creation to read -- the row is
-    // not inserted yet -- so it classifies off the live balance instead.
-    const empty = InventoryItem(
-      id: 'tea',
-      itemName: 'شاي ليبتون',
-      quantity: 0,
-      unit: 'علبة',
-    );
+  testWidgets('a catalogue row is never flagged for stock: the verifier does not see it',
+      (tester) async {
+    await tester.pumpWidget(wrap(DraftOrderItemsList(
+      items: const [
+        DraftOrderItem(inventoryId: 'water', inventoryName: 'مياه نوفا 330 مل', quantity: 500, isCustom: false),
+      ],
+      onRemove: (_) {},
+    )));
 
-    const draftOfEmpty = DraftOrderItem(
-      inventoryId: 'tea',
-      inventoryName: 'شاي ليبتون',
-      quantity: 2,
-      isCustom: false,
-    );
-
-    testWidgets('is grouped with the outside-inventory items', (tester) async {
-      await tester.pumpWidget(wrap(DraftOrderItemsList(
-        items: const [draftOfEmpty],
-        inventory: const [empty],
-        direction: OrderDirection.outbound,
-        onRemove: (_) {},
-      )));
-
-      expect(find.textContaining(OffStock.label), findsWidgets);
-      expect(
-        find.textContaining(OffStock.labelFor(OffStockKind.outOfStock)),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('does not also get the orange "only N available" chip',
-        (tester) async {
-      // Two chips for one fact. "المتوفر فقط: 0" says nothing the purple
-      // badge has not already said, louder.
-      await tester.pumpWidget(wrap(DraftOrderItemsList(
-        items: const [draftOfEmpty],
-        inventory: const [empty],
-        direction: OrderDirection.outbound,
-        onRemove: (_) {},
-      )));
-
-      expect(find.textContaining('المتوفر فقط'), findsNothing);
-    });
-
-    testWidgets('a partial shortfall still warns in orange, not purple',
-        (tester) async {
-      // Some on the shelf, just not enough -- a different situation, and the
-      // rep is not being sent shopping for it.
-      await tester.pumpWidget(wrap(DraftOrderItemsList(
-        items: const [
-          DraftOrderItem(
-            inventoryId: 'water',
-            inventoryName: 'مياه نوفا 330 مل',
-            quantity: 500,
-            isCustom: false,
-          ),
-        ],
-        inventory: const [water],
-        direction: OrderDirection.outbound,
-        onRemove: (_) {},
-      )));
-
-      expect(find.textContaining('المتوفر فقط'), findsOneWidget);
-      expect(find.textContaining(OffStock.label), findsNothing);
-    });
-
-    testWidgets('stays ordinary stock on an inbound order', (tester) async {
-      await tester.pumpWidget(wrap(DraftOrderItemsList(
-        items: const [draftOfEmpty],
-        inventory: const [empty],
-        direction: OrderDirection.inboundRep,
-        onRemove: (_) {},
-      )));
-
-      expect(find.textContaining(OffStock.label), findsNothing);
-    });
+    expect(find.textContaining('المتوفر'), findsNothing);
+    expect(find.textContaining(OffStock.label), findsNothing);
   });
 }

@@ -83,7 +83,9 @@ void main() {
     when(() => entities.fetchEntities()).thenAnswer((_) async => const AppSuccess([entity]));
     when(() => projects.fetchProjectsForEntity('e1')).thenAnswer((_) async => const AppSuccess([project]));
     when(() => projects.fetchProjectItems(any())).thenAnswer((_) async => AppSuccess(items));
-    when(() => projects.fetchEntityIdsWithProjects()).thenAnswer((_) async => const AppSuccess({'e1'}));
+    when(() => projects.fetchReceiptProjectIds()).thenAnswer((_) async => const AppSuccess({'p1', 'p2'}));
+    when(() => projects.fetchEntityIdsWithProjects(onlyProjectIds: any(named: 'onlyProjectIds')))
+        .thenAnswer((_) async => const AppSuccess({'e1'}));
     when(() => drafts.save(any())).thenAnswer((_) async {});
 
     cubit = CreateDeliveryReceiptCubit(

@@ -215,15 +215,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
     if (added == true && mounted) Navigator.pop(context);
   }
 
-  void _convertToCustom(InventoryItem item) {
-    setState(() {
-      _isCustom = true;
-      _convertSourceInventoryId = item.id;
-      _descController.text = item.itemName;
-      _customQtyController.text = '1';
-    });
-  }
-
   Widget _buildStatusChip({
     required String label,
     required AvailabilityStatus status,
@@ -331,23 +322,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
       if (qty > 0) return true;
     }
     return false;
-  }
-
-  /// Inbound orders restock — no depletion warning applies.
-  String? _quantityWarning(InventoryItem item) {
-    if (_isInbound) return null;
-    final qty = double.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
-    if (qty <= 0) return null;
-    final result = item.checkStock(qty);
-    if (result == StockCheckResult.partial) return 'المتوفر فقط: ${formatQty(item.quantity)}';
-    // Says what will happen, not just what is wrong: adding this row to an
-    // outbound order makes it the rep's errand, and the verifier should know
-    // that at the moment of typing rather than discover it on the rep's
-    // screen later.
-    if (result == StockCheckResult.outOfStock) {
-      return 'غير متوفر — سيُضاف كـ ${OffStock.label}';
-    }
-    return null;
   }
 
   /// True when an inbound order is actively restocking an out-of-stock item.
@@ -569,6 +543,9 @@ class _AddItemSheetState extends State<AddItemSheet> {
               // and draws no scrollbar -- so on desktop web every chip past the
               // right edge is simply unreachable. Wrapping is also what the
               // inventory screen's own filter card does.
+              // Stock is for storage to judge on outbound orders; the verifier
+              // only sees it when restocking (inbound).
+              if (_isInbound)
               Wrap(
                 spacing: 8,
                 runSpacing: 8,
@@ -618,8 +595,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
                   itemCount: _filtered.length,
                   itemBuilder: (_, i) {
                     final item = _filtered[i];
-                    final warning = _quantityWarning(item);
-                    final isOutOfStock = item.availabilityStatus == AvailabilityStatus.outOfStock;
                     final restocking = _isRestocking(item);
 
                     return Column(
@@ -641,6 +616,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                           style: const TextStyle(fontWeight: FontWeight.w500),
                                         ),
                                         SizedBox(height: AppSpacing.verticalXSmall),
+                                        if (_isInbound)
                                         Row(
                                           children: [
                                             Text(
@@ -700,16 +676,7 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                                 ? const OutlineInputBorder(
                                                     borderSide: BorderSide(color: Colors.teal, width: 2),
                                                   )
-                                                : warning != null
-                                                    ? OutlineInputBorder(
-                                                        borderSide: BorderSide(
-                                                          color: isOutOfStock
-                                                              ? OffStock.color
-                                                              : Colors.orange,
-                                                          width: 2,
-                                                        ),
-                                                      )
-                                                    : null,
+                                                : null,
                                           ),
                                         ),
                                       ],
@@ -717,35 +684,6 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                   ),
                                 ],
                               ),
-                              if (warning != null)
-                                Padding(
-                                  padding: EdgeInsets.only(top: AppSpacing.verticalXSmall),
-                                  child: Text(
-                                    warning,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: isOutOfStock
-                                          ? OffStock.color
-                                          : Colors.orange,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ),
-                              if (isOutOfStock && !_isInbound)
-                                Padding(
-                                  padding: EdgeInsets.only(top: AppSpacing.verticalXSmall),
-                                  child: TextButton.icon(
-                                    onPressed: () => _convertToCustom(item),
-                                    icon: const Icon(Icons.swap_horiz, size: 16),
-                                    label: const Text('تعديل الوصف كصنف مستقل'),
-                                    style: TextButton.styleFrom(
-                                      foregroundColor: OffStock.color,
-                                      padding: EdgeInsets.zero,
-                                      visualDensity: VisualDensity.compact,
-                                      textStyle: const TextStyle(fontSize: 12),
-                                    ),
-                                  ),
-                                ),
                             ],
                           ),
                         ),

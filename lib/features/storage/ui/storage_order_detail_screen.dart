@@ -240,7 +240,7 @@ class _ItemsSection extends StatelessWidget {
     final dir = order.direction;
     final status = order.status;
     if (dir == OrderDirection.outbound &&
-        order.involvesStorage &&
+        !order.storageReviewed &&
         status == OrderStatus.assigned) {
       return true;
     }
@@ -264,9 +264,11 @@ class _ItemsSection extends StatelessWidget {
     }
 
     final storageTurn = _isStorageTurn(state.order);
-    // Check controls only shown for inbound_external (items must be verified)
-    final showCheckControls =
-        storageTurn && state.order.direction == OrderDirection.inboundExternal;
+    // ✓/✗ on every row: for an incoming external shipment (items must be
+    // verified) and for an outbound order (storage decides what it has).
+    final showCheckControls = storageTurn &&
+        (state.order.direction == OrderDirection.inboundExternal ||
+            state.order.direction == OrderDirection.outbound);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -281,7 +283,11 @@ class _ItemsSection extends StatelessWidget {
             item: item,
             state: state,
             showCheckControls: showCheckControls,
-            showQtyEdit: storageTurn && item.inventoryId != null,
+            // On outbound, only a row marked ✓ has a quantity to give.
+            showQtyEdit: storageTurn &&
+                item.inventoryId != null &&
+                (state.order.direction != OrderDirection.outbound ||
+                    state.effectiveStatus(item) == ItemCheckStatus.checked),
             isFinished: state.order.status == OrderStatus.delivered,
           ),
         ),
@@ -365,6 +371,16 @@ class _ItemTile extends StatelessWidget {
               Text(
                 'الكمية: ${formatQty(effectiveQty)}',
                 style: const TextStyle(fontSize: 13, color: Colors.grey),
+              ),
+            if (showQtyEdit &&
+                state.order.direction == OrderDirection.outbound &&
+                effectiveQty < item.quantity)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'الباقي (${formatQty(item.quantity - effectiveQty)}) سيشتريه المندوب',
+                  style: TextStyle(fontSize: 12, color: OffStock.color),
+                ),
               ),
             if (kind != null) ...[
               Padding(
@@ -656,20 +672,30 @@ class _ActionSectionState extends State<_ActionSection> {
     final dir = order.direction;
     final status = order.status;
 
-    // ── Flow 1: Outbound + storage items, awaiting storage release ──────────
+    // ── Outbound: storage marks every item ✓ / ✗, then confirms ──────────────
     if (dir == OrderDirection.outbound &&
-        order.involvesStorage &&
+        !order.storageReviewed &&
         status == OrderStatus.assigned) {
+      final canConfirm = widget.state.allItemsReviewed;
+      final sendsAny = order.items.any(
+        (i) => widget.state.effectiveStatus(i) == ItemCheckStatus.checked,
+      );
       return _buildActionCard(
         context,
-        title: 'تأكيد الإرسال',
-        subtitle: 'سيتم خصم الأصناف من المخزن فور التأكيد',
+        title: 'تأكيد المراجعة',
+        subtitle: !canConfirm
+            ? 'يجب مراجعة جميع الأصناف (متوفر أو غير متوفر) قبل التأكيد'
+            : sendsAny
+                ? 'سيتم خصم الأصناف المتوفرة من المخزن، وما لم يتوفر يشتريه المندوب'
+                : 'لا شيء متوفر — سيشتري المندوب كل الأصناف',
         icon: Icons.upload_outlined,
         color: Colors.orange,
         notesController: _notesController,
-        buttonLabel: 'تأكيد الإرسال للمندوب',
+        buttonLabel: canConfirm && !sendsAny
+            ? 'تأكيد — كل الأصناف للشراء'
+            : 'تأكيد الإرسال للمندوب',
         isActing: widget.state.isActing,
-        canAct: true,
+        canAct: canConfirm,
         onConfirm: () => context.read<StorageOrderDetailCubit>().confirmPickup(
           notes: _notesController.text.trim().isEmpty
               ? null

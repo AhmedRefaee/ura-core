@@ -46,12 +46,14 @@ Future<Uint8List> buildStoredReceiptPdf({
   required DateTime filedAt,
   DateTime? customDate,
   required bool fullDescription,
+  String? categoryTitle,
   String? notes,
   required List<StoredReceiptLine> lines,
 }) async {
   return DeliveryReceiptPdf.build(
     entityName: entityName,
     projectName: projectName,
+    categoryTitle: categoryTitle,
     date: switch (dateMode) {
       'blank' => null,
       'custom' => customDate ?? filedAt.toLocal(),

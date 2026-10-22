@@ -113,8 +113,10 @@ void main() {
     testWidgets('no chips at all when nothing has a category', (tester) async {
       await tester.pumpWidget(sheetWith(const [water]));
 
-      // Only the three status chips should be present.
-      expect(find.byType(FilterChip), findsNWidgets(3));
+      // The status chips (متوفر / منخفض / نفد) are stock info, which the
+      // verifier no longer sees on an outbound order -- so nothing at all.
+      expect(find.byType(FilterChip), findsNothing);
+      expect(find.textContaining('المتوفر'), findsNothing);
     });
   });
 }

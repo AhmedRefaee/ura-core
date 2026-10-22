@@ -33,20 +33,18 @@ class StorageRepository {
             .eq('direction', 'inbound_rep')
             .order('created_at', ascending: true),
       ]);
-      // The 'assigned' query above has no direction filter at the DB level --
-      // it can't, since "does storage actually need to act on this order"
-      // depends on the order's items (any real inventory_id row?), not just
-      // its status. Filter dynamically per order instead of assuming every
-      // 'assigned' order belongs on this queue:
-      //   - outbound: only if it involvesStorage (Flow 1) -- a Flow 2 order
-      //     (100% خارج المخزون) never touches storage at all.
+      // The 'assigned' query above has no direction filter at the DB level,
+      // so filter per order here:
+      //   - outbound: every one until storage has reviewed it (✓/✗ each row).
+      //     Once reviewed, an order nobody is sending stays 'assigned' for
+      //     the rep but is no longer storage's to act on.
       //   - inbound_external: always -- storage confirms delivery right at
       //     'assigned', that IS this direction's storage step.
       //   - inbound_rep: never at 'assigned' -- storage only acts once the
       //     rep has bought and started moving (the second query below).
       final assignedForStorage = _map(results[0] as List).where((o) {
         return switch (o.direction) {
-          OrderDirection.outbound => o.involvesStorage,
+          OrderDirection.outbound => !o.storageReviewed,
           OrderDirection.inboundExternal => true,
           OrderDirection.inboundRep => false,
         };
@@ -121,38 +119,32 @@ class StorageRepository {
 
   // ── Item check status ─────────────────────────────────────────────────────
 
-  Future<AppResult<void>> updateItemCheckStatus(String itemId, ItemCheckStatus status) async {
+  /// Goes through the `check_order_item` RPC, which enforces server-side that
+  /// the caller is storage, the order is still awaiting its review and the
+  /// direction allows it -- a raw table UPDATE only ever relied on RLS.
+  Future<AppResult<void>> _setItemCheckStatus(String itemId, String statusStr) async {
     try {
-      final statusStr = status == ItemCheckStatus.checked ? 'checked' : 'rejected';
-      logger.d('StorageRepository → updateItemCheckStatus: $itemId → $statusStr');
-      await _supabase.from('order_items').update({
-        'check_status': statusStr,
-        'checked_by': _supabase.auth.currentUser!.id,
-        'checked_at': DateTime.now().toUtc().toIso8601String(),
-      }).eq('id', itemId);
-      logger.i('StorageRepository → item $itemId marked $statusStr');
-      return const AppSuccess(null);
+      logger.d('StorageRepository → check_order_item: $itemId → $statusStr');
+      final result = await _supabase.rpc('check_order_item', params: {
+        'target_item_id': itemId,
+        'new_status': statusStr,
+      });
+      if (result['success'] as bool? ?? false) {
+        logger.i('StorageRepository → item $itemId marked $statusStr');
+        return const AppSuccess(null);
+      }
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
     } catch (e, st) {
-      logger.e('StorageRepository → updateItemCheckStatus failed', error: e, stackTrace: st);
+      logger.e('StorageRepository → check_order_item failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }
 
-  Future<AppResult<void>> revertItemCheckStatus(String itemId) async {
-    try {
-      logger.d('StorageRepository → revertItemCheckStatus: $itemId → pending');
-      await _supabase.from('order_items').update({
-        'check_status': 'pending',
-        'checked_by': null,
-        'checked_at': null,
-      }).eq('id', itemId);
-      logger.i('StorageRepository → item $itemId reverted to pending');
-      return const AppSuccess(null);
-    } catch (e, st) {
-      logger.e('StorageRepository → revertItemCheckStatus failed', error: e, stackTrace: st);
-      return AppFailure(ErrorHandler.handle(e));
-    }
-  }
+  Future<AppResult<void>> updateItemCheckStatus(String itemId, ItemCheckStatus status) =>
+      _setItemCheckStatus(itemId, status == ItemCheckStatus.checked ? 'checked' : 'rejected');
+
+  Future<AppResult<void>> revertItemCheckStatus(String itemId) =>
+      _setItemCheckStatus(itemId, 'pending');
 
   // ── Final quantity edit ───────────────────────────────────────────────────
 

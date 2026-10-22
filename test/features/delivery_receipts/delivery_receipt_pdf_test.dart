@@ -59,7 +59,33 @@ void main() {
     if (out != null) File(out).writeAsBytesSync(bytes);
   });
 
-  test('more than 20 items spans multiple pages, numbered continuously', () async {
+  test('a split-by-category سند carries its category heading above the items', () async {
+    final font = File('C:/Windows/Fonts/tahoma.ttf');
+    final bold = File('C:/Windows/Fonts/tahomabd.ttf');
+    if (!font.existsSync()) return;
+
+    final bytes = await DeliveryReceiptPdf.build(
+      entityName: 'صندوق التنمية العقارية',
+      projectName: 'توريد مواد غذائية',
+      date: DateTime(2026, 10, 22),
+      categoryTitle: 'الحليب ومشتقاته',
+      theme: pw.ThemeData.withFont(
+        base: pw.Font.ttf(font.readAsBytesSync().buffer.asByteData()),
+        bold: pw.Font.ttf((bold.existsSync() ? bold : font).readAsBytesSync().buffer.asByteData()),
+      ),
+      lines: const [
+        ReceiptPdfLine(itemName: 'لبنة', unit: 'كرتون', quantity: 5),
+        ReceiptPdfLine(itemName: 'زبادي', unit: 'عبوة', quantity: 12),
+      ],
+    );
+
+    expect(bytes.length, greaterThan(1000));
+    final out = Platform.environment['RECEIPT_PDF_CATEGORY_OUT'];
+    if (out != null) File(out).writeAsBytesSync(bytes);
+  });
+
+  test('more than 20 items spans multiple pages, numbered continuously; later pages repeat date and category',
+      () async {
     final font = File('C:/Windows/Fonts/tahoma.ttf');
     final bold = File('C:/Windows/Fonts/tahomabd.ttf');
     if (!font.existsSync()) return;
@@ -68,6 +94,7 @@ void main() {
       entityName: 'صندوق التنمية العقارية',
       projectName: 'توريد أثاث المقر الرئيسي',
       date: DateTime(2026, 9, 26),
+      categoryTitle: 'أثاث مكتبي',
       theme: pw.ThemeData.withFont(
         base: pw.Font.ttf(font.readAsBytesSync().buffer.asByteData()),
         bold: pw.Font.ttf((bold.existsSync() ? bold : font).readAsBytesSync().buffer.asByteData()),

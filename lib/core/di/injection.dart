@@ -15,7 +15,6 @@ import '../../features/verifier/data/entity_repository.dart';
 import '../../features/verifier/data/inventory_repository.dart';
 import '../../features/verifier/data/order_repository.dart';
 import '../../features/verifier/data/order_template_repository.dart';
-import '../../features/verifier/data/direct_item_match_repository.dart';
 import '../../features/verifier/data/hybrid_item_match_repository.dart';
 import '../../features/verifier/data/item_match_repository.dart';
 import '../../features/verifier/logic/create_order_cubit.dart';
@@ -121,12 +120,6 @@ Future<void> setupDependencies() async {
   // review step in front of the verifier before it becomes an order.
   sl.registerLazySingleton<ItemMatchRepository>(
     () => HybridItemMatchRepository(),
-  );
-  // Gemini on its own, for create order's "مطابقة مع المخزن": the draft runs
-  // the on-device matcher itself per row and only asks this for the rows it
-  // could not place (see ItemDraftCubit).
-  sl.registerLazySingleton<DirectItemMatchRepository>(
-    () => DirectItemMatchRepository(),
   );
 
   // Chat cubits (singleton badge cubit; factory threads + directory cubits)

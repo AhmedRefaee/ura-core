@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../core/config/feature_flags.dart';
+import '../../../core/di/injection.dart';
+import '../../../core/errors/app_result.dart';
 import '../../../core/design_system/widgets/feedback/app_snackbar.dart';
 import '../../../shared/models/audit_log_entry.dart';
 import '../../../shared/models/order.dart';
@@ -10,13 +12,16 @@ import '../../../shared/models/order_item.dart';
 import '../../../shared/utils/quantity_format.dart';
 import '../../../shared/widgets/location_link.dart';
 import '../../../shared/widgets/off_stock.dart';
+import '../../inventory/data/inventory_management_repository.dart';
 import '../../inventory/ui/inventory_form_screen.dart';
+import '../../../shared/models/inventory_item.dart';
 import '../../../shared/widgets/invalid_order_view.dart';
 import '../../../shared/widgets/order_status_stepper.dart';
 import '../../../shared/widgets/order_status_timeline.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
 import '../logic/storage_order_detail_cubit.dart';
+import 'widgets/typed_line_review_sheet.dart';
 import '../../delivery_receipts/ui/delivery_receipts_section.dart';
 
 class StorageOrderDetailScreen extends StatelessWidget {
@@ -283,11 +288,13 @@ class _ItemsSection extends StatelessWidget {
             item: item,
             state: state,
             showCheckControls: showCheckControls,
-            // On outbound, only a row marked ✓ has a quantity to give.
+            // On outbound, any row marked ✓ has a quantity to give -- linked
+            // or "just available"; less than ordered leaves the rest to the
+            // rep. Incoming orders count catalog rows only.
             showQtyEdit: storageTurn &&
-                item.inventoryId != null &&
-                (state.order.direction != OrderDirection.outbound ||
-                    state.effectiveStatus(item) == ItemCheckStatus.checked),
+                (state.order.direction == OrderDirection.outbound
+                    ? state.effectiveStatus(item) == ItemCheckStatus.checked
+                    : item.inventoryId != null),
             isFinished: state.order.status == OrderStatus.delivered,
           ),
         ),
@@ -323,6 +330,11 @@ class _ItemTile extends StatelessWidget {
     final effectiveQty = state.effectiveQuantity(item);
     final effectiveStatus = state.effectiveStatus(item);
     final kind = offStockKindOf(item, state.order.direction);
+    // Storage is reviewing an outbound order and this line was typed, not
+    // picked: ✓ asks what it is (link / add / just available).
+    final reviewingTyped = showCheckControls &&
+        state.order.direction == OrderDirection.outbound &&
+        item.isTypedLine;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -339,24 +351,41 @@ class _ItemTile extends StatelessWidget {
                 ),
                 const SizedBox(width: 8),
                 Expanded(
-                  child: Text(
-                    item.displayName,
-                    style: const TextStyle(fontWeight: FontWeight.w500),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        item.displayName,
+                        style: const TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                      // Linked by storage: keep what was actually asked for
+                      // in view, so a wrong link is easy to spot.
+                      if (item.isLinkedTypedLine)
+                        Text(
+                          'كتبها المدقق: ${item.typedName}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                    ],
                   ),
                 ),
                 if (showCheckControls)
                   _ItemCheckControls(
                     status: effectiveStatus,
                     isActing: state.isActing,
-                    onCheck: () => context
-                        .read<StorageOrderDetailCubit>()
-                        .checkItem(item.id, ItemCheckStatus.checked),
+                    onCheck: () => reviewingTyped && item.isCustom
+                        ? _reviewTypedLine(context)
+                        : context
+                            .read<StorageOrderDetailCubit>()
+                            .checkItem(item.id, ItemCheckStatus.checked),
                     onReject: () => context
                         .read<StorageOrderDetailCubit>()
                         .checkItem(item.id, ItemCheckStatus.rejected),
-                    onRevert: () => context
-                        .read<StorageOrderDetailCubit>()
-                        .checkItem(item.id, ItemCheckStatus.pending),
+                    // Undoing a link puts the line back exactly as typed.
+                    onRevert: () => item.isLinkedTypedLine
+                        ? context.read<StorageOrderDetailCubit>().linkItem(item.id, null)
+                        : context
+                            .read<StorageOrderDetailCubit>()
+                            .checkItem(item.id, ItemCheckStatus.pending),
                   ),
               ],
             ),
@@ -430,7 +459,7 @@ class _ItemTile extends StatelessWidget {
                   tooltip: 'خيارات الصنف',
                   onSelected: (value) {
                     if (value == 'add_to_storage') {
-                      _openAddToStorage(context, item);
+                      _openAddToStorage(context, item, link: reviewingTyped);
                     }
                   },
                   itemBuilder: (_) => const [
@@ -452,7 +481,36 @@ class _ItemTile extends StatelessWidget {
     );
   }
 
-  void _openAddToStorage(BuildContext context, OrderItem item) async {
+  Future<void> _reviewTypedLine(BuildContext context) async {
+    final cubit = context.read<StorageOrderDetailCubit>();
+    final choice = await showTypedLineReviewSheet(
+      context,
+      item: item,
+      loadInventory: () async {
+        final result = await sl<InventoryManagementRepository>().fetchInventory();
+        return switch (result) {
+          AppSuccess<List<InventoryItem>>(:final data) => data,
+          AppFailure(:final error) => throw Exception(error.message),
+        };
+      },
+    );
+    if (!context.mounted) return;
+    switch (choice) {
+      case LinkToCatalog(:final item, :final quantity):
+        await cubit.linkItem(this.item.id, item.id, quantity: quantity);
+      case AddAsNewItem():
+        await _openAddToStorage(context, item, link: true);
+      case JustAvailable():
+        await cubit.checkItem(item.id, ItemCheckStatus.checked);
+      case null:
+        break;
+    }
+  }
+
+  /// [link]: storage is mid-review, so the new row is also linked to this
+  /// line (and the line marked ✓) in the same server call.
+  Future<void> _openAddToStorage(BuildContext context, OrderItem item, {bool link = false}) async {
+    final cubit = context.read<StorageOrderDetailCubit>();
     final json = item.customItemJson;
     final prefill = CustomItemPrefill(
       name: json != null
@@ -473,6 +531,7 @@ class _ItemTile extends StatelessWidget {
       variety: json?['variety'] as String?,
       packagingSize: (json?['packagingSize'] as num?)?.toDouble(),
       packagingSizeUnit: json?['packagingSizeUnit'] as String?,
+      linkOrderItemId: link ? item.id : null,
     );
 
     final added = await Navigator.push<bool>(
@@ -480,6 +539,7 @@ class _ItemTile extends StatelessWidget {
       MaterialPageRoute(builder: (_) => InventoryFormScreen(prefill: prefill)),
     );
 
+    if (added == true && link) await cubit.refresh(forgetItem: item.id);
     if (added == true && context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

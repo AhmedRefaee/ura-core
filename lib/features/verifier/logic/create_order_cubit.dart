@@ -72,15 +72,21 @@ class CreateOrderReady extends CreateOrderState {
           ? null
           : (selectedEntity ?? this.selectedEntity),
       selectedRep: clearRep ? null : (selectedRep ?? this.selectedRep),
-      items: items ?? this.items,
+      // Every line carries a row key so the items table can keep each row's
+      // own text fields across edits and deletes.
+      items: items?.map((i) => i.keyed()).toList() ?? this.items,
       notes: clearNotes ? null : (notes ?? this.notes),
       templateSaveSucceeded: templateSaveSucceeded,
     );
   }
 
+  /// Lines still missing a name or a quantity.
+  int get incompleteCount => items.where((i) => !i.isComplete).length;
+
   bool get canSubmit =>
       selectedEntity != null &&
       items.isNotEmpty &&
+      incompleteCount == 0 &&
       (direction == OrderDirection.inboundExternal || selectedRep != null);
 
   @override
@@ -264,6 +270,36 @@ class CreateOrderCubit extends Cubit<CreateOrderState>
     safeEmit(s.copyWith(items: updated));
   }
 
+  /// Appends lines the verifier typed or pasted.
+  void addTypedItems(List<({String name, String unit, double quantity})> lines) {
+    final s = state;
+    if (s is! CreateOrderReady || lines.isEmpty) return;
+    safeEmit(s.copyWith(items: [
+      ...s.items,
+      for (final l in lines)
+        DraftOrderItem.typed(name: l.name, unit: l.unit, quantity: l.quantity),
+    ]));
+  }
+
+  /// Edits a typed line in place.
+  void updateTypedItem(int index, {String? name, String? unit, double? quantity}) {
+    final s = state;
+    if (s is! CreateOrderReady) return;
+    if (index < 0 || index >= s.items.length || !s.items[index].isCustom) return;
+    final updated = List<DraftOrderItem>.from(s.items)
+      ..[index] = s.items[index].withTyped(name: name, unit: unit, quantity: quantity);
+    safeEmit(s.copyWith(items: updated));
+  }
+
+  void updateItemQuantity(int index, double quantity) {
+    final s = state;
+    if (s is! CreateOrderReady) return;
+    if (index < 0 || index >= s.items.length) return;
+    final updated = List<DraftOrderItem>.from(s.items)
+      ..[index] = s.items[index].withQuantity(quantity);
+    safeEmit(s.copyWith(items: updated));
+  }
+
   void removeItem(int index) {
     final s = state;
     if (s is! CreateOrderReady) return;
@@ -286,6 +322,7 @@ class CreateOrderCubit extends Cubit<CreateOrderState>
         isCustom: true,
         customDescription: description,
         sourceInventoryId: existing.sourceInventoryId,
+        rowKey: existing.rowKey,
       );
     safeEmit(s.copyWith(items: updated));
   }
@@ -429,6 +466,9 @@ class CreateOrderCubit extends Cubit<CreateOrderState>
       case AppFailure(:final error):
         logger.e('CreateOrderCubit → submit failed: ${error.message}');
         safeEmit(CreateOrderError(error.message));
+        // Back to the form as it was: a failed send must not throw away a
+        // list the verifier just typed out.
+        safeEmit(s);
     }
   }
 }

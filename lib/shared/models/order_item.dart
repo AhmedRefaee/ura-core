@@ -10,6 +10,9 @@ class OrderItem extends Equatable {
   final String orderId;
   final String? inventoryId;
   final String? inventoryName;
+
+  /// The catalog row's unit; only selected where it is needed (storage).
+  final String? inventoryUnit;
   final double quantity;
   final double? finalQuantity;
   final bool isCustom;
@@ -28,6 +31,7 @@ class OrderItem extends Equatable {
     required this.orderId,
     this.inventoryId,
     this.inventoryName,
+    this.inventoryUnit,
     required this.quantity,
     this.finalQuantity,
     required this.isCustom,
@@ -65,6 +69,7 @@ class OrderItem extends Equatable {
       orderId: map['order_id'] as String,
       inventoryId: map['inventory_id'] as String?,
       inventoryName: inventoryMap?['item_name'] as String?,
+      inventoryUnit: inventoryMap?['unit'] as String?,
       quantity: (map['quantity'] as num).toDouble(),
       finalQuantity: (map['final_quantity'] as num?)?.toDouble(),
       isCustom: map['is_custom'] as bool,
@@ -93,6 +98,24 @@ class OrderItem extends Equatable {
       return null;
     }
   }
+
+  /// A line the verifier typed rather than picked from the catalog -- linked
+  /// by storage since or not. A split-off shortfall points at its source row
+  /// instead, and a template's catalog line has no typed text at all.
+  bool get isTypedLine => customDescription != null && sourceInventoryId == null;
+
+  /// A typed line storage has linked to a catalog row.
+  bool get isLinkedTypedLine => isTypedLine && !isCustom && inventoryId != null;
+
+  /// What the verifier wrote as the name.
+  String get typedName {
+    final json = customItemJson;
+    if (json != null) return (json['name'] as String?) ?? '';
+    return customDescription ?? '';
+  }
+
+  /// The unit the verifier wrote, if any.
+  String? get typedUnit => customItemJson?['unit'] as String?;
 
   String get displayName {
     if (!isCustom) return inventoryName ?? inventoryId ?? '';

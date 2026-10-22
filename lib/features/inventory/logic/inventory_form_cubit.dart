@@ -53,6 +53,7 @@ class InventoryFormCubit extends Cubit<InventoryFormState>
     double? packagingSize,
     String? packagingSizeUnit,
     List<String>? aliases,
+    String? linkOrderItemId,
   }) async {
     safeEmit(InventoryFormSaving());
 
@@ -68,6 +69,22 @@ class InventoryFormCubit extends Cubit<InventoryFormState>
         minQuantity: minQuantity,
         description: description,
         notes: notes,
+        brand: brand,
+        variety: variety,
+        packagingSize: packagingSize,
+        packagingSizeUnit: packagingSizeUnit,
+        aliases: aliases,
+      );
+    } else if (linkOrderItemId != null) {
+      result = await _repo.createItemAndLink(
+        linkOrderItemId,
+        name: name,
+        unit: unit,
+        quantity: quantity,
+        sku: sku,
+        category: category,
+        minQuantity: minQuantity,
+        description: description,
         brand: brand,
         variety: variety,
         packagingSize: packagingSize,

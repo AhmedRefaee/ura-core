@@ -4,6 +4,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import '../../../shared/utils/quantity_format.dart';
+import 'pdf_rtl_text.dart';
 
 class ReceiptPdfLine {
   final String itemName;
@@ -91,6 +92,27 @@ class DeliveryReceiptPdf {
       ],
     );
     final uraLogo = (await rootBundle.load('assets/branding/ura_logo.png')).buffer.asUint8List();
+
+    // Every piece of data text goes through here once, so its brackets face
+    // the right way and Latin reads forwards -- see fixRtlTextForPdf. The
+    // labels below are fixed text with neither.
+    final baseFont = theme.defaultTextStyle.font;
+    final glyphs = baseFont is pw.TtfFont ? TtfParser(baseFont.data).charToGlyphIndexMap : null;
+    String fix(String s) => glyphs == null ? s : fixRtlTextForPdf(s, glyphs.containsKey);
+    entityName = fix(entityName);
+    if (projectName != null) projectName = fix(projectName);
+    if (notes != null) notes = fix(notes);
+    if (categoryTitle != null) categoryTitle = fix(categoryTitle);
+    lines = [
+      for (final l in lines)
+        ReceiptPdfLine(
+          itemName: fix(l.itemName),
+          description: l.description == null ? null : fix(l.description!),
+          unit: fix(l.unit),
+          quantity: l.quantity,
+          note: l.note == null ? null : fix(l.note!),
+        ),
+    ];
 
     final dateText = date == null
         // Same day/month/year shape as a real date, blank segments -- not

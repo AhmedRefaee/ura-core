@@ -31,6 +31,7 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
   ReceiptCreatorFilter _filter = const MineFilter();
   String? _entityId;
   DateTimeRange? _dates;
+  ReceiptSort _sort = ReceiptSort.newest;
   final String? _myId = Supabase.instance.client.auth.currentUser?.id;
 
   // The empty state has its own big "سند جديد"; don't show two.
@@ -231,7 +232,12 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
                     action: OutlinedButton(onPressed: _clearFilters, child: const Text('مسح التصفية')),
                   ),
                 )
-              : _ReceiptList(receipts: shown, onChanged: _refresh, showAuthor: _managesAll && filter is! MineFilter),
+              : _ReceiptList(
+                  receipts: sortReceipts(shown, _sort),
+                  onChanged: _refresh,
+                  showAuthor: _managesAll && filter is! MineFilter,
+                  groupByDay: _sort.groupsByDay,
+                ),
         ),
       ],
     );
@@ -240,7 +246,21 @@ class _DeliveryReceiptsTabState extends State<DeliveryReceiptsTab> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('سندات الاستلام')),
+      appBar: AppBar(
+        title: const Text('سندات الاستلام'),
+        actions: [
+          PopupMenuButton<ReceiptSort>(
+            tooltip: 'ترتيب: ${_sort.label}',
+            icon: const Icon(Icons.sort),
+            initialValue: _sort,
+            onSelected: (s) => setState(() => _sort = s),
+            itemBuilder: (_) => [
+              for (final s in ReceiptSort.values)
+                CheckedPopupMenuItem(value: s, checked: s == _sort, child: Text(s.label)),
+            ],
+          ),
+        ],
+      ),
       floatingActionButton: _hasReceipts
           ? FloatingActionButton.extended(
               onPressed: _create,
@@ -428,7 +448,16 @@ class _ReceiptList extends StatelessWidget {
 
   /// Name who filed each سند -- when the list isn't just the user's own.
   final bool showAuthor;
-  const _ReceiptList({required this.receipts, required this.onChanged, this.showAuthor = false});
+
+  /// Day headers over the cards (date orders). Off, each card carries its
+  /// own date instead.
+  final bool groupByDay;
+  const _ReceiptList({
+    required this.receipts,
+    required this.onChanged,
+    this.showAuthor = false,
+    this.groupByDay = true,
+  });
 
   static const _weekdays = ['الإثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت', 'الأحد'];
 
@@ -448,11 +477,13 @@ class _ReceiptList extends StatelessWidget {
     final rows = <Object>[];
     String? lastDay;
     for (final r in receipts) {
-      final when = (r.deliveredAt ?? r.createdAt)?.toLocal();
-      final label = when == null ? '' : _dayLabel(when);
-      if (label != lastDay) {
-        rows.add(label);
-        lastDay = label;
+      if (groupByDay) {
+        final when = (r.deliveredAt ?? r.createdAt)?.toLocal();
+        final label = when == null ? '' : _dayLabel(when);
+        if (label != lastDay) {
+          rows.add(label);
+          lastDay = label;
+        }
       }
       rows.add(r);
     }
@@ -469,7 +500,12 @@ class _ReceiptList extends StatelessWidget {
             child: Text(row, style: Theme.of(context).textTheme.titleSmall),
           );
         }
-        return _ReceiptCard(receipt: row as DeliveryReceipt, onChanged: onChanged, showAuthor: showAuthor);
+        return _ReceiptCard(
+          receipt: row as DeliveryReceipt,
+          onChanged: onChanged,
+          showAuthor: showAuthor,
+          showDate: !groupByDay,
+        );
       },
     );
   }
@@ -479,7 +515,10 @@ class _ReceiptCard extends StatefulWidget {
   final DeliveryReceipt receipt;
   final VoidCallback onChanged;
   final bool showAuthor;
-  const _ReceiptCard({required this.receipt, required this.onChanged, this.showAuthor = false});
+
+  /// No day header above this card, so it shows its date itself.
+  final bool showDate;
+  const _ReceiptCard({required this.receipt, required this.onChanged, this.showAuthor = false, this.showDate = false});
 
   @override
   State<_ReceiptCard> createState() => _ReceiptCardState();
@@ -544,6 +583,8 @@ class _ReceiptCardState extends State<_ReceiptCard> {
                             ? pill(Icons.link, r.submitterName ?? 'رابط الجهة')
                             : pill(Icons.person_outline, isOwnReceipt(r) ? 'أنا' : (r.rep?.fullName ?? 'مستخدم')),
                       if (r.status == ReceiptStatus.pending) pill(Icons.hourglass_top, 'بانتظار الاعتماد'),
+                      if (widget.showDate && when != null)
+                        pill(Icons.event, '${when.day}/${when.month}/${when.year}'),
                       if (time.isNotEmpty) pill(Icons.schedule, time),
                       pill(Icons.inventory_2_outlined, r.items.length == 1 ? 'بند واحد' : '${r.items.length} بنود'),
                       if (r.orderId != null) pill(Icons.link, 'من طلب'),

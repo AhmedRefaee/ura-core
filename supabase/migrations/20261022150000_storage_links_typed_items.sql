@@ -16,7 +16,8 @@
 -- next time (exact text only; the app never links on its own).
 --
 -- storage_confirm_pickup also splits a partly available "just available"
--- line: the shortfall becomes a ✗ line the rep buys.
+-- line: the shortfall becomes a ✗ line the rep buys. It now also checks the
+-- order belongs to the caller's organization, which it never did.
 --
 -- Every function: SECURITY DEFINER, fails closed on a NULL auth.uid(), checks
 -- the order and the inventory row belong to the caller's organization, anon
@@ -238,6 +239,9 @@ BEGIN
 
   SELECT * INTO v_order FROM orders WHERE id = target_order_id FOR UPDATE;
   IF NOT FOUND THEN RETURN json_build_object('success', false, 'error', 'الطلب غير موجود'); END IF;
+  IF v_order.organization_id IS DISTINCT FROM auth_org_id() THEN
+    RETURN json_build_object('success', false, 'error', 'غير مصرح');
+  END IF;
 
   SELECT count(*) INTO v_item_count FROM order_items WHERE order_id = target_order_id;
   IF v_item_count = 0 THEN

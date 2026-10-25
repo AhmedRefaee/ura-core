@@ -207,9 +207,37 @@ class EditOrderScreen extends StatelessWidget {
 
   void _showAddItemSheet(BuildContext context, EditOrderReady state) async {
     final cubit = context.read<EditOrderCubit>();
-    // Outbound: the verifier writes what was asked for, the same way create
-    // order does; storage decides what it has. Restocking keeps the catalog.
+    // Outbound, as in create order: type/paste what was asked for (storage
+    // decides) or pick a catalog row by name (reaches storage as ✓).
+    // Restocking always works from the catalog.
     if (state.originalOrder.direction == OrderDirection.outbound) {
+      final pick = await showModalBottomSheet<bool>(
+        context: context,
+        builder: (sheet) => SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.edit_note),
+                title: const Text('كتابة أو لصق أصناف'),
+                subtitle: const Text('المخزن يقرر المتوفر'),
+                onTap: () => Navigator.pop(sheet, false),
+              ),
+              ListTile(
+                leading: const Icon(Icons.inventory_2_outlined),
+                title: const Text('اختيار من المخزن'),
+                subtitle: const Text('يصل للمخزن متوفراً ✓'),
+                onTap: () => Navigator.pop(sheet, true),
+              ),
+            ],
+          ),
+        ),
+      );
+      if (pick == null || !context.mounted) return;
+      if (pick) {
+        _openCatalogPicker(context, state);
+        return;
+      }
       final lines = await Navigator.push<List<DraftOrderItem>>(
         context,
         MaterialPageRoute(builder: (_) => const TypedItemsPage()),
@@ -219,6 +247,11 @@ class EditOrderScreen extends StatelessWidget {
       }
       return;
     }
+    _openCatalogPicker(context, state);
+  }
+
+  void _openCatalogPicker(BuildContext context, EditOrderReady state) {
+    final cubit = context.read<EditOrderCubit>();
     Navigator.push(
       context,
       MaterialPageRoute(

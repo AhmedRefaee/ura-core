@@ -312,6 +312,17 @@ class _AddItemSheetState extends State<AddItemSheet> {
 
   bool get _isInbound => widget.orderDirection != OrderDirection.outbound;
 
+  /// Outbound: the app's count says there is not enough. Only a warning --
+  /// the counts are not always what is on the shelf, so the full line still
+  /// goes to storage, which sends what it really has.
+  String? _shortWarning(InventoryItem item) {
+    if (_isInbound) return null;
+    final qty = double.tryParse(_quantityControllers[item.id]?.text ?? '') ?? 0;
+    if (qty <= 0 || qty <= item.quantity) return null;
+    if (item.quantity <= 0) return 'غير متوفر حسب المخزن — المخزن سيقرر';
+    return 'المتوفر حسب المخزن: ${formatQty(item.quantity)} — المخزن سيتأكد';
+  }
+
   bool get _hasAnySelection {
     if (_isCustom) {
       return _descController.text.trim().isNotEmpty &&
@@ -641,6 +652,18 @@ class _AddItemSheetState extends State<AddItemSheet> {
                                             child: SelectableText(
                                               item.description!,
                                               style: const TextStyle(fontSize: 12, color: Colors.grey),
+                                            ),
+                                          ),
+                                        if (_shortWarning(item) case final warning?)
+                                          Padding(
+                                            padding: EdgeInsets.only(top: AppSpacing.verticalXSmall),
+                                            child: Text(
+                                              warning,
+                                              style: const TextStyle(
+                                                fontSize: 12,
+                                                color: Colors.orange,
+                                                fontWeight: FontWeight.w500,
+                                              ),
                                             ),
                                           ),
                                       ],

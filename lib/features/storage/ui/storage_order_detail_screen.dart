@@ -21,6 +21,7 @@ import '../../../shared/widgets/order_status_timeline.dart';
 import '../../chat/ui/chat_thread_picker_sheet.dart';
 import '../../chat/ui/chat_thread_screen.dart';
 import '../logic/storage_order_detail_cubit.dart';
+import 'widgets/catalog_search_sheet.dart';
 import 'widgets/typed_line_review_sheet.dart';
 import '../../delivery_receipts/ui/delivery_receipts_section.dart';
 
@@ -335,6 +336,15 @@ class _ItemTile extends StatelessWidget {
     final reviewingTyped = showCheckControls &&
         state.order.direction == OrderDirection.outbound &&
         item.isTypedLine;
+    // A line on a real catalog row (picked by the verifier, from a template,
+    // or linked by storage): storage may swap it to another row or correct
+    // the row's count -- the app's numbers are not always the shelf's.
+    final reviewingCatalog = showCheckControls &&
+        state.order.direction == OrderDirection.outbound &&
+        item.inventoryId != null &&
+        !item.isCustom &&
+        item.sourceInventoryId == null;
+    final stock = item.inventoryStock;
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -401,6 +411,18 @@ class _ItemTile extends StatelessWidget {
                 'الكمية: ${formatQty(effectiveQty)}',
                 style: const TextStyle(fontSize: 13, color: Colors.grey),
               ),
+            if (reviewingCatalog && stock != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'في المخزن: ${formatQty(stock)} ${item.inventoryUnit ?? ''}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: stock < effectiveQty ? Colors.orange : Colors.grey,
+                    fontWeight: stock < effectiveQty ? FontWeight.w500 : FontWeight.normal,
+                  ),
+                ),
+              ),
             if (showQtyEdit &&
                 state.order.direction == OrderDirection.outbound &&
                 effectiveQty < item.quantity)
@@ -409,6 +431,16 @@ class _ItemTile extends StatelessWidget {
                 child: Text(
                   'الباقي (${formatQty(item.quantity - effectiveQty)}) سيشتريه المندوب',
                   style: TextStyle(fontSize: 12, color: OffStock.color),
+                ),
+              ),
+            if (showQtyEdit &&
+                state.order.direction == OrderDirection.outbound &&
+                effectiveQty > item.quantity)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'أكثر من المطلوب بـ ${formatQty(effectiveQty - item.quantity)}',
+                  style: const TextStyle(fontSize: 12, color: Colors.blue),
                 ),
               ),
             if (kind != null) ...[
@@ -451,27 +483,49 @@ class _ItemTile extends StatelessWidget {
             // inventory row. Only offered for the genuinely new ones -- an
             // out-of-stock item is already an inventory row, so there would
             // be nothing to create and a duplicate to risk.
-            if (item.isCustom)
+            if (item.isCustom || reviewingCatalog)
               Align(
                 alignment: AlignmentDirectional.centerEnd,
                 child: PopupMenuButton<String>(
                   icon: const Icon(Icons.more_vert, size: 20),
                   tooltip: 'خيارات الصنف',
-                  onSelected: (value) {
-                    if (value == 'add_to_storage') {
-                      _openAddToStorage(context, item, link: reviewingTyped);
-                    }
+                  onSelected: (value) => switch (value) {
+                    'add_to_storage' => _openAddToStorage(context, item, link: reviewingTyped),
+                    'swap' => _swapItem(context),
+                    'stock' => _correctStock(context),
+                    _ => null,
                   },
-                  itemBuilder: (_) => const [
-                    PopupMenuItem(
-                      value: 'add_to_storage',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.add_box_outlined, color: Colors.teal),
-                        title: Text('إضافة للمخزن'),
+                  itemBuilder: (_) => [
+                    if (item.isCustom)
+                      const PopupMenuItem(
+                        value: 'add_to_storage',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.add_box_outlined, color: Colors.teal),
+                          title: Text('إضافة للمخزن'),
+                        ),
                       ),
-                    ),
+                    if (reviewingCatalog) ...const [
+                      PopupMenuItem(
+                        value: 'swap',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.swap_horiz, color: Colors.teal),
+                          title: Text('تغيير الصنف'),
+                        ),
+                      ),
+                      PopupMenuItem(
+                        value: 'stock',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.inventory_outlined, color: Colors.teal),
+                          title: Text('تصحيح رصيد المخزن'),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -486,13 +540,7 @@ class _ItemTile extends StatelessWidget {
     final choice = await showTypedLineReviewSheet(
       context,
       item: item,
-      loadInventory: () async {
-        final result = await sl<InventoryManagementRepository>().fetchInventory();
-        return switch (result) {
-          AppSuccess<List<InventoryItem>>(:final data) => data,
-          AppFailure(:final error) => throw Exception(error.message),
-        };
-      },
+      loadInventory: _loadInventory,
     );
     if (!context.mounted) return;
     switch (choice) {
@@ -504,6 +552,88 @@ class _ItemTile extends StatelessWidget {
         await cubit.checkItem(item.id, ItemCheckStatus.checked);
       case null:
         break;
+    }
+  }
+
+  static Future<List<InventoryItem>> _loadInventory() async {
+    final result = await sl<InventoryManagementRepository>().fetchInventory();
+    return switch (result) {
+      AppSuccess<List<InventoryItem>>(:final data) => data,
+      AppFailure(:final error) => throw Exception(error.message),
+    };
+  }
+
+  /// Points the line at another catalog row (the verifier picked the wrong
+  /// size, say). Same server call as linking a typed line.
+  Future<void> _swapItem(BuildContext context) async {
+    final cubit = context.read<StorageOrderDetailCubit>();
+    final swap = await showCatalogSwapSheet(context, item: item, loadInventory: _loadInventory);
+    if (swap == null) return;
+    await cubit.linkItem(item.id, swap.item.id, quantity: swap.quantity);
+  }
+
+  /// The app's count for this row is not what is on the shelf: storage sets
+  /// the real one (audited like any other stock change), then the order
+  /// re-reads it.
+  Future<void> _correctStock(BuildContext context) async {
+    final cubit = context.read<StorageOrderDetailCubit>();
+    final messenger = ScaffoldMessenger.of(context);
+    final controller = TextEditingController(text: formatQty(item.inventoryStock ?? 0));
+    final count = await showDialog<double>(
+      context: context,
+      builder: (dialog) {
+        void submit() {
+          final q = double.tryParse(controller.text.trim().replaceAll(',', '.'));
+          if (q != null && q >= 0) Navigator.pop(dialog, q);
+        }
+
+        return AlertDialog(
+          title: const Text('تصحيح رصيد المخزن'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(item.displayName, style: const TextStyle(fontWeight: FontWeight.w500)),
+              const SizedBox(height: 4),
+              Text(
+                'في التطبيق: ${formatQty(item.inventoryStock ?? 0)} ${item.inventoryUnit ?? ''} — كم الموجود فعلاً؟',
+                style: const TextStyle(color: Colors.grey),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: controller,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                inputFormatters: [quantityInputFormatter],
+                decoration: InputDecoration(
+                  border: const OutlineInputBorder(),
+                  suffixText: item.inventoryUnit,
+                ),
+                onSubmitted: (_) => submit(),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(dialog), child: const Text('إلغاء')),
+            FilledButton(onPressed: submit, child: const Text('حفظ')),
+          ],
+        );
+      },
+    );
+    controller.dispose();
+    if (count == null) return;
+
+    final result = await sl<InventoryManagementRepository>()
+        .bulkUpdateQuantities([(itemId: item.inventoryId!, quantity: count)]);
+    switch (result) {
+      case AppSuccess():
+        await cubit.refresh();
+        messenger.showSnackBar(const SnackBar(
+          content: Text('تم تصحيح رصيد المخزن'),
+          backgroundColor: Colors.teal,
+        ));
+      case AppFailure(:final error):
+        messenger.showSnackBar(SnackBar(content: Text(error.message), backgroundColor: Colors.red));
     }
   }
 

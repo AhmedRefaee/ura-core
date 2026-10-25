@@ -13,6 +13,10 @@ class OrderItem extends Equatable {
 
   /// The catalog row's unit; only selected where it is needed (storage).
   final String? inventoryUnit;
+
+  /// The catalog row's stock count, as the app has it; only selected where
+  /// it is needed (storage, to spot a count that is not what is on the shelf).
+  final double? inventoryStock;
   final double quantity;
   final double? finalQuantity;
   final bool isCustom;
@@ -32,6 +36,7 @@ class OrderItem extends Equatable {
     this.inventoryId,
     this.inventoryName,
     this.inventoryUnit,
+    this.inventoryStock,
     required this.quantity,
     this.finalQuantity,
     required this.isCustom,
@@ -70,6 +75,7 @@ class OrderItem extends Equatable {
       inventoryId: map['inventory_id'] as String?,
       inventoryName: inventoryMap?['item_name'] as String?,
       inventoryUnit: inventoryMap?['unit'] as String?,
+      inventoryStock: (inventoryMap?['quantity'] as num?)?.toDouble(),
       quantity: (map['quantity'] as num).toDouble(),
       finalQuantity: (map['final_quantity'] as num?)?.toDouble(),
       isCustom: map['is_custom'] as bool,
@@ -125,5 +131,5 @@ class OrderItem extends Equatable {
   }
 
   @override
-  List<Object?> get props => [id, orderId, inventoryId, quantity, finalQuantity, isCustom, sourceInventoryId, checkStatus, wasUnavailableAtCreation, purchasedAt, purchasedBy];
+  List<Object?> get props => [id, orderId, inventoryId, inventoryStock, quantity, finalQuantity, isCustom, sourceInventoryId, checkStatus, wasUnavailableAtCreation, purchasedAt, purchasedBy];
 }

@@ -167,15 +167,15 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             context.read<CreateOrderCubit>().removeItem(i),
                         onEditDetails: (i) =>
                             _showEditCustomItemDialog(context, ready, i),
-                        // Restocking is the one case the verifier works from
-                        // the catalog: what arrives must land on a real row.
+                        // Picking from the catalog: a restock must land on a
+                        // real row, and on an outbound order a picked line is
+                        // the verifier's own call (it reaches storage as ✓).
                         extraActions: [
-                          if (ready.direction != OrderDirection.outbound)
-                            OutlinedButton.icon(
-                              onPressed: () => _showCatalogPicker(context, ready),
-                              icon: const Icon(Icons.inventory_2_outlined, size: 18),
-                              label: const Text('اختيار من المخزن'),
-                            ),
+                          OutlinedButton.icon(
+                            onPressed: () => _showCatalogPicker(context, ready),
+                            icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                            label: const Text('اختيار من المخزن'),
+                          ),
                         ],
                       ),
                       SizedBox(height: AppSpacing.verticalXLarge),

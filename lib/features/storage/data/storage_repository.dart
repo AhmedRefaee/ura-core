@@ -13,7 +13,7 @@ class StorageRepository {
       '*, '
       'entity:entities(*), '
       'creator:profiles!orders_created_by_fkey(id, full_name, role, is_approved, phone, created_at), '
-      'order_items(*, inventory:inventory!order_items_inventory_id_fkey(id, item_name, unit))';
+      'order_items(*, inventory:inventory!order_items_inventory_id_fkey(id, item_name, unit, quantity))';
 
   // ── Active queue ──────────────────────────────────────────────────────────
 

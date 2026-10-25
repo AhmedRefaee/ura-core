@@ -1,17 +1,12 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../shared/models/order.dart';
 import '../../../shared/widgets/direction_selector.dart';
-import '../../../shared/widgets/draft_order_items_list.dart';
 import '../../../shared/widgets/entity_picker.dart';
 import '../../../shared/widgets/rep_picker.dart';
-import '../../../core/di/injection.dart';
-import '../data/direct_item_match_repository.dart';
 import '../logic/create_order_cubit.dart';
-import '../logic/item_draft_cubit.dart';
 import 'widgets/add_item_sheet.dart';
-import 'widgets/item_draft_table.dart';
+import 'widgets/order_items_table.dart';
 import 'widgets/templates_sheet.dart';
 import '../../../core/design_system/theme/theme.dart';
 
@@ -25,13 +20,6 @@ class CreateOrderScreen extends StatefulWidget {
 
 class _CreateOrderScreenState extends State<CreateOrderScreen> {
   bool _prefilled = false;
-  late final _draft = ItemDraftCubit(sl<DirectItemMatchRepository>());
-
-  @override
-  void dispose() {
-    _draft.close();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -166,25 +154,29 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
                             ),
                         ],
                       ),
-                      BlocProvider.value(
-                        value: _draft,
-                        child: ItemDraftTable(
-                          inventory: ready.inventory,
-                          onCommit: (rows) => _commitDraft(context, rows),
-                        ),
-                      ),
-                      SizedBox(height: AppSpacing.verticalMedium),
-                      if (ready.items.isNotEmpty)
-                        Text(
-                          'أصناف الطلب (${ready.items.length})',
-                          style: const TextStyle(fontWeight: FontWeight.w600),
-                        ),
-                      DraftOrderItemsList(
+                      OrderItemsTable(
                         items: ready.items,
+                        onAddTyped: (lines) =>
+                            context.read<CreateOrderCubit>().addTypedItems(lines),
+                        onEditTyped: (i, {name, unit, quantity}) => context
+                            .read<CreateOrderCubit>()
+                            .updateTypedItem(i, name: name, unit: unit, quantity: quantity),
+                        onQuantityChanged: (i, q) =>
+                            context.read<CreateOrderCubit>().updateItemQuantity(i, q),
                         onRemove: (i) =>
                             context.read<CreateOrderCubit>().removeItem(i),
-                        onEditCustom: (i) =>
+                        onEditDetails: (i) =>
                             _showEditCustomItemDialog(context, ready, i),
+                        // Restocking is the one case the verifier works from
+                        // the catalog: what arrives must land on a real row.
+                        extraActions: [
+                          if (ready.direction != OrderDirection.outbound)
+                            OutlinedButton.icon(
+                              onPressed: () => _showCatalogPicker(context, ready),
+                              icon: const Icon(Icons.inventory_2_outlined, size: 18),
+                              label: const Text('اختيار من المخزن'),
+                            ),
+                        ],
                       ),
                       SizedBox(height: AppSpacing.verticalXLarge),
 
@@ -224,22 +216,20 @@ class _CreateOrderScreenState extends State<CreateOrderScreen> {
     );
   }
 
-  /// A row the verifier matched to a catalog item joins the order as that
-  /// item; every other row joins as written, a new item storage will review.
-  void _commitDraft(BuildContext context, List<DraftRow> rows) {
+  void _showCatalogPicker(BuildContext context, CreateOrderReady state) {
     final cubit = context.read<CreateOrderCubit>();
-    final matched = [
-      for (final r in rows)
-        if (r.chosen != null) (item: r.chosen!, quantity: r.quantity!),
-    ];
-    if (matched.isNotEmpty) cubit.addMultipleItems(matched);
-    for (final r in rows.where((r) => r.chosen == null)) {
-      final unit = r.unit.trim().isEmpty ? 'قطعة' : r.unit.trim();
-      cubit.addCustomItem(
-        jsonEncode({'name': r.name.trim(), 'qty': r.quantity, 'unit': unit, 'minQty': 0}),
-        r.quantity!,
-      );
-    }
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => AddItemSheet(
+          inventory: state.inventory,
+          orderDirection: state.direction,
+          onAddInventoryItems: (items) => cubit.addMultipleItems(items),
+          onAddCustomItem: (desc, qty, {sourceInventoryId}) => cubit
+              .addCustomItem(desc, qty, sourceInventoryId: sourceInventoryId),
+        ),
+      ),
+    );
   }
 
   void _showEditCustomItemDialog(

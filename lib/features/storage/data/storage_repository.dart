@@ -13,7 +13,7 @@ class StorageRepository {
       '*, '
       'entity:entities(*), '
       'creator:profiles!orders_created_by_fkey(id, full_name, role, is_approved, phone, created_at), '
-      'order_items(*, inventory:inventory!order_items_inventory_id_fkey(id, item_name))';
+      'order_items(*, inventory:inventory!order_items_inventory_id_fkey(id, item_name, unit))';
 
   // ── Active queue ──────────────────────────────────────────────────────────
 
@@ -145,6 +145,27 @@ class StorageRepository {
 
   Future<AppResult<void>> revertItemCheckStatus(String itemId) =>
       _setItemCheckStatus(itemId, 'pending');
+
+  // ── Linking a typed line ──────────────────────────────────────────────────
+
+  /// Links a line the verifier typed to catalog row [inventoryId] (and marks
+  /// it ✓), or with a null [inventoryId] unlinks it back to what was typed.
+  /// [quantity] restates the line in the catalog row's unit.
+  Future<AppResult<void>> linkItem(String itemId, String? inventoryId, {double? quantity}) async {
+    try {
+      logger.d('StorageRepository → storage_link_order_item: $itemId → $inventoryId');
+      final result = await _supabase.rpc('storage_link_order_item', params: {
+        'p_item_id': itemId,
+        'p_inventory_id': inventoryId,
+        'p_quantity': quantity,
+      });
+      if (result['success'] as bool? ?? false) return const AppSuccess(null);
+      return AppFailure(ErrorHandler.fromRpcResult(result as Map));
+    } catch (e, st) {
+      logger.e('StorageRepository → storage_link_order_item failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
 
   // ── Final quantity edit ───────────────────────────────────────────────────
 

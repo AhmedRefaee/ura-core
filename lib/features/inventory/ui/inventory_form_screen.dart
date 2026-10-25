@@ -25,6 +25,10 @@ class CustomItemPrefill {
   final String? packagingSizeUnit;
   final List<String>? aliases;
 
+  /// Set when storage adds this item while reviewing an order: saving then
+  /// also links that order line to the new row, in one server call.
+  final String? linkOrderItemId;
+
   const CustomItemPrefill({
     required this.name,
     required this.quantity,
@@ -38,6 +42,7 @@ class CustomItemPrefill {
     this.packagingSize,
     this.packagingSizeUnit,
     this.aliases,
+    this.linkOrderItemId,
   });
 }
 
@@ -396,6 +401,7 @@ class _InventoryFormViewState extends State<_InventoryFormView> {
               ? null
               : _packagingSizeUnitCtrl.text.trim(),
           aliases: aliases.isEmpty ? null : aliases,
+          linkOrderItemId: widget.prefill?.linkOrderItemId,
         );
   }
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import '../../../shared/models/draft_order_item.dart';
 import '../../../shared/models/inventory_item.dart';
 import '../../../shared/models/off_stock_kind.dart';
 import '../../../shared/models/order.dart';
@@ -8,6 +9,7 @@ import '../../../shared/utils/quantity_format.dart';
 import '../../../shared/widgets/off_stock.dart';
 import '../logic/edit_order_cubit.dart';
 import 'widgets/add_item_sheet.dart';
+import 'widgets/typed_items_page.dart';
 import '../../../core/design_system/theme/theme.dart';
 
 class EditOrderScreen extends StatelessWidget {
@@ -203,8 +205,20 @@ class EditOrderScreen extends StatelessWidget {
     );
   }
 
-  void _showAddItemSheet(BuildContext context, EditOrderReady state) {
+  void _showAddItemSheet(BuildContext context, EditOrderReady state) async {
     final cubit = context.read<EditOrderCubit>();
+    // Outbound: the verifier writes what was asked for, the same way create
+    // order does; storage decides what it has. Restocking keeps the catalog.
+    if (state.originalOrder.direction == OrderDirection.outbound) {
+      final lines = await Navigator.push<List<DraftOrderItem>>(
+        context,
+        MaterialPageRoute(builder: (_) => const TypedItemsPage()),
+      );
+      for (final l in lines ?? const <DraftOrderItem>[]) {
+        cubit.addCustomItem(l.customDescription!, l.quantity);
+      }
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(

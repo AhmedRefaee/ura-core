@@ -124,6 +124,51 @@ class InventoryManagementRepository {
     }
   }
 
+  /// Storage, mid-review: adds a typed order line to the catalog and links
+  /// the line to the new row (storage_create_and_link_item, one transaction).
+  Future<AppResult<void>> createItemAndLink(
+    String orderItemId, {
+    required String name,
+    required String unit,
+    required double quantity,
+    String? sku,
+    String? category,
+    double minQuantity = 3,
+    String? description,
+    String? brand,
+    String? variety,
+    double? packagingSize,
+    String? packagingSizeUnit,
+    List<String>? aliases,
+  }) async {
+    try {
+      final result = await _supabase.rpc('storage_create_and_link_item', params: {
+        'p_item_id': orderItemId,
+        'p_name': name,
+        'p_unit': unit,
+        'p_quantity': quantity,
+        'p_sku': sku,
+        'p_category': category,
+        'p_min_quantity': minQuantity,
+        'p_description': description,
+        'p_brand': brand,
+        'p_variety': variety,
+        'p_packaging_size': packagingSize,
+        'p_packaging_size_unit': packagingSizeUnit,
+        'p_aliases': aliases,
+      });
+      if (result is Map && result['success'] == false) {
+        return AppFailure(ErrorHandler.fromRpcResult(result));
+      }
+      _inventoryCache.clear();
+      logger.i('Inventory item created and linked to order line: $name');
+      return const AppSuccess(null);
+    } catch (e, st) {
+      logger.e('createItemAndLink failed', error: e, stackTrace: st);
+      return AppFailure(ErrorHandler.handle(e));
+    }
+  }
+
   Future<AppResult<void>> updateItem(
     String itemId, {
     required String name,

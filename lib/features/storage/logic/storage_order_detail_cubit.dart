@@ -158,6 +158,44 @@ class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState>
     }
   }
 
+  /// Links a typed line to a catalog row, or unlinks it with a null
+  /// [inventoryId]. The server rewrites the line, so it is reloaded after.
+  Future<void> linkItem(String itemId, String? inventoryId, {double? quantity}) async {
+    final s = state;
+    if (s is! StorageOrderDetailLoaded || s.isActing) return;
+    safeEmit(s.copyWith(isActing: true));
+    final result = await _repo.linkItem(itemId, inventoryId, quantity: quantity);
+    switch (result) {
+      case AppSuccess():
+        logger.i('StorageOrderDetailCubit → linkItem $itemId → $inventoryId');
+        await refresh(forgetItem: itemId);
+      case AppFailure(:final error):
+        logger.e('StorageOrderDetailCubit → linkItem failed: ${error.message}');
+        safeEmit(StorageOrderDetailError(error.message));
+        safeEmit(s);
+    }
+  }
+
+  /// Re-reads the order without the loading screen, dropping any local edit
+  /// for [forgetItem] -- the server just rewrote that line.
+  Future<void> refresh({String? forgetItem}) async {
+    final s = state;
+    if (s is! StorageOrderDetailLoaded) return;
+    final result = await _repo.fetchOrderDetail(orderId);
+    switch (result) {
+      case AppSuccess(:final data):
+        safeEmit(s.copyWith(
+          order: data,
+          isActing: false,
+          pendingStatuses: Map.of(s.pendingStatuses)..remove(forgetItem),
+          editedQuantities: Map.of(s.editedQuantities)..remove(forgetItem),
+        ));
+      case AppFailure(:final error):
+        logger.e('StorageOrderDetailCubit → refresh failed: ${error.message}');
+        safeEmit(s.copyWith(isActing: false));
+    }
+  }
+
   Future<void> editQuantity(String itemId, double quantity) async {
     final s = state;
     if (s is! StorageOrderDetailLoaded) return;
@@ -231,8 +269,13 @@ class StorageOrderDetailCubit extends Cubit<StorageOrderDetailState>
   }
 
   List<Map<String, dynamic>> _buildFinalQuantities(StorageOrderDetailLoaded s) {
+    // Outbound: any line storage lowered -- a catalog line deducts that much,
+    // and on a typed "just available" line the rest becomes the rep's to buy.
+    // Incoming deliveries only ever count catalog lines.
     return s.order.items
-        .where((item) => item.inventoryId != null && !item.isCustom)
+        .where((item) =>
+            s.order.direction == OrderDirection.outbound ||
+            (item.inventoryId != null && !item.isCustom))
         .where((item) => s.editedQuantities.containsKey(item.id))
         .map(
           (item) => {

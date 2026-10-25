@@ -3,6 +3,7 @@ import '../../../../core/text/arabic_text.dart';
 import '../../../../shared/models/inventory_item.dart';
 import '../../../../shared/models/order_item.dart';
 import '../../../../shared/utils/quantity_format.dart';
+import 'catalog_search_sheet.dart';
 
 /// What storage decided for a typed line it has (✓).
 sealed class TypedLineChoice {
@@ -70,14 +71,7 @@ class TypedLineReviewSheet extends StatefulWidget {
 
 class _TypedLineReviewSheetState extends State<TypedLineReviewSheet> {
   late final Future<List<InventoryItem>> _inventory = widget.loadInventory();
-  final _search = TextEditingController();
   bool _searching = false;
-
-  @override
-  void dispose() {
-    _search.dispose();
-    super.dispose();
-  }
 
   String get _typedLine {
     final unit = widget.item.typedUnit;
@@ -86,24 +80,15 @@ class _TypedLineReviewSheetState extends State<TypedLineReviewSheet> {
   }
 
   Future<void> _link(InventoryItem inv) async {
-    final typedUnit = widget.item.typedUnit?.trim();
-    double? quantity;
-    // A different unit means a different number: "2 كرتون" is not 2 حبة.
-    if (typedUnit != null && typedUnit.isNotEmpty && typedUnit != inv.unit.trim()) {
-      quantity = await _askQuantity(inv, typedUnit);
-      if (quantity == null) return;
-    }
-    if (mounted) Navigator.pop(context, LinkToCatalog(inv, quantity: quantity));
+    final quantity = await askQuantityInUnit(
+      context,
+      inv: inv,
+      fromUnit: widget.item.typedUnit,
+      fromQuantity: widget.item.quantity,
+    );
+    if (quantity == UnitQuantity.cancelled) return;
+    if (mounted) Navigator.pop(context, LinkToCatalog(inv, quantity: quantity.value));
   }
-
-  Future<double?> _askQuantity(InventoryItem inv, String typedUnit) => showDialog<double>(
-        context: context,
-        builder: (_) => _QuantityDialog(
-          inv: inv,
-          typedUnit: typedUnit,
-          typedQuantity: widget.item.quantity,
-        ),
-      );
 
   @override
   Widget build(BuildContext context) {
@@ -139,7 +124,11 @@ class _TypedLineReviewSheetState extends State<TypedLineReviewSheet> {
                 trailing: Icon(_searching ? Icons.expand_less : Icons.expand_more),
                 onTap: () => setState(() => _searching = !_searching),
               ),
-              if (_searching) _buildSearch(snap, inventory),
+              if (_searching)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(start: 16),
+                  child: CatalogSearchList(snapshot: snap, onPick: _link),
+                ),
               ListTile(
                 leading: const Icon(Icons.add_box_outlined, color: Colors.teal),
                 title: const Text('إضافة كصنف جديد'),
@@ -156,125 +145,6 @@ class _TypedLineReviewSheetState extends State<TypedLineReviewSheet> {
           );
         },
       ),
-    );
-  }
-
-  Widget _buildSearch(AsyncSnapshot<List<InventoryItem>> snap, List<InventoryItem> inventory) {
-    if (snap.connectionState != ConnectionState.done) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: CircularProgressIndicator()),
-      );
-    }
-    if (snap.hasError) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Text('تعذر تحميل أصناف المخزن', style: TextStyle(color: Colors.red)),
-      );
-    }
-    final q = ArabicText.normalize(_search.text.trim());
-    final results = q.isEmpty
-        ? inventory
-        : inventory.where((i) => [
-              i.itemName,
-              i.brand ?? '',
-              i.variety ?? '',
-              ...?i.aliases,
-            ].any((t) => ArabicText.normalize(t).contains(q))).toList();
-    return Padding(
-      padding: const EdgeInsetsDirectional.only(start: 16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextField(
-            controller: _search,
-            autofocus: true,
-            decoration: const InputDecoration(
-              isDense: true,
-              prefixIcon: Icon(Icons.search),
-              hintText: 'ابحث في المخزن...',
-              border: OutlineInputBorder(),
-            ),
-            onChanged: (_) => setState(() {}),
-          ),
-          const SizedBox(height: 8),
-          if (results.isEmpty)
-            const Padding(
-              padding: EdgeInsets.all(12),
-              child: Text('لا توجد نتائج', style: TextStyle(color: Colors.grey)),
-            ),
-          // Capped: the sheet scrolls as a whole, and nobody scrolls past 50.
-          for (final inv in results.take(50))
-            ListTile(
-              dense: true,
-              title: Text(inv.itemName),
-              subtitle: Text([inv.brand, inv.variety].whereType<String>().where((s) => s.isNotEmpty).join(' · ')),
-              trailing: Text('${formatQty(inv.quantity)} ${inv.unit}',
-                  style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              onTap: () => _link(inv),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuantityDialog extends StatefulWidget {
-  final InventoryItem inv;
-  final String typedUnit;
-  final double typedQuantity;
-
-  const _QuantityDialog({required this.inv, required this.typedUnit, required this.typedQuantity});
-
-  @override
-  State<_QuantityDialog> createState() => _QuantityDialogState();
-}
-
-class _QuantityDialogState extends State<_QuantityDialog> {
-  late final _controller = TextEditingController(text: formatQty(widget.typedQuantity));
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final q = double.tryParse(_controller.text.trim().replaceAll(',', '.'));
-    if (q != null && q > 0) Navigator.pop(context, q);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final inv = widget.inv;
-    return AlertDialog(
-      title: const Text('الكمية بوحدة المخزن'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('المطلوب: ${formatQty(widget.typedQuantity)} ${widget.typedUnit}'),
-          const SizedBox(height: 4),
-          Text('"${inv.itemName}" يُحسب بـ ${inv.unit} — كم ${inv.unit} تعني؟',
-              style: const TextStyle(color: Colors.grey)),
-          const SizedBox(height: 12),
-          TextField(
-            controller: _controller,
-            autofocus: true,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            inputFormatters: [quantityInputFormatter],
-            decoration: InputDecoration(
-              border: const OutlineInputBorder(),
-              suffixText: inv.unit,
-            ),
-            onSubmitted: (_) => _submit(),
-          ),
-        ],
-      ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('إلغاء')),
-        FilledButton(onPressed: _submit, child: const Text('ربط')),
-      ],
     );
   }
 }

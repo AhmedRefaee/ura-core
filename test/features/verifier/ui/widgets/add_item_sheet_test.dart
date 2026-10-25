@@ -48,6 +48,40 @@ void main() {
     expect(added!.single.quantity, 4);
   });
 
+  // Picked outbound lines reach storage as ✓; the app's count may be wrong,
+  // so a short count only warns -- it never turns the line into خارج المخزون.
+  group('outbound short-stock warning', () {
+    Future<void> pick(WidgetTester tester, InventoryItem item, OrderDirection direction, String qty) async {
+      await tester.pumpWidget(wrap(AddItemSheet(
+        inventory: [item],
+        orderDirection: direction,
+        onAddInventoryItems: (_) {},
+        onAddCustomItem: (_, _, {sourceInventoryId}) {},
+      )));
+      await tester.enterText(find.byType(TextField).last, qty);
+      await tester.pump();
+    }
+
+    testWidgets('warns when asking for more than the app count', (tester) async {
+      await pick(tester, water, OrderDirection.outbound, '60');
+      expect(find.text('المتوفر حسب المخزن: 50 — المخزن سيتأكد'), findsOneWidget);
+    });
+
+    testWidgets('a different wording when the app count is zero', (tester) async {
+      const empty = InventoryItem(id: 'item-empty', itemName: 'سكر', quantity: 0, unit: 'كيس');
+      await pick(tester, empty, OrderDirection.outbound, '1');
+      expect(find.text('غير متوفر حسب المخزن — المخزن سيقرر'), findsOneWidget);
+    });
+
+    testWidgets('no warning within the count, and none when restocking', (tester) async {
+      await pick(tester, water, OrderDirection.outbound, '50');
+      expect(find.textContaining('حسب المخزن'), findsNothing);
+
+      await pick(tester, water, OrderDirection.inboundExternal, '60');
+      expect(find.textContaining('حسب المخزن'), findsNothing);
+    });
+  });
+
   // The picker had search and the three status chips but no way to narrow by
   // category, which the inventory screen has always offered. Categories are
   // derived from the passed-in list rather than fetched, so these also pin that

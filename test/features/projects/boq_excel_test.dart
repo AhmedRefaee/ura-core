@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:excel/excel.dart';
@@ -7,288 +6,385 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:ura_core/features/projects/logic/boq_excel.dart';
 import 'package:ura_core/shared/models/project_item.dart';
 
-/// Builds a workbook the way Ahmed's real quotations look: columns in a
-/// different order from our export, text numbers with thousands commas,
-/// descriptions that themselves contain "اجمالي", totals rows, blank rows.
-Uint8List ahmedStyleWorkbook() {
-  final excel = Excel.createExcel();
-  final sheet = excel['Sheet1'];
-  void row(int r, List<Object?> cells) {
-    for (var c = 0; c < cells.length; c++) {
-      final v = cells[c];
-      if (v == null) continue;
-      sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value = switch (v) {
-        int() => IntCellValue(v),
-        double() => DoubleCellValue(v),
-        _ => TextCellValue(v.toString()),
-      };
-    }
-  }
+/// Column indices of the files, as a person sees them in Excel.
+const _category = 1, _name = 2, _description = 3, _quantity = 4, _unit = 5, _price = 6, _id = 10;
 
-  // السعر الإجمالي | السعر الافرادي | الوحدة | الكمية | وصف البند | البند | م
-  row(0, [null, null, null, null, null, null, 'جدول الكميات : المخبوزات']);
-  row(1, ['السعر الإجمالي', 'السعر\nالافرادي', 'الوحدة', 'الكمية', 'وصف البند', 'البند', 'م']);
-  row(2, ['63,375.00', '1.25', 'كيس', '50,700.00', 'انتاج اليوم حجم متوسط مقاس 25 سم / 8حبة', 'خبز عربي أبيض وسط', 1]);
-  row(3, [79200.0, 4, 'كيس', 19800, 'انتاج اليوم وزن اجمالي 700 جم/ 21شريحة', 'خبز توست أبيض', 2]);
-  row(4, ['١٬٨٧٥٫٠٠', '٥', 'كيس', '٣٧٥', null, 'خبز برانا', 3]);
-  row(5, [null, null, null, null, null, null, 4]); // blank template row
-  row(6, [144450.0, null, null, null, 'الإجمالي غير شامل ضريبة القيمة المضافة']);
-  row(7, [21667.5, null, null, null, 'قيمة الضريبة المضافة']);
-  row(8, [166117.5, null, null, null, 'الإجمالي شامل ضريبة القيمة المضافة']);
-  row(10, [null, null, null, null, null, null, 'جدول الكميات : الفحم ومواد الاشعال']);
-  row(11, ['السعر الإجمالي', 'السعر الافرادي', 'الوحدة', 'الكمية', 'وصف البند', 'البند', 'م']);
-  row(12, [162000.0, 45, 'شوال', 3600, 'فحم طبيعي درجة أولى 10كيلو جرام', 'فحم للمشاوي', 1]);
-  row(13, [null, 70, 'كرتون', 20, null, 'فحم صناعي دائري', 2]); // no total -> computed
+Uint8List _template({int firstNumber = 1}) =>
+    buildBoqTemplate(projectName: 'مشروع', entityName: 'جهة', firstNumber: firstNumber);
+
+Uint8List _updateFile(List<ProjectItem> items) =>
+    buildBoqUpdateFile(projectName: 'مشروع', entityName: 'جهة', items: items);
+
+int _firstDataRow(Excel excel) =>
+    excel.tables.values.first.rows.indexWhere((r) => r.any((c) => c?.value.toString() == 'البند *')) + 1;
+
+/// Opens [file], lets [edit] write cells relative to the first data row, the
+/// way a person would in Excel, and saves it.
+Uint8List _edit(Uint8List file, void Function(void Function(int row, int col, CellValue v) set) edit) {
+  final excel = Excel.decodeBytes(file);
+  final sheet = excel.tables.values.first;
+  final first = _firstDataRow(excel);
+  edit((row, col, v) => sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: first + row)).value = v);
   return Uint8List.fromList(excel.encode()!);
 }
 
+const _bread = ProjectItem(
+  id: '11111111-1111-1111-1111-111111111111',
+  projectId: 'p',
+  category: 'المخبوزات',
+  sortOrder: 4,
+  itemName: 'خبز',
+  description: 'وسط',
+  quantity: 10,
+  unit: 'كيس',
+  unitPrice: 1.25,
+  totalPrice: 12.5,
+  packagingUnitSize: 1.65,
+  packagingUnitCount: 4,
+  packagingBaseUnit: 'kilogram',
+);
+const _charcoal = ProjectItem(
+  id: '22222222-2222-2222-2222-222222222222',
+  projectId: 'p',
+  category: 'الفحم',
+  sortOrder: 9,
+  itemName: 'فحم',
+  quantity: 0,
+  unit: 'شوال',
+);
+
 void main() {
-  test('reads a real-shaped quotation: categories, header-by-name, text numbers, totals skipped', () {
-    final result = parseBoqWorkbook(ahmedStyleWorkbook());
+  group('template', () {
+    test('has the file headers, numbers itself, and reads back as no rows', () {
+      final template = _template(firstNumber: 11);
+      final excel = Excel.decodeBytes(template);
+      final rows = excel.tables.values.first.rows;
+      final header = _firstDataRow(excel) - 1;
+      expect(
+        [for (final c in rows[header]) c?.value.toString()].whereType<String>().toList(),
+        ['م', 'الفئة', 'البند *', 'وصف البند', 'الكمية', 'الوحدة *', 'سعر الوحدة', 'سعر الوحدة شامل الضريبة', 'الإجمالي', 'الإجمالي شامل الضريبة'],
+      );
+      // Excel row 4 is the first data row, and this project has 10 lines.
+      expect(rows[header + 1][0]?.value.toString(), contains('ROW()-3+10'));
 
-    expect(result.errors, isEmpty);
-    expect(result.noHeaderFound, isFalse);
-    expect(result.items.map((i) => i.itemName).toList(), [
-      'خبز عربي أبيض وسط',
-      'خبز توست أبيض',
-      'خبز برانا',
-      'فحم للمشاوي',
-      'فحم صناعي دائري',
-    ]);
+      final parsed = parseBoqTemplate(template, projectId: 'p');
+      expect(parsed.fileError, isNull);
+      expect(parsed.totalRows, 0, reason: 'spare formula rows are not lines');
+    });
 
-    final bread = result.items[0];
-    expect(bread.category, 'المخبوزات');
-    expect(bread.quantity, 50700);
-    expect(bread.unitPrice, 1.25);
-    expect(bread.totalPrice, 63375);
-    expect(bread.unit, 'كيس');
-    expect(bread.description, 'انتاج اليوم حجم متوسط مقاس 25 سم / 8حبة');
+    test('name and unit are enough; quantity and price stay optional', () {
+      final file = _edit(_template(), (set) {
+        set(0, _name, TextCellValue('أرز بسمتي'));
+        set(0, _unit, TextCellValue('كيس'));
+      });
+      final result = parseBoqTemplate(file, projectId: 'p');
+      expect(result.errors, isEmpty);
+      final item = result.items.single;
+      expect(item.id, '');
+      expect(item.itemName, 'أرز بسمتي');
+      expect(item.unit, 'كيس');
+      expect(item.quantity, 0);
+      expect(item.unitPrice, isNull);
+      expect(item.totalPrice, isNull);
+      expect(item.description, isNull);
+      expect(item.category, '');
+    });
 
-    // "وزن اجمالي" in a description must not be mistaken for a totals row.
-    expect(result.items[1].description, contains('اجمالي'));
+    test('reads every field; the total is computed; Arabic digits and commas work', () {
+      final file = _edit(_template(), (set) {
+        set(0, _category, TextCellValue('المخبوزات'));
+        set(0, _name, TextCellValue('خبز عربي'));
+        set(0, _description, TextCellValue('انتاج اليوم'));
+        set(0, _quantity, TextCellValue('٥٠٬٧٠٠٫٠٠'));
+        set(0, _unit, TextCellValue('كيس'));
+        set(0, _price, DoubleCellValue(1.25));
+      });
+      final item = parseBoqTemplate(file, projectId: 'p').items.single;
+      expect(item.category, 'المخبوزات');
+      expect(item.description, 'انتاج اليوم');
+      expect(item.quantity, 50700);
+      expect(item.unitPrice, 1.25);
+      expect(item.totalPrice, 63375);
+    });
 
-    final arabicDigits = result.items[2];
-    expect(arabicDigits.quantity, 375);
-    expect(arabicDigits.unitPrice, 5);
-    expect(arabicDigits.totalPrice, 1875);
+    test('numbers carry on after the existing lines and rows report their Excel row', () {
+      final file = _edit(_template(), (set) {
+        set(0, _name, TextCellValue('أرز'));
+        set(0, _unit, TextCellValue('كيس'));
+        set(2, _name, TextCellValue('سكر'));
+        set(2, _unit, TextCellValue('كيس'));
+      });
+      final result = parseBoqTemplate(file, projectId: 'p', existing: const [_bread, _charcoal]);
+      expect(result.items.map((i) => i.sortOrder), [3, 4]);
+      expect(result.rowNumbers, [4, 6]);
+    });
 
-    expect(result.items[4].category, 'الفحم ومواد الاشعال');
-    expect(result.items[4].totalPrice, 1400, reason: 'missing total is qty × unit price');
+    test('bad rows are listed with their Excel row while good ones still go in', () {
+      final file = _edit(_template(), (set) {
+        set(0, _name, TextCellValue('صنف جيد'));
+        set(0, _unit, TextCellValue('حبة'));
+        set(1, _name, TextCellValue('بدون وحدة'));
+        set(2, _unit, TextCellValue('حبة'));
+        set(3, _name, TextCellValue('كمية خطأ'));
+        set(3, _unit, TextCellValue('حبة'));
+        set(3, _quantity, TextCellValue('كثير'));
+        set(4, _name, TextCellValue('سعر سالب'));
+        set(4, _unit, TextCellValue('حبة'));
+        set(4, _price, DoubleCellValue(-5));
+        set(5, _name, TextCellValue('كمية معادلة'));
+        set(5, _unit, TextCellValue('حبة'));
+        set(5, _quantity, FormulaCellValue('2*3'));
+      });
+      final result = parseBoqTemplate(file, projectId: 'p');
+      expect(result.items.single.itemName, 'صنف جيد');
+      expect(result.canApply, isTrue);
+      expect(result.errors.map((e) => e.rowNumber), [5, 6, 7, 8, 9]);
+      expect(result.errors[0].errors, contains('الوحدة مفقودة'));
+      expect(result.errors[1].errors, contains('اسم البند مفقود'));
+      expect(result.errors[2].errors.single, startsWith('الكمية ليست رقماً'));
+      expect(result.errors[3].errors.single, 'سعر الوحدة سالب');
+      expect(result.errors[4].errors.single, contains('معادلة'));
+      expect(result.totalRows, 6);
+    });
 
-    expect(result.items.map((i) => i.sortOrder).toList(), [1, 2, 3, 4, 5]);
-    expect(result.categories.map((c) => c.name).toList(), ['المخبوزات', 'الفحم ومواد الاشعال']);
-    expect(result.canImport, isTrue);
+    test('a file with only bad rows cannot be applied', () {
+      final file = _edit(_template(), (set) => set(0, _name, TextCellValue('بدون وحدة')));
+      expect(parseBoqTemplate(file, projectId: 'p').canApply, isFalse);
+    });
+
+    test('a line the project has, or the file repeats, is flagged however it is spelled', () {
+      final file = _edit(_template(), (set) {
+        // Same as _bread: the spelling folds to the same text.
+        set(0, _category, TextCellValue('المخبوزات'));
+        set(0, _name, TextCellValue('خبز'));
+        set(0, _description, TextCellValue('وسط'));
+        set(0, _unit, TextCellValue('كيس'));
+        // Same name, another description: a different line.
+        set(1, _category, TextCellValue('المخبوزات'));
+        set(1, _name, TextCellValue('خبز'));
+        set(1, _description, TextCellValue('كبير'));
+        set(1, _unit, TextCellValue('كيس'));
+        // Repeats the line above.
+        set(2, _category, TextCellValue('المخبوزات'));
+        set(2, _name, TextCellValue('خبز'));
+        set(2, _description, TextCellValue('كبير'));
+        set(2, _unit, TextCellValue('كيس'));
+      });
+      final result = parseBoqTemplate(file, projectId: 'p', existing: const [_bread]);
+      expect(result.items.single.description, 'كبير');
+      expect(result.errors.map((e) => e.errors.single), ['البند موجود مسبقاً في المشروع', 'البند مكرر في الملف']);
+    });
+
+    test('Persian-keyboard letters are folded to Arabic', () {
+      final file = _edit(_template(), (set) {
+        set(0, _category, TextCellValue('الحلیب ومشتقاتھ'));
+        set(0, _name, TextCellValue('لبنة'));
+        set(0, _unit, TextCellValue('کرتون'));
+      });
+      final item = parseBoqTemplate(file, projectId: 'p').items.single;
+      expect(item.category, 'الحليب ومشتقاته');
+      expect(item.unit, 'كرتون');
+    });
   });
 
-  test('export then import round-trips categories, order, quantities and prices', () {
-    const items = [
-      ProjectItem(id: 'a', projectId: 'p', category: 'المخبوزات', itemName: 'خبز', description: 'وسط', quantity: 10, unit: 'كيس', unitPrice: 1.25, totalPrice: 12.5),
-      ProjectItem(id: 'b', projectId: 'p', category: 'المخبوزات', itemName: 'كيك', quantity: 3, unit: 'كرتون', unitPrice: 8, totalPrice: 24),
-      ProjectItem(id: 'c', projectId: 'p', category: 'الفحم', itemName: 'فحم', quantity: 2.5, unit: 'شوال', unitPrice: 45, totalPrice: 112.5),
-      ProjectItem(id: 'd', projectId: 'p', itemName: 'بدون فئة', quantity: 1, unit: 'حبة'),
-    ];
-    final bytes = buildBoqWorkbook(projectName: 'مشروع', entityName: 'جهة', items: items);
-    final out = Platform.environment['BOQ_XLSX_OUT'];
-    if (out != null) File(out).writeAsBytesSync(bytes);
-
-    final result = parseBoqWorkbook(bytes);
-    expect(result.errors, isEmpty);
-    expect(result.items.length, 4);
-    for (var i = 0; i < items.length; i++) {
-      final a = items[i], b = result.items[i];
-      expect(b.category, a.category);
-      expect(b.itemName, a.itemName);
-      expect(b.description, a.description);
-      expect(b.quantity, a.quantity);
-      expect(b.unit, a.unit);
-      expect(b.unitPrice, a.unitPrice);
-      expect(b.totalPrice, a.totalPrice);
-    }
-  });
-
-  test('an empty project exports the fill-in model: headers, formulas, nothing else', () {
-    final template = buildBoqWorkbook(projectName: 'مشروع', entityName: 'جهة', items: const []);
-    final out = Platform.environment['BOQ_TEMPLATE_OUT'];
-    if (out != null) File(out).writeAsBytesSync(template);
-
-    final empty = parseBoqWorkbook(template);
-    expect(empty.noHeaderFound, isFalse, reason: 'the template must carry the header row');
-    expect(empty.items, isEmpty);
-    expect(empty.errors, isEmpty, reason: 'spare formula rows are not errors');
-
-    final sheet = Excel.decodeBytes(template).tables.values.first;
-    final headerRow = sheet.rows.indexWhere((r) => r.any((c) => c?.value.toString() == 'البند'));
-    expect(
-      [for (final c in sheet.rows[headerRow]) c?.value.toString()].whereType<String>().toList(),
-      boqHeaders,
-    );
-
-    // Fill one line the way a person would in Excel.
-    final excel = Excel.decodeBytes(template);
-    final s = excel.tables.values.first;
-    final r = headerRow + 1;
-    void set(int c, CellValue v) => s.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value = v;
-    set(0, TextCellValue('المخبوزات'));
-    set(1, TextCellValue('خبز عربي'));
-    set(3, IntCellValue(100));
-    set(4, TextCellValue('كيس'));
-    set(5, DoubleCellValue(1.25));
-
-    final filled = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
-    expect(filled.errors, isEmpty);
-    final item = filled.items.single;
-    expect(item.category, 'المخبوزات');
-    expect(item.itemName, 'خبز عربي');
-    expect(item.quantity, 100);
-    expect(item.unitPrice, 1.25);
-    expect(item.totalPrice, 125, reason: 'formula total is ignored and recomputed');
-  });
-
-  test('reads the PDF-style order sheet: الحزمة per row, Persian letters, no total column', () {
-    final excel = Excel.createExcel();
-    final sheet = excel['Sheet1'];
-    void row(int r, List<Object> cells) {
-      for (var c = 0; c < cells.length; c++) {
-        final v = cells[c];
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value =
-            v is num ? DoubleCellValue(v.toDouble()) : TextCellValue(v.toString());
-      }
-    }
-
-    // Exactly the header text of طلبية_مواد_مختلطة (note the Persian ی/ھ).
-    row(0, ['م', 'الحزمة', 'البند', 'وصف البند', 'الكمیة', 'الوحدة', 'السعر الافرادي']);
-    row(1, [1, 'الحلیب ومشتقاتھ', 'لبنة', 'جودة عالیة / كرتون 4*2.75كیلو جرام', 5, 'كرتون', 180]);
-    row(2, [8, 'مجمدات', 'ھاش براون', 'مجمدة إنتاج جديد', 5, 'كرتون', 140]);
-    row(3, [36, 'الحلويات والمكسرات', 'مرقوق', 'درجة أولى', 600, 'بكت', 14]);
-
-    final result = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
-    expect(result.errors, isEmpty);
-    expect(result.items.map((i) => i.category).toList(), ['الحليب ومشتقاته', 'مجمدات', 'الحلويات والمكسرات']);
-    final labneh = result.items.first;
-    expect(labneh.itemName, 'لبنة');
-    expect(labneh.quantity, 5);
-    expect(labneh.unitPrice, 180);
-    expect(labneh.totalPrice, 900);
-    expect(result.items[2].totalPrice, 8400);
-    expect(result.categories.length, 3);
-  });
-
-  test('opens files saved by Microsoft Excel (numFmtId 41-44 in styles.xml)', () {
-    // Our export, then styles.xml edited the way Excel rewrites it: a custom
-    // accounting format declared with id 43, and cells pointing at 43/44.
-    final original = buildBoqWorkbook(projectName: 'م', entityName: 'ج', items: const [
-      ProjectItem(id: '', projectId: '', category: 'مجمدات', itemName: 'دجاج', quantity: 60, unit: 'كرتون', unitPrice: 123),
-    ]);
-    final archive = ZipDecoder().decodeBytes(original);
-    final styles = utf8.decode(archive.findFile('xl/styles.xml')!.content as List<int>);
-    const accounting = r'<numFmt numFmtId="43" formatCode="_(* #,##0.00_);_(* \(#,##0.00\);_(* &quot;-&quot;??_);_(@_)"/>';
-    var excelSaved = styles.contains('<numFmts')
-        ? styles.replaceFirst(RegExp(r'<numFmts[^>]*>'), '<numFmts count="1">$accounting')
-        : styles.replaceFirst('<fonts', '<numFmts count="1">$accounting</numFmts><fonts');
-    excelSaved = excelSaved.replaceAll('numFmtId="4"', 'numFmtId="43"');
-    excelSaved = excelSaved.replaceFirst('numFmtId="0"', 'numFmtId="44"');
-    final rebuilt = Archive();
-    for (final f in archive.files) {
-      if (f.name == 'xl/styles.xml') {
-        final data = utf8.encode(excelSaved);
-        rebuilt.addFile(ArchiveFile(f.name, data.length, data));
-      } else {
-        rebuilt.addFile(f);
-      }
-    }
-    final bytes = Uint8List.fromList(ZipEncoder().encode(rebuilt)!);
-
-    expect(() => Excel.decodeBytes(bytes), throwsA(anything), reason: 'reproduces the crash seen in the app');
-
-    final result = parseBoqWorkbook(bytes);
-    expect(result.errors, isEmpty);
-    expect(result.items.single.itemName, 'دجاج');
-    expect(result.items.single.totalPrice, 7380);
-  });
-
-  test('opens files whose sheet paths are absolute (LibreOffice / openpyxl)', () {
-    final original = buildBoqWorkbook(projectName: 'م', entityName: 'ج', items: const [
-      ProjectItem(id: '', projectId: '', itemName: 'تونة', quantity: 5, unit: 'كرتون', unitPrice: 170),
-    ]);
-    final archive = ZipDecoder().decodeBytes(original);
-    final rebuilt = Archive();
-    for (final f in archive.files) {
-      if (f.name == 'xl/_rels/workbook.xml.rels') {
-        final xml = utf8.decode(f.content as List<int>).replaceAll('Target="', 'Target="/xl/');
-        final data = utf8.encode(xml);
-        rebuilt.addFile(ArchiveFile(f.name, data.length, data));
-      } else {
-        rebuilt.addFile(f);
-      }
-    }
-    final bytes = Uint8List.fromList(ZipEncoder().encode(rebuilt)!);
-
-    expect(() => Excel.decodeBytes(bytes), throwsA(anything));
-    expect(parseBoqWorkbook(bytes).items.single.totalPrice, 850);
-  });
-
-  test('bad rows are reported with their Excel row number and block the import', () {
-    final excel = Excel.createExcel();
-    final sheet = excel['Sheet1'];
-    void put(int r, int c, String v) =>
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value = TextCellValue(v);
-    const header = ['م', 'البند', 'وصف البند', 'الكمية', 'الوحدة', 'السعر الإفرادي', 'السعر الإجمالي'];
-    for (var c = 0; c < header.length; c++) {
-      put(0, c, header[c]);
-    }
-    put(1, 1, 'صنف جيد');
-    put(1, 3, '5');
-    put(1, 4, 'حبة');
-    put(2, 1, 'بدون وحدة');
-    put(2, 3, '2');
-    put(3, 1, 'كمية خطأ');
-    put(3, 3, 'كثير');
-    put(3, 4, 'حبة');
-
-    final result = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
-    expect(result.items.single.itemName, 'صنف جيد');
-    expect(result.errors.map((e) => e.rowNumber).toList(), [3, 4]);
-    expect(result.errors[0].errors, contains('الوحدة مفقودة'));
-    expect(result.errors[1].errors.single, startsWith('الكمية ليست رقماً'));
-    expect(result.canImport, isFalse);
-  });
-
-  test('a list with only item name and unit imports; quantity is 0, no total', () {
-    for (final header in [
-      ['الصنف', 'الوحدة'],
-      ['اسم الصنف', 'الوحدة'],
-      ['البند', 'الوحدة'],
-      ['Item', 'Unit'],
-    ]) {
+  group('refused files', () {
+    Uint8List foreign(List<String> header) {
       final excel = Excel.createExcel();
       final sheet = excel['Sheet1'];
-      void row(int r, List<String> cells) {
-        for (var c = 0; c < cells.length; c++) {
-          sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value = TextCellValue(cells[c]);
-        }
+      for (var c = 0; c < header.length; c++) {
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: 0)).value = TextCellValue(header[c]);
       }
-
-      row(0, header);
-      row(1, ['أرز بسمتي', 'كيس']);
-      row(2, ['زيت دوار الشمس', 'كرتون']);
-
-      final result = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
-      expect(result.noHeaderFound, isFalse, reason: '$header');
-      expect(result.errors, isEmpty, reason: '$header');
-      expect(result.canImport, isTrue);
-      expect(result.items.map((i) => i.itemName).toList(), ['أرز بسمتي', 'زيت دوار الشمس']);
-      expect(result.items.map((i) => i.unit).toList(), ['كيس', 'كرتون']);
-      expect(result.items.first.quantity, 0);
-      expect(result.items.first.totalPrice, isNull);
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1)).value = TextCellValue('أرز');
+      return Uint8List.fromList(excel.encode()!);
     }
+
+    test('any other Excel is refused in both flows, even with the right column names', () {
+      for (final header in [
+        ['اسم'],
+        ['البند', 'الوحدة'],
+        ['م', 'البند', 'وصف البند', 'الكمية', 'الوحدة', 'سعر الوحدة'],
+      ]) {
+        final file = foreign(header);
+        final add = parseBoqTemplate(file, projectId: 'p');
+        final update = parseBoqUpdateFile(file, current: const [_bread]);
+        expect(add.fileError, contains('قالب'), reason: '$header');
+        expect(update.fileError, contains('قالب'), reason: '$header');
+        expect(add.canApply, isFalse);
+        expect(update.canApply, isFalse);
+      }
+    });
+
+    test('the update file is refused in the add flow and the template in the update flow', () {
+      final add = parseBoqTemplate(_updateFile(const [_bread]), projectId: 'p');
+      expect(add.fileError, contains('تعديل البنود الحالية'));
+      expect(add.items, isEmpty);
+
+      final update = parseBoqUpdateFile(_template(), current: const [_bread]);
+      expect(update.fileError, contains('إضافة بنود جديدة'));
+    });
   });
 
-  test('a sheet with no البند header is flagged as not a quotation', () {
-    final excel = Excel.createExcel();
-    excel['Sheet1'].cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0)).value = TextCellValue('اسم');
-    final result = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
-    expect(result.noHeaderFound, isTrue);
-    expect(result.canImport, isFalse);
+  group('update file', () {
+    test('an untouched export changes nothing', () {
+      final result = parseBoqUpdateFile(_updateFile(const [_bread, _charcoal]), current: const [_bread, _charcoal]);
+      expect(result.fileError, isNull);
+      expect(result.errors, isEmpty);
+      expect(result.items, isEmpty);
+      expect(result.unchangedCount, 2);
+      expect(result.canApply, isFalse);
+    });
+
+    test('an edited row keeps its id and packaging, is renumbered for display, and recomputes its total', () {
+      final file = _edit(_updateFile(const [_charcoal, _bread]), (set) {
+        set(1, _quantity, DoubleCellValue(20));
+        set(1, _name, TextCellValue('خبز عربي'));
+      });
+      final result = parseBoqUpdateFile(file, current: const [_charcoal, _bread]);
+      expect(result.unchangedCount, 1);
+      expect(result.rowNumbers, [5]);
+      final item = result.items.single;
+      expect(item.id, _bread.id);
+      expect(item.itemName, 'خبز عربي');
+      expect(item.quantity, 20);
+      expect(item.totalPrice, 25);
+      expect(item.sortOrder, 2, reason: 'its position, for the preview');
+      expect(item.packagingUnitSize, 1.65);
+      expect(item.packagingUnitCount, 4);
+      expect(item.packagingBaseUnit, 'kilogram');
+    });
+
+    test('what goes to the server never includes sort order or packaging', () {
+      final json = _bread.toApplyJson(rowNumber: 7);
+      expect(json['id'], _bread.id);
+      expect(json['row_number'], 7);
+      expect(json.keys, isNot(contains('sort_order')));
+      expect(json.keys.where((k) => k.startsWith('packaging')), isEmpty);
+
+      const added = ProjectItem(id: '', projectId: 'p', itemName: 'أرز', quantity: 0, unit: 'كيس');
+      expect(added.toApplyJson().keys, isNot(contains('id')));
+    });
+
+    test('clearing quantity and price clears them and the total', () {
+      final file = Excel.decodeBytes(_updateFile(const [_bread]));
+      final sheet = file.tables.values.first;
+      final row = _firstDataRow(file);
+      sheet.removeRow(row);
+      for (final (col, value) in [
+        (_name, _bread.itemName),
+        (_unit, _bread.unit),
+        (_category, _bread.category),
+        (_description, _bread.description!),
+        (_id, _bread.id),
+      ]) {
+        sheet.cell(CellIndex.indexByColumnRow(columnIndex: col, rowIndex: row)).value = TextCellValue(value);
+      }
+      final item = parseBoqUpdateFile(Uint8List.fromList(file.encode()!), current: const [_bread]).items.single;
+      expect(item.quantity, 0);
+      expect(item.unitPrice, isNull);
+      expect(item.totalPrice, isNull);
+    });
+
+    test('a line whose total is not quantity × price is left alone until its pricing changes', () {
+      const lumpSum = ProjectItem(id: 'aaaa', projectId: 'p', itemName: 'نقل', quantity: 0, unit: 'رحلة', totalPrice: 900);
+      expect(parseBoqUpdateFile(_updateFile(const [lumpSum]), current: const [lumpSum]).unchangedCount, 1);
+
+      final renamed = _edit(_updateFile(const [lumpSum]), (set) => set(0, _name, TextCellValue('نقل بري')));
+      expect(parseBoqUpdateFile(renamed, current: const [lumpSum]).items.single.totalPrice, 900);
+
+      final priced = _edit(_updateFile(const [lumpSum]), (set) {
+        set(0, _quantity, DoubleCellValue(2));
+        set(0, _price, DoubleCellValue(100));
+      });
+      expect(parseBoqUpdateFile(priced, current: const [lumpSum]).items.single.totalPrice, 200);
+    });
+
+    test('a row left out of the file leaves that line alone', () {
+      final result = parseBoqUpdateFile(_updateFile(const [_bread]), current: const [_bread, _charcoal]);
+      expect(result.items, isEmpty);
+      expect(result.errors, isEmpty);
+      expect(result.unchangedCount, 1);
+    });
+
+    test('missing, unknown and repeated ids are errors with no write', () {
+      final file = _edit(_updateFile(const [_bread, _charcoal]), (set) {
+        set(0, _id, TextCellValue('99999999-9999-9999-9999-999999999999'));
+        set(1, _id, TextCellValue(_bread.id.toUpperCase()));
+        set(2, _id, TextCellValue(_bread.id));
+        set(2, _name, TextCellValue('نفس البند'));
+        set(2, _unit, TextCellValue('حبة'));
+        set(3, _name, TextCellValue('بدون رقم'));
+        set(3, _unit, TextCellValue('حبة'));
+      });
+      final result = parseBoqUpdateFile(file, current: const [_bread, _charcoal]);
+      expect(result.errors.map((e) => e.errors.single), [
+        'لم يتم العثور على بند بهذا الرقم التعريفي',
+        'الرقم التعريفي مكرر في الملف',
+        'الرقم التعريفي مفقود. لإضافة بند جديد استخدم "إضافة بنود جديدة"',
+      ]);
+      // Row 1 matched _bread despite the case, and its other cells are _charcoal's.
+      expect(result.items.single.id, _bread.id);
+      expect(result.items.single.itemName, 'فحم');
+    });
+
+    test('a row with only its name wiped is an error, not a blank line', () {
+      final file = Excel.decodeBytes(_updateFile(const [_bread]));
+      final sheet = file.tables.values.first;
+      final row = _firstDataRow(file);
+      sheet.removeRow(row);
+      sheet.cell(CellIndex.indexByColumnRow(columnIndex: _id, rowIndex: row)).value = TextCellValue(_bread.id);
+      final result = parseBoqUpdateFile(Uint8List.fromList(file.encode()!), current: const [_bread]);
+      expect(result.items, isEmpty);
+      expect(result.errors.single.errors, containsAll(['اسم البند مفقود', 'الوحدة مفقودة']));
+    });
+  });
+
+  group('files saved by other programs', () {
+    Uint8List rewrite(Uint8List original, String name, String Function(String) change) {
+      final archive = ZipDecoder().decodeBytes(original);
+      final rebuilt = Archive();
+      for (final f in archive.files) {
+        if (f.name == name) {
+          final data = utf8.encode(change(utf8.decode(f.content as List<int>)));
+          rebuilt.addFile(ArchiveFile(f.name, data.length, data));
+        } else {
+          rebuilt.addFile(f);
+        }
+      }
+      return Uint8List.fromList(ZipEncoder().encode(rebuilt)!);
+    }
+
+    Uint8List filled() => _edit(_template(), (set) {
+          set(0, _name, TextCellValue('دجاج'));
+          set(0, _unit, TextCellValue('كرتون'));
+          set(0, _quantity, DoubleCellValue(60));
+          set(0, _price, DoubleCellValue(123));
+        });
+
+    test('opens files saved by Microsoft Excel (numFmtId 41-44 in styles.xml)', () {
+      // styles.xml edited the way Excel rewrites it: a custom accounting
+      // format declared with id 43, and cells pointing at 43/44.
+      const accounting = r'<numFmt numFmtId="43" formatCode="_(* #,##0.00_);_(* \(#,##0.00\);_(* &quot;-&quot;??_);_(@_)"/>';
+      final bytes = rewrite(filled(), 'xl/styles.xml', (styles) {
+        final declared = styles.contains('<numFmts')
+            ? styles.replaceFirst(RegExp(r'<numFmts[^>]*>'), '<numFmts count="1">$accounting')
+            : styles.replaceFirst('<fonts', '<numFmts count="1">$accounting</numFmts><fonts');
+        return declared.replaceAll('numFmtId="4"', 'numFmtId="43"').replaceFirst('numFmtId="0"', 'numFmtId="44"');
+      });
+
+      expect(() => Excel.decodeBytes(bytes), throwsA(anything), reason: 'reproduces the crash seen in the app');
+
+      final result = parseBoqTemplate(bytes, projectId: 'p');
+      expect(result.errors, isEmpty);
+      expect(result.items.single.itemName, 'دجاج');
+      expect(result.items.single.totalPrice, 7380);
+    });
+
+    test('opens files whose sheet paths are absolute (LibreOffice / openpyxl)', () {
+      final bytes = rewrite(filled(), 'xl/_rels/workbook.xml.rels', (xml) => xml.replaceAll('Target="', 'Target="/xl/'));
+
+      expect(() => Excel.decodeBytes(bytes), throwsA(anything));
+      expect(parseBoqTemplate(bytes, projectId: 'p').items.single.totalPrice, 7380);
+    });
   });
 
   test('search folds Arabic spelling variants and Persian letters, all words must match', () {
@@ -305,28 +401,5 @@ void main() {
     expect(matches('عبوه'), isTrue, reason: 'ة vs ه');
     expect(matches('زبادي 170'), isTrue);
     expect(matches('زبادي لبنة'), isFalse, reason: 'every word must match');
-  });
-
-  test('a line mentioning tax is an item, not a totals row; اسم الصنف is a header', () {
-    final excel = Excel.createExcel();
-    final sheet = excel['Sheet1'];
-    void row(int r, List<Object?> cells) {
-      for (var c = 0; c < cells.length; c++) {
-        final v = cells[c];
-        if (v == null) continue;
-        sheet.cell(CellIndex.indexByColumnRow(columnIndex: c, rowIndex: r)).value =
-            v is num ? DoubleCellValue(v.toDouble()) : TextCellValue(v.toString());
-      }
-    }
-
-    row(0, ['م', 'اسم الصنف', 'الوصف', 'الكمية', 'الوحدة', 'سعر الوحدة']);
-    row(1, [1, 'طوابع ضريبية', 'السعر شامل الضريبة', 10, 'حبة', 5]);
-    row(2, [null, 'الإجمالي غير شامل ضريبة القيمة المضافة', null, null, null, 50]);
-
-    final result = parseBoqWorkbook(Uint8List.fromList(excel.encode()!));
-    expect(result.noHeaderFound, isFalse);
-    expect(result.errors, isEmpty);
-    expect(result.items.single.itemName, 'طوابع ضريبية');
-    expect(result.items.single.totalPrice, 50);
   });
 }

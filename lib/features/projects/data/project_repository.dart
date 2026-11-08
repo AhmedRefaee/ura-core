@@ -214,23 +214,32 @@ class ProjectRepository {
     }
   }
 
-  /// Replaces every line of the project's quotation in one transaction (Excel
-  /// import). Order in [items] becomes sort_order.
-  Future<AppResult<int>> replaceProjectItems(String projectId, List<ProjectItem> items) async {
+  /// Applies the rows of an Excel file in one transaction: lines with an id
+  /// are updated in place, lines without one are added after the last line.
+  /// Never deletes. [rowNumbers] maps each of [items] to its spreadsheet row,
+  /// so a server-side failure can name it.
+  Future<AppResult<int>> applyProjectItems(
+    String projectId,
+    List<ProjectItem> items, {
+    List<int>? rowNumbers,
+  }) async {
     try {
-      logger.d('ProjectRepository → replaceProjectItems | $projectId: ${items.length} items');
-      final result = await _supabase.rpc('replace_project_items', params: {
+      logger.d('ProjectRepository → applyProjectItems | $projectId: ${items.length} items');
+      final result = await _supabase.rpc('apply_project_items', params: {
         'p_project_id': projectId,
-        'p_items': [for (final i in items) i.toReplaceJson()],
+        'p_items': [
+          for (var i = 0; i < items.length; i++) items[i].toApplyJson(rowNumber: rowNumbers?[i]),
+        ],
       });
       if (result['success'] as bool? ?? false) {
-        final count = (result['count'] as num?)?.toInt() ?? items.length;
-        logger.i('ProjectRepository → replaced project items: $count');
-        return AppSuccess(count);
+        final inserted = (result['inserted'] as num?)?.toInt() ?? 0;
+        final updated = (result['updated'] as num?)?.toInt() ?? 0;
+        logger.i('ProjectRepository → project items applied: $inserted added, $updated updated');
+        return AppSuccess(inserted + updated);
       }
       return AppFailure(ErrorHandler.fromRpcResult(result as Map));
     } catch (e, st) {
-      logger.e('ProjectRepository → replaceProjectItems failed', error: e, stackTrace: st);
+      logger.e('ProjectRepository → applyProjectItems failed', error: e, stackTrace: st);
       return AppFailure(ErrorHandler.handle(e));
     }
   }

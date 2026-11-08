@@ -33,9 +33,11 @@ String foldForSearch(String s) => ArabicText.normalize(_clean(s));
 String boqSearchKey(ProjectItem i) =>
     foldForSearch('${i.itemName} ${i.description ?? ''} ${i.category} ${i.unit}');
 
-// ── Export: one flat table, one row per item ─────────────────────────────────
+// ── Files: the template adds lines, the exported file updates them ───────────
 
+/// The table's columns, in the same order as the Excel files.
 const boqHeaders = [
+  'م',
   'الفئة',
   'البند',
   'وصف البند',
@@ -47,14 +49,70 @@ const boqHeaders = [
   'الإجمالي شامل الضريبة',
 ];
 
-/// Blank, formula-ready rows added after the items so lines can be added in
-/// Excel without copying formatting.
-const _spareRows = 100;
+/// As [boqHeaders], with the two required columns starred as in the inventory
+/// templates. These exact texts are how an upload is recognised as our file.
+const _fileHeaders = [
+  'م',
+  'الفئة',
+  'البند *',
+  'وصف البند',
+  'الكمية',
+  'الوحدة *',
+  'سعر الوحدة',
+  'سعر الوحدة شامل الضريبة',
+  'الإجمالي',
+  'الإجمالي شامل الضريبة',
+];
 
-Uint8List buildBoqWorkbook({
+/// Only the file that updates existing lines has this column.
+const _idHeader = 'الرقم التعريفي (لا تعدل)';
+
+/// Blank, formula-ready rows in the template, so lines can be added in Excel
+/// without copying formatting.
+const _spareRows = 500;
+
+const _headerRow = 2;
+
+/// The file for adding new lines. Numbering starts at [firstNumber], so it
+/// carries on after the lines the project already has.
+Uint8List buildBoqTemplate({
+  required String projectName,
+  required String entityName,
+  int firstNumber = 1,
+}) => _buildWorkbook(
+  projectName: projectName,
+  entityName: entityName,
+  hint:
+      'الإلزامي: البند والوحدة فقط، وباقي الحقول اختيارية. الترقيم تلقائي والأعمدة الرمادية تُحسب تلقائياً (ضريبة ${(kVatRate * 100).round()}%).',
+  items: const [],
+  spareRows: _spareRows,
+  firstNumber: firstNumber,
+);
+
+/// The file for updating the project's current lines, matched by id on upload.
+Uint8List buildBoqUpdateFile({
   required String projectName,
   required String entityName,
   required List<ProjectItem> items,
+}) => _buildWorkbook(
+  projectName: projectName,
+  entityName: entityName,
+  hint:
+      'عدّل ما تريد ثم ارفع الملف. لا تعدّل عمود الرقم التعريفي. حذف صف من الملف لا يحذف البند. الأعمدة الرمادية تُحسب تلقائياً (ضريبة ${(kVatRate * 100).round()}%).',
+  items: items,
+  spareRows: 0,
+  firstNumber: 1,
+  withIds: true,
+);
+
+Uint8List _buildWorkbook({
+  required String projectName,
+  required String entityName,
+  required String hint,
+  required List<ProjectItem> items,
+  required int spareRows,
+  required int firstNumber,
+  bool withIds = false,
 }) {
   final excel = Excel.createExcel();
   const sheetName = 'بنود العقد';
@@ -84,37 +142,47 @@ Uint8List buildBoqWorkbook({
   final title = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 0));
   title.value = TextCellValue('$entityName — $projectName');
   title.cellStyle = CellStyle(bold: true, fontSize: 14);
-  final hint = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1));
-  hint.value = TextCellValue(
-      'املأ: الفئة، البند، الوصف، الكمية، الوحدة، سعر الوحدة (قبل الضريبة). الأعمدة الرمادية تُحسب تلقائياً (ضريبة ${(kVatRate * 100).round()}%).');
-  hint.cellStyle = CellStyle(italic: true, fontColorHex: ExcelColor.grey);
+  final hintCell = sheet.cell(CellIndex.indexByColumnRow(columnIndex: 0, rowIndex: 1));
+  hintCell.value = TextCellValue(hint);
+  hintCell.cellStyle = CellStyle(italic: true, fontColorHex: ExcelColor.grey);
 
-  const headerRow = 2;
-  for (var c = 0; c < boqHeaders.length; c++) {
-    put(headerRow, c, TextCellValue(boqHeaders[c]), style(bold: true, grey: true));
+  final headers = [..._fileHeaders, if (withIds) _idHeader];
+  for (var c = 0; c < headers.length; c++) {
+    put(_headerRow, c, TextCellValue(headers[c]), style(bold: true, grey: true));
   }
 
   final vat = 1 + kVatRate;
-  final lastRow = headerRow + items.length + _spareRows;
-  for (var r = headerRow + 1; r <= lastRow; r++) {
-    final i = r - headerRow - 1;
+  final lastRow = _headerRow + items.length + spareRows;
+  for (var r = _headerRow + 1; r <= lastRow; r++) {
+    final i = r - _headerRow - 1;
     final item = i < items.length ? items[i] : null;
     final x = r + 1; // Excel row numbers are 1-based
-    put(r, 0, item == null ? null : TextCellValue(item.category), style(right: true));
-    put(r, 1, item == null ? null : TextCellValue(item.itemName), style(right: true));
-    put(r, 2, item == null ? null : TextCellValue(item.description ?? ''), style(right: true));
-    put(r, 3, item == null || item.quantity == 0 ? null : DoubleCellValue(item.quantity), style(money: true));
-    put(r, 4, item == null ? null : TextCellValue(item.unit), style());
-    put(r, 5, item?.unitPrice == null ? null : DoubleCellValue(item!.unitPrice!), style(money: true));
+    // A spare row numbers itself once a name is typed in it. The importer
+    // never reads this column: a line's number is its position in the project.
+    put(
+      r,
+      0,
+      item != null
+          ? IntCellValue(i + 1)
+          : FormulaCellValue('IF(C$x="","",ROW()-${_headerRow + 1}+${firstNumber - 1})'),
+      style(grey: true),
+    );
+    put(r, 1, item == null ? null : TextCellValue(item.category), style(right: true));
+    put(r, 2, item == null ? null : TextCellValue(item.itemName), style(right: true));
+    put(r, 3, item?.description == null ? null : TextCellValue(item!.description!), style(right: true));
+    put(r, 4, item == null || item.quantity == 0 ? null : DoubleCellValue(item.quantity), style(money: true));
+    put(r, 5, item == null ? null : TextCellValue(item.unit), style());
+    put(r, 6, item?.unitPrice == null ? null : DoubleCellValue(item!.unitPrice!), style(money: true));
     // Derived columns are formulas, so editing a quantity or price in Excel
-    // keeps them right. The importer ignores formula cells and recomputes.
-    put(r, 6, FormulaCellValue('IF(F$x="","",ROUND(F$x*$vat,2))'), style(grey: true, money: true));
-    put(r, 7, FormulaCellValue('IF(OR(D$x="",F$x=""),"",ROUND(D$x*F$x,2))'), style(grey: true, money: true));
-    put(r, 8, FormulaCellValue('IF(H$x="","",ROUND(H$x*$vat,2))'), style(grey: true, money: true));
+    // keeps them right. The importer ignores them and recomputes.
+    put(r, 7, FormulaCellValue('IF(G$x="","",ROUND(G$x*$vat,2))'), style(grey: true, money: true));
+    put(r, 8, FormulaCellValue('IF(OR(E$x="",G$x=""),"",ROUND(E$x*G$x,2))'), style(grey: true, money: true));
+    put(r, 9, FormulaCellValue('IF(I$x="","",ROUND(I$x*$vat,2))'), style(grey: true, money: true));
+    if (withIds) put(r, 10, TextCellValue(item!.id), style(grey: true));
   }
 
-  const widths = [18.0, 26.0, 48.0, 11.0, 10.0, 12.0, 14.0, 14.0, 16.0];
-  for (var c = 0; c < widths.length; c++) {
+  const widths = [6.0, 18.0, 26.0, 48.0, 11.0, 10.0, 12.0, 14.0, 14.0, 16.0, 40.0];
+  for (var c = 0; c < headers.length; c++) {
     sheet.setColumnWidth(c, widths[c]);
   }
 
@@ -126,188 +194,305 @@ Uint8List buildBoqWorkbook({
   return Uint8List.fromList(reopened.encode()!);
 }
 
-// ── Import ────────────────────────────────────────────────────────────────────
+// ── Upload ────────────────────────────────────────────────────────────────────
 
 class BoqRowError {
-  final String sheet;
   final int rowNumber;
   final List<String> errors;
   final String preview;
-  const BoqRowError({required this.sheet, required this.rowNumber, required this.errors, required this.preview});
+  const BoqRowError({required this.rowNumber, required this.errors, required this.preview});
 }
 
 class BoqParseResult {
-  /// In file order, with category set; sortOrder is their position.
+  /// The rows to apply. Rows with errors are left out, as in the inventory
+  /// import: nothing is deleted, so skipping a row loses nothing. sortOrder
+  /// holds the number to display; apply never sends it to the server.
   final List<ProjectItem> items;
+
+  /// The spreadsheet row of each of [items].
+  final List<int> rowNumbers;
   final List<BoqRowError> errors;
 
-  /// True when no header row (one containing "البند") was found anywhere --
-  /// almost certainly not a quotation file.
-  final bool noHeaderFound;
+  /// Update file rows that match the current line exactly.
+  final int unchangedCount;
 
-  const BoqParseResult({required this.items, required this.errors, required this.noHeaderFound});
+  /// Why the whole file was refused, e.g. it isn't made from our template.
+  final String? fileError;
 
-  List<BoqCategory> get categories => groupByCategory(items);
-  bool get canImport => items.isNotEmpty && errors.isEmpty;
+  const BoqParseResult({
+    required this.items,
+    required this.rowNumbers,
+    required this.errors,
+    this.unchangedCount = 0,
+    this.fileError,
+  });
+
+  const BoqParseResult.refused(String this.fileError)
+    : items = const [],
+      rowNumbers = const [],
+      errors = const [],
+      unchangedCount = 0;
+
+  int get totalRows => items.length + errors.length + unchangedCount;
+  bool get canApply => items.isNotEmpty && fileError == null;
 }
 
-enum _Col { number, category, name, description, quantity, unit, unitPrice, unitPriceVat, total, totalVat }
+const _notOurFile = 'هذا الملف ليس من قالب البنود. نزّل القالب من هذه الشاشة ثم انقل بياناتك إليه.';
 
-/// Reads a quotation workbook: our export, or a hand-made one. Every sheet,
-/// every row; columns are found by header text, not position. Handles both
-/// layouts seen in real files: a category column on each row (الفئة /
-/// الحزمة), and stacked "جدول الكميات : <فئة>" tables with totals rows.
-BoqParseResult parseBoqWorkbook(Uint8List bytes, {String projectId = ''}) {
+enum _Col { id, category, name, description, quantity, unit, unitPrice }
+
+class _Table {
+  final Map<_Col, int> columns;
+  final List<List<Data?>> rows;
+  final int firstDataRow;
+  const _Table(this.columns, this.rows, this.firstDataRow);
+}
+
+/// Finds the header row on the first sheet, or null if it isn't one of ours.
+/// Columns are located by their exact text, so moving one in Excel is harmless.
+_Table? _findTable(Uint8List bytes) {
   final excel = Excel.decodeBytes(sanitizeXlsx(bytes));
-  final items = <ProjectItem>[];
-  final errors = <BoqRowError>[];
-  var sawHeader = false;
-  final multiSheet = excel.tables.length > 1;
-
-  for (final entry in excel.tables.entries) {
-    final sheetName = entry.key;
-    var tableCategory = multiSheet ? sheetName.trim() : '';
-    Map<_Col, int>? columns;
-
-    final rows = entry.value.rows;
-    for (var r = 0; r < rows.length; r++) {
-      final row = rows[r];
-      final texts = [for (final cell in row) _clean(_text(cell?.value))];
-      final folded = [for (final t in texts) ArabicText.normalize(t)];
-
-      final titleIdx = folded.indexWhere((f) => f.startsWith('جدول الكميات'));
-      if (titleIdx >= 0) {
-        final raw = texts[titleIdx];
-        final colon = raw.indexOf(':');
-        tableCategory = colon >= 0 ? raw.substring(colon + 1).trim() : '';
-        columns = null;
-        continue;
-      }
-
-      if (folded.any(_isNameHeader)) {
-        columns = _mapHeader(folded);
-        sawHeader = true;
-        continue;
-      }
-
-      final cols = columns;
-      if (cols == null) continue;
-
-      String cellText(_Col c) => cols[c] == null || cols[c]! >= texts.length ? '' : texts[cols[c]!];
-      CellValue? cellValue(_Col c) => cols[c] == null || cols[c]! >= row.length ? null : row[cols[c]!]?.value;
-
-      // Totals rows ("الإجمالي غير شامل…", "قيمة الضريبة…") carry a label but
-      // no quantity or unit. Requiring both to be empty keeps a real line
-      // whose description mentions tax -- dropping it would delete it, since
-      // import replaces the whole quotation.
-      final looksLikeTotals = folded.any((f) => f.startsWith('الاجمالي') || f.contains('ضريبه'));
-      if (looksLikeTotals && cellText(_Col.unit).isEmpty && _text(cellValue(_Col.quantity)).isEmpty) continue;
-
-      final name = cellText(_Col.name);
-      final description = cellText(_Col.description);
-      final unit = cellText(_Col.unit);
-      final rowCategory = cellText(_Col.category);
-      final qtyRaw = cellValue(_Col.quantity);
-      final priceRaw = cellValue(_Col.unitPrice);
-      final priceVatRaw = cellValue(_Col.unitPriceVat);
-      final totalRaw = cellValue(_Col.total);
-      final totalVatRaw = cellValue(_Col.totalVat);
-
-      // Spare rows (formulas only, or just a م number) aren't items.
-      if ([name, description, unit, _text(qtyRaw), _text(priceRaw), _text(priceVatRaw), _text(totalRaw)]
-          .every((s) => s.isEmpty)) {
-        continue;
-      }
-
-      // Only the name and unit are required. A list without quantities is a
-      // valid quotation; a missing quantity is stored as 0 and shown blank.
-      final rowErrors = <String>[];
-      if (name.isEmpty) rowErrors.add('اسم البند مفقود');
-      if (unit.isEmpty) rowErrors.add('الوحدة مفقودة');
-      final qty = _text(qtyRaw).isEmpty ? 0.0 : _number(qtyRaw);
-      if (qty == null) {
-        rowErrors.add('الكمية ليست رقماً: ${_text(qtyRaw)}');
-      } else if (qty < 0) {
-        rowErrors.add('الكمية سالبة');
-      }
-      double? numberOrError(CellValue? raw, String label) {
-        final n = _number(raw);
-        if (n == null && _text(raw).isNotEmpty) rowErrors.add('$label ليس رقماً: ${_text(raw)}');
-        return n;
-      }
-
-      var unitPrice = numberOrError(priceRaw, 'سعر الوحدة');
-      final unitPriceVat = numberOrError(priceVatRaw, 'سعر الوحدة شامل الضريبة');
-      var total = numberOrError(totalRaw, 'الإجمالي');
-      final totalVat = numberOrError(totalVatRaw, 'الإجمالي شامل الضريبة');
-
-      if (rowErrors.isNotEmpty) {
-        errors.add(BoqRowError(
-          sheet: sheetName,
-          rowNumber: r + 1,
-          errors: rowErrors,
-          preview: [name, description].where((s) => s.isNotEmpty).join(' - '),
-        ));
-        continue;
-      }
-
-      // Stored prices are pre-VAT; a VAT-inclusive figure is only used when
-      // the pre-VAT one wasn't given.
-      unitPrice ??= unitPriceVat == null ? null : round2(unitPriceVat / (1 + kVatRate));
-      total ??= totalVat == null ? null : round2(totalVat / (1 + kVatRate));
-      total ??= unitPrice == null || qty == 0 ? null : round2(qty! * unitPrice);
-
-      items.add(ProjectItem(
-        id: '',
-        projectId: projectId,
-        category: rowCategory.isNotEmpty ? rowCategory : tableCategory,
-        sortOrder: items.length + 1,
-        itemName: name,
-        description: description.isEmpty ? null : description,
-        quantity: qty!,
-        unit: unit,
-        unitPrice: unitPrice,
-        totalPrice: total,
-      ));
-    }
+  if (excel.tables.isEmpty) return null;
+  final rows = excel.tables.values.first.rows;
+  const required = {
+    'الفئة': _Col.category,
+    'البند *': _Col.name,
+    'وصف البند': _Col.description,
+    'الكمية': _Col.quantity,
+    'الوحدة *': _Col.unit,
+    'سعر الوحدة': _Col.unitPrice,
+  };
+  for (var r = 0; r < rows.length && r <= _headerRow + 2; r++) {
+    final texts = [for (final cell in rows[r]) _text(cell?.value)];
+    if (!required.keys.every(texts.contains)) continue;
+    final idColumn = texts.indexOf(_idHeader);
+    return _Table(
+      {
+        for (final e in required.entries) e.value: texts.indexOf(e.key),
+        if (idColumn >= 0) _Col.id: idColumn,
+      },
+      rows,
+      r + 1,
+    );
   }
-
-  return BoqParseResult(items: items, errors: errors, noHeaderFound: !sawHeader);
+  return null;
 }
 
-/// Header text (folded) that names the item column -- what marks a row as
-/// the table's header.
-const _nameHeaders = {
-  'البند', 'اسم البند', 'الصنف', 'الاصناف', 'البيان', 'الماده', 'اسم الماده', //
-  'item', 'items', 'item name', 'name', 'product',
-};
+class _Line {
+  final String id;
+  final String category;
+  final String name;
+  final String? description;
+  final String unit;
+  final double quantity;
+  final double? unitPrice;
+  final List<String> errors;
+  const _Line({
+    required this.id,
+    required this.category,
+    required this.name,
+    required this.description,
+    required this.unit,
+    required this.quantity,
+    required this.unitPrice,
+    required this.errors,
+  });
 
-bool _isNameHeader(String f) => _nameHeaders.contains(f) || f.startsWith('اسم الصنف');
+  String get preview => [name, description ?? ''].where((s) => s.isNotEmpty).join(' - ');
+}
 
-Map<_Col, int> _mapHeader(List<String> folded) {
-  final map = <_Col, int>{};
-  for (var c = 0; c < folded.length; c++) {
-    final f = folded[c];
-    if (f.isEmpty) continue;
-    final vatIncluded = f.contains('شامل') || f.contains('ضريبه') || f.contains('vat');
-    final col = switch (f) {
-      'م' || 'no' || '#' => _Col.number,
-      _ when _isNameHeader(f) => _Col.name,
-      _ when f.contains('حزمه') || f.contains('الفيه') || f == 'فيه' || f.contains('تصنيف') || f == 'category' =>
-        _Col.category,
-      _ when f.contains('وصف') || f == 'description' => _Col.description,
-      _ when f.contains('كميه') || f == 'qty' || f == 'quantity' => _Col.quantity,
-      _ when vatIncluded && (f.contains('اجمالي') || f.contains('total')) => _Col.totalVat,
-      _ when vatIncluded => _Col.unitPriceVat,
-      _ when f.contains('اجمالي') || f.contains('total') => _Col.total,
-      _ when f.contains('افرادي') || (f.contains('سعر') && f.contains('وحده')) || f.contains('price') =>
-        _Col.unitPrice,
-      _ when f.contains('وحده') || f == 'unit' || f == 'uom' => _Col.unit,
-      _ => null,
-    };
-    if (col != null) map.putIfAbsent(col, () => c);
+/// Reads one row, or null for a blank one (spare rows hold only formulas in
+/// the م and grey columns, which aren't looked at here). Only the name and
+/// unit are required; a blank quantity is stored as 0 and shown blank.
+_Line? _readLine(List<Data?> row, Map<_Col, int> columns) {
+  CellValue? value(_Col c) {
+    final i = columns[c];
+    return i == null || i >= row.length ? null : row[i]?.value;
   }
-  return map;
+
+  if (_Col.values.every((c) => _isBlank(value(c)))) return null;
+
+  final errors = <String>[];
+  final name = _clean(_text(value(_Col.name)));
+  final unit = _clean(_text(value(_Col.unit)));
+  if (name.isEmpty) errors.add('اسم البند مفقود');
+  if (unit.isEmpty) errors.add('الوحدة مفقودة');
+
+  double? numberOrError(CellValue? raw, {required String formula, required String notNumber, required String negative}) {
+    if (raw is FormulaCellValue) {
+      // We can't read its result, and treating it as blank would wipe the
+      // value on an update.
+      errors.add(formula);
+      return null;
+    }
+    if (_text(raw).isEmpty) return null;
+    final n = _number(raw);
+    if (n == null) {
+      errors.add('$notNumber: ${_text(raw)}');
+    } else if (n < 0) {
+      errors.add(negative);
+    }
+    return n;
+  }
+
+  final quantity = numberOrError(
+    value(_Col.quantity),
+    formula: 'الكمية معادلة، اكتبها رقماً',
+    notNumber: 'الكمية ليست رقماً',
+    negative: 'الكمية سالبة',
+  );
+  final unitPrice = numberOrError(
+    value(_Col.unitPrice),
+    formula: 'سعر الوحدة معادلة، اكتبه رقماً',
+    notNumber: 'سعر الوحدة ليس رقماً',
+    negative: 'سعر الوحدة سالب',
+  );
+  final description = _clean(_text(value(_Col.description)));
+
+  return _Line(
+    id: _text(value(_Col.id)).toLowerCase(),
+    category: _clean(_text(value(_Col.category))),
+    name: name,
+    description: description.isEmpty ? null : description,
+    unit: unit,
+    quantity: quantity ?? 0,
+    unitPrice: unitPrice,
+    errors: errors,
+  );
+}
+
+double? _lineTotal(double quantity, double? unitPrice) =>
+    unitPrice == null || quantity == 0 ? null : round2(quantity * unitPrice);
+
+/// Two lines are the same line when all of these match, however they're spelled.
+String _lineKey(String category, String name, String? description, String unit) =>
+    [category, name, description ?? '', unit].map(foldForSearch).join('|');
+
+/// Reads a filled template into new lines. A line that the project already has
+/// or that the file repeats is an error, so uploading the same file twice
+/// can't double the quotation.
+BoqParseResult parseBoqTemplate(
+  Uint8List bytes, {
+  required String projectId,
+  List<ProjectItem> existing = const [],
+}) {
+  final table = _findTable(bytes);
+  if (table == null) return const BoqParseResult.refused(_notOurFile);
+  if (table.columns.containsKey(_Col.id)) {
+    return const BoqParseResult.refused('هذا ملف تعديل البنود الحالية. ارفعه من "تعديل البنود الحالية".');
+  }
+
+  final existingKeys = {
+    for (final i in existing) _lineKey(i.category, i.itemName, i.description, i.unit),
+  };
+  final fileKeys = <String>{};
+  final items = <ProjectItem>[];
+  final rowNumbers = <int>[];
+  final errors = <BoqRowError>[];
+
+  for (var r = table.firstDataRow; r < table.rows.length; r++) {
+    final line = _readLine(table.rows[r], table.columns);
+    if (line == null) continue;
+    final problems = [...line.errors];
+    if (problems.isEmpty) {
+      final key = _lineKey(line.category, line.name, line.description, line.unit);
+      if (existingKeys.contains(key)) {
+        problems.add('البند موجود مسبقاً في المشروع');
+      } else if (!fileKeys.add(key)) {
+        problems.add('البند مكرر في الملف');
+      }
+    }
+    if (problems.isNotEmpty) {
+      errors.add(BoqRowError(rowNumber: r + 1, errors: problems, preview: line.preview));
+      continue;
+    }
+    items.add(ProjectItem(
+      id: '',
+      projectId: projectId,
+      category: line.category,
+      sortOrder: existing.length + items.length + 1,
+      itemName: line.name,
+      description: line.description,
+      quantity: line.quantity,
+      unit: line.unit,
+      unitPrice: line.unitPrice,
+      totalPrice: _lineTotal(line.quantity, line.unitPrice),
+    ));
+    rowNumbers.add(r + 1);
+  }
+  return BoqParseResult(items: items, rowNumbers: rowNumbers, errors: errors);
+}
+
+/// Reads an exported file into updates of [current], matched by id. Only rows
+/// that actually changed are returned. A line left out of the file stays as it
+/// is, and a row with no id is an error: this file doesn't add lines.
+BoqParseResult parseBoqUpdateFile(Uint8List bytes, {required List<ProjectItem> current}) {
+  final table = _findTable(bytes);
+  if (table == null) return const BoqParseResult.refused(_notOurFile);
+  if (!table.columns.containsKey(_Col.id)) {
+    return const BoqParseResult.refused(
+      'هذا الملف بلا عمود الرقم التعريفي. صدّر البنود الحالية من هذه الشاشة وعدّل عليها، ولإضافة بنود جديدة استخدم "إضافة بنود جديدة".',
+    );
+  }
+
+  final positions = {for (var i = 0; i < current.length; i++) current[i].id.toLowerCase(): i};
+  final seenIds = <String>{};
+  final items = <ProjectItem>[];
+  final rowNumbers = <int>[];
+  final errors = <BoqRowError>[];
+  var unchanged = 0;
+
+  for (var r = table.firstDataRow; r < table.rows.length; r++) {
+    final line = _readLine(table.rows[r], table.columns);
+    if (line == null) continue;
+    final problems = [...line.errors];
+    if (line.id.isEmpty) {
+      problems.add('الرقم التعريفي مفقود. لإضافة بند جديد استخدم "إضافة بنود جديدة"');
+    } else if (!positions.containsKey(line.id)) {
+      problems.add('لم يتم العثور على بند بهذا الرقم التعريفي');
+    } else if (!seenIds.add(line.id)) {
+      problems.add('الرقم التعريفي مكرر في الملف');
+    }
+    if (problems.isNotEmpty) {
+      errors.add(BoqRowError(rowNumber: r + 1, errors: problems, preview: line.preview));
+      continue;
+    }
+
+    final position = positions[line.id]!;
+    final old = current[position];
+    // A line can carry a total that isn't quantity × price, from a file
+    // imported before totals were always computed. Exporting and re-uploading
+    // it unedited mustn't rewrite it, so it's only recomputed on a real change.
+    final pricingEdited = line.quantity != old.quantity || line.unitPrice != old.unitPrice;
+    final total = pricingEdited ? _lineTotal(line.quantity, line.unitPrice) : old.totalPrice;
+    if (!pricingEdited &&
+        line.category == old.category &&
+        line.name == old.itemName &&
+        line.description == old.description &&
+        line.unit == old.unit) {
+      unchanged++;
+      continue;
+    }
+
+    items.add(ProjectItem(
+      id: old.id,
+      projectId: old.projectId,
+      category: line.category,
+      sortOrder: position + 1,
+      itemName: line.name,
+      description: line.description,
+      quantity: line.quantity,
+      unit: line.unit,
+      unitPrice: line.unitPrice,
+      totalPrice: total,
+      packagingUnitSize: old.packagingUnitSize,
+      packagingUnitCount: old.packagingUnitCount,
+      packagingBaseUnit: old.packagingBaseUnit,
+      createdAt: old.createdAt,
+    ));
+    rowNumbers.add(r + 1);
+  }
+  return BoqParseResult(items: items, rowNumbers: rowNumbers, errors: errors, unchangedCount: unchanged);
 }
 
 /// Persian-keyboard letters that show up in Arabic spreadsheets (e.g. text
@@ -325,6 +510,9 @@ String _text(CellValue? v) => switch (v) {
       FormulaCellValue() => '',
       _ => v.toString().trim(),
     };
+
+/// A formula is not blank: someone put it there, and [_text] can't read it.
+bool _isBlank(CellValue? v) => v is! FormulaCellValue && _text(v).isEmpty;
 
 /// Numeric cells as-is. Text cells as written in Arabic spreadsheets: Arabic
 /// digits allowed, "," and "٬" are thousands separators (50,700.00), "٫" is

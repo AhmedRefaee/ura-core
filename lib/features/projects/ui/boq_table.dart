@@ -16,6 +16,10 @@ class BoqTable extends StatefulWidget {
 
   /// Price columns are dropped for roles the server doesn't show pricing to.
   final bool showPrices;
+
+  /// The م column. Defaults to the row's position; a caller showing a subset
+  /// (search results) passes the line's number in the whole list.
+  final int Function(ProjectItem)? numberOf;
   final ValueChanged<ProjectItem>? onTap;
   final ValueChanged<ProjectItem>? onLongPress;
 
@@ -23,6 +27,7 @@ class BoqTable extends StatefulWidget {
     super.key,
     required this.items,
     required this.showPrices,
+    this.numberOf,
     this.onTap,
     this.onLongPress,
   });
@@ -52,6 +57,7 @@ class _BoqTableState extends State<BoqTable> {
 
   // Natural widths in boqHeaders order; scaled up to fill wide screens.
   static const _wide = [
+    48.0,
     120.0,
     170.0,
     280.0,
@@ -62,12 +68,12 @@ class _BoqTableState extends State<BoqTable> {
     110.0,
     125.0,
   ];
-  // On phones the first two columns stay pinned, so they get narrower.
-  static const _narrowPinned = [84.0, 116.0];
+  // On phones the first three columns stay pinned, so they get narrower.
+  static const _narrowPinned = [36.0, 72.0, 104.0];
 
   @override
   Widget build(BuildContext context) {
-    final columns = showPrices ? boqHeaders.length : 5;
+    final columns = showPrices ? boqHeaders.length : 6;
     final theme = Theme.of(context);
     final rtl = Directionality.of(context) == TextDirection.rtl;
     final line = BorderSide(color: theme.dividerColor);
@@ -89,7 +95,7 @@ class _BoqTableState extends State<BoqTable> {
           for (var c = 0; c < columns; c++)
             fits
                 ? _wide[c] * constraints.maxWidth / natural
-                : (c < 2 ? _narrowPinned[c] : _wide[c]),
+                : (c < _narrowPinned.length ? _narrowPinned[c] : _wide[c]),
         ];
 
         // Visible, draggable scrollbars on both axes: a mouse can't swipe.
@@ -113,12 +119,12 @@ class _BoqTableState extends State<BoqTable> {
                 reverse: rtl,
               ),
               pinnedRowCount: 1,
-              pinnedColumnCount: fits ? 0 : 2,
+              pinnedColumnCount: fits ? 0 : _narrowPinned.length,
               columnCount: columns,
               rowCount: rowCount,
               columnBuilder: (c) => TableSpan(
                 extent: FixedTableSpanExtent(widths[c]),
-                backgroundDecoration: c >= 6
+                backgroundDecoration: c >= 7
                     ? TableSpanDecoration(color: derivedBg)
                     : null,
                 foregroundDecoration: TableSpanDecoration(
@@ -171,22 +177,27 @@ class _BoqTableState extends State<BoqTable> {
                 }
                 final item = items[r - 1];
                 return switch (c) {
-                  0 => _cell(item.category, body),
-                  1 => _cell(item.itemName, body),
-                  2 => _cell(item.description ?? '', body),
-                  3 => _cell(
+                  0 => _cell(
+                    '${widget.numberOf?.call(item) ?? r}',
+                    body,
+                    center: true,
+                  ),
+                  1 => _cell(item.category, body),
+                  2 => _cell(item.itemName, body),
+                  3 => _cell(item.description ?? '', body),
+                  4 => _cell(
                     item.quantity == 0 ? '' : formatQty(item.quantity),
                     body,
                     center: true,
                   ),
-                  4 => _cell(item.unit, body, center: true),
-                  5 => _cell(_money(item.unitPrice), body, center: true),
-                  6 => _cell(
+                  5 => _cell(item.unit, body, center: true),
+                  6 => _cell(_money(item.unitPrice), body, center: true),
+                  7 => _cell(
                     _money(_withVat(item.unitPrice)),
                     body,
                     center: true,
                   ),
-                  7 => _cell(_money(item.totalPrice), body, center: true),
+                  8 => _cell(_money(item.totalPrice), body, center: true),
                   _ => _cell(
                     _money(_withVat(item.totalPrice)),
                     body,

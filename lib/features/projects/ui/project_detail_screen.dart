@@ -13,7 +13,7 @@ import '../../project_share/ui/share_links_sheet.dart';
 import '../logic/boq_excel.dart';
 import '../logic/boq_excel_cubit.dart';
 import '../logic/project_detail_cubit.dart';
-import 'boq_import_preview_screen.dart';
+import 'boq_excel_screen.dart';
 import 'boq_table.dart';
 import 'letterhead_picker.dart';
 import 'receipt_assignees_sheet.dart';
@@ -23,13 +23,8 @@ import '../../../core/storage/signed_storage_url.dart';
 void openProjectDetail(BuildContext context, Project project, Entity entity) {
   Navigator.of(context).push(
     MaterialPageRoute(
-      builder: (_) => MultiBlocProvider(
-        providers: [
-          BlocProvider(
-            create: (_) => sl<ProjectDetailCubit>(param1: project)..load(),
-          ),
-          BlocProvider(create: (_) => sl<BoqExcelCubit>()),
-        ],
+      builder: (_) => BlocProvider(
+        create: (_) => sl<ProjectDetailCubit>(param1: project)..load(),
         child: ProjectDetailScreen(entity: entity),
       ),
     ),
@@ -53,126 +48,91 @@ class ProjectDetailScreen extends StatelessWidget {
     return BlocBuilder<ProjectDetailCubit, ProjectDetailState>(
       builder: (context, state) {
         final cubit = context.read<ProjectDetailCubit>();
-        return BlocListener<BoqExcelCubit, BoqExcelState>(
-          listenWhen: (prev, curr) =>
-              (curr is BoqExcelParsed &&
-                  curr is! BoqExcelSaving &&
-                  prev is! BoqExcelParsed) ||
-              curr is BoqExcelImported ||
-              curr is BoqExcelError,
-          listener: (context, excelState) => _onExcelState(context, excelState),
-          child: Scaffold(
-            appBar: AppBar(
-              title: Text(state.project.name),
-              actions: [
-                if (state.canEditItems) ...[
-                  IconButton(
-                    tooltip: 'مشاركة البنود مع الجهة',
-                    icon: const Icon(Icons.share_outlined),
-                    onPressed: () => showShareLinksSheet(context, state.project),
-                  ),
-                  IconButton(
-                    tooltip: 'إسناد السندات للمناديب',
-                    icon: const Icon(Icons.assignment_ind_outlined),
-                    onPressed: () => showReceiptAssigneesSheet(context, state.project),
-                  ),
-                  IconButton(
-                    tooltip: 'تصدير Excel',
-                    icon: const Icon(Icons.file_download_outlined),
-                    onPressed: state.loading
-                        ? null
-                        : () => context.read<BoqExcelCubit>().export(
-                            project: state.project,
-                            entityName: entity.name,
-                            items: state.items,
-                          ),
-                  ),
-                  IconButton(
-                    tooltip: 'استيراد Excel',
-                    icon: const Icon(Icons.upload_file_outlined),
-                    onPressed: state.loading
-                        ? null
-                        : () => context.read<BoqExcelCubit>().pickAndParse(
-                            state.project.id,
-                          ),
-                  ),
-                ],
-              ],
-              bottom: PreferredSize(
-                preferredSize: const Size.fromHeight(2),
-                child: BlocBuilder<BoqExcelCubit, BoqExcelState>(
-                  builder: (_, s) => s is BoqExcelBusy
-                      ? const LinearProgressIndicator(minHeight: 2)
-                      : const SizedBox(height: 2),
+        return Scaffold(
+          appBar: AppBar(
+            title: Text(state.project.name),
+            actions: [
+              if (state.canEditItems) ...[
+                IconButton(
+                  tooltip: 'مشاركة البنود مع الجهة',
+                  icon: const Icon(Icons.share_outlined),
+                  onPressed: () => showShareLinksSheet(context, state.project),
                 ),
-              ),
-            ),
-            floatingActionButton: state.canEditItems
-                ? FloatingActionButton.extended(
-                    onPressed: () => showProjectItemForm(context, null),
-                    icon: const Icon(Icons.add),
-                    label: const Text('بند جديد'),
-                  )
-                : null,
-            body: RefreshIndicator(
-              onRefresh: cubit.load,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
-                children: [
-                  Text(
-                    entity.name,
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 8),
-                  _LetterheadCard(
-                    url: state.project.letterheadImageUrl,
-                    onChange: canEditLetterhead
-                        ? () => _changeLetterhead(context)
-                        : null,
-                    onRemove: canEditLetterhead
-                        ? () => _removeLetterhead(context)
-                        : null,
-                  ),
-                  const SizedBox(height: 16),
-                  _ItemsCard(state: state),
-                  DeliveryReceiptsSection.forProject(state.project.id),
-                ],
-              ),
+                IconButton(
+                  tooltip: 'إسناد السندات للمناديب',
+                  icon: const Icon(Icons.assignment_ind_outlined),
+                  onPressed: () => showReceiptAssigneesSheet(context, state.project),
+                ),
+                PopupMenuButton<BoqExcelMode>(
+                  icon: const Icon(Icons.table_chart_outlined),
+                  tooltip: 'خيارات Excel',
+                  enabled: !state.loading,
+                  onSelected: (mode) async {
+                    final changed = await openBoqExcel(
+                      context,
+                      mode: mode,
+                      project: state.project,
+                      entityName: entity.name,
+                    );
+                    if (changed) cubit.load();
+                  },
+                  itemBuilder: (_) => const [
+                    PopupMenuItem(
+                      value: BoqExcelMode.add,
+                      child: ListTile(
+                        leading: Icon(Icons.upload_file_outlined),
+                        title: Text('إضافة بنود جديدة'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                    PopupMenuItem(
+                      value: BoqExcelMode.update,
+                      child: ListTile(
+                        leading: Icon(Icons.sync_alt_outlined),
+                        title: Text('تعديل البنود الحالية'),
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+          floatingActionButton: state.canEditItems
+              ? FloatingActionButton.extended(
+                  onPressed: () => showProjectItemForm(context, null),
+                  icon: const Icon(Icons.add),
+                  label: const Text('بند جديد'),
+                )
+              : null,
+          body: RefreshIndicator(
+            onRefresh: cubit.load,
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+              children: [
+                Text(
+                  entity.name,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 8),
+                _LetterheadCard(
+                  url: state.project.letterheadImageUrl,
+                  onChange: canEditLetterhead
+                      ? () => _changeLetterhead(context)
+                      : null,
+                  onRemove: canEditLetterhead
+                      ? () => _removeLetterhead(context)
+                      : null,
+                ),
+                const SizedBox(height: 16),
+                _ItemsCard(state: state),
+                DeliveryReceiptsSection.forProject(state.project.id),
+              ],
             ),
           ),
         );
       },
     );
-  }
-
-  void _onExcelState(BuildContext context, BoqExcelState excelState) {
-    final messenger = ScaffoldMessenger.of(context);
-    final excel = context.read<BoqExcelCubit>();
-    switch (excelState) {
-      case BoqExcelParsed():
-        final detail = context.read<ProjectDetailCubit>();
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => BlocProvider.value(
-              value: excel,
-              child: BoqImportPreviewScreen(
-                projectId: detail.state.project.id,
-                currentItemCount: detail.state.items.length,
-              ),
-            ),
-          ),
-        );
-      case BoqExcelImported(:final count):
-        messenger.showSnackBar(
-          SnackBar(content: Text('تم استيراد $count بند')),
-        );
-        context.read<ProjectDetailCubit>().load();
-      case BoqExcelError(:final message):
-        messenger.showSnackBar(SnackBar(content: Text(message)));
-        excel.reset();
-      default:
-        break;
-    }
   }
 
   Future<void> _changeLetterhead(BuildContext context) async {
@@ -384,7 +344,7 @@ class _ItemsCard extends StatelessWidget {
               Text(state.error!, style: TextStyle(color: theme.colorScheme.error))
             else if (state.items.isEmpty)
               Text(state.canEditItems
-                  ? 'لا توجد بنود بعد. أضف بنداً أو استورد ملف Excel من الأعلى.'
+                  ? 'لا توجد بنود بعد. أضف بنداً أو نزّل قالب Excel من قائمة Excel في الأعلى.'
                   : 'لا توجد بنود بعد')
             else ...[
               Text('${state.items.length} بند في $categories ${categories == 1 ? 'فئة' : 'فئات'}'),
@@ -429,6 +389,9 @@ class _ProjectItemsTableScreenState extends State<_ProjectItemsTableScreen> {
   List<ProjectItem>? _keyedItems;
   List<String> _keys = const [];
 
+  // Each line's number is its place in the whole list, not in the results.
+  Map<String, int> _numbers = const {};
+
   @override
   void dispose() {
     _searchDebounce.cancel();
@@ -440,6 +403,7 @@ class _ProjectItemsTableScreenState extends State<_ProjectItemsTableScreen> {
     if (!identical(items, _keyedItems)) {
       _keyedItems = items;
       _keys = [for (final i in items) boqSearchKey(i)];
+      _numbers = {for (var i = 0; i < items.length; i++) items[i].id: i + 1};
     }
     final words = foldForSearch(_query).split(' ').where((w) => w.isNotEmpty).toList();
     if (words.isEmpty) return items;
@@ -518,6 +482,7 @@ class _ProjectItemsTableScreenState extends State<_ProjectItemsTableScreen> {
                               child: BoqTable(
                                 items: shown,
                                 showPrices: canEdit || state.items.any((i) => i.totalPrice != null),
+                                numberOf: (item) => _numbers[item.id] ?? 0,
                                 onTap: canEdit ? (item) => showProjectItemForm(context, item) : null,
                                 onLongPress: canEdit ? (item) => confirmDeleteProjectItem(context, item) : null,
                               ),

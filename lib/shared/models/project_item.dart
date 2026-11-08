@@ -88,10 +88,14 @@ class ProjectItem extends Equatable {
         'packaging_base_unit': packagingBaseUnit,
       };
 
-  /// One element of `replace_project_items`' p_items; the server assigns
-  /// sort_order from array position. Packaging isn't settable from Excel
-  /// import yet, so it's deliberately not sent here.
-  Map<String, dynamic> toReplaceJson() => {
+  /// One element of `apply_project_items`' p_items. An empty [id] adds a new
+  /// line, which the server numbers after the project's last one; any other
+  /// updates that line. Sort order and packaging aren't in the Excel file, so
+  /// they're deliberately not sent and an update leaves them as they are.
+  /// [rowNumber] lets a server-side failure name the spreadsheet row.
+  Map<String, dynamic> toApplyJson({int? rowNumber}) => {
+        if (id.isNotEmpty) 'id': id,
+        'row_number': ?rowNumber,
         'category': category,
         'item_name': itemName,
         'description': description,
